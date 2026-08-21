@@ -10,12 +10,7 @@
  * 「後面每一塊都移動了」——那樣整句都標紅，等於沒標。
  */
 
-import { ROLES } from '../data/shared/roles.js';
-
-/**
- * 沒有中文對應、只出現在目標語言排的角色
- */
-const PARTICLE_ROLES = ['particle'];
+import { ROLES, TARGET_ONLY_ROLES as PARTICLE_ROLES } from '../data/shared/roles.js';
 
 /**
  * 最長共同子序列，回傳共同保留下來的元素集合

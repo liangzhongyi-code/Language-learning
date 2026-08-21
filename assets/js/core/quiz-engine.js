@@ -7,6 +7,7 @@
  */
 
 import { shuffle, sample } from './shuffle.js';
+import { speakTextOf } from './speech-text.js';
 
 /**
  * 一題需要一個正解加三個干擾選項
@@ -75,19 +76,24 @@ export function pickDistractors(pool, correct, optionField, rng = Math.random) {
 
 /**
  * 依題源取出題庫。mixed 把單字與句子併在一起抽。
+ * 設定畫面要顯示各題源的筆數，所以一併匯出——
+ * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-function poolOf(source, words, sentences) {
+export function poolOf(source, words, sentences) {
   if (source === 'words') return [...(words || [])];
   if (source === 'sentences') return [...(sentences || [])];
   return [...(words || []), ...(sentences || [])];
 }
 
 /**
- * 語音要唸的文字。
- * 日文一律唸假名讀音而不是漢字，避免語音引擎把漢字唸成別的讀法。
+ * 一局的作答進度百分比，0-100 的整數。
+ * 已作答的當前題目算完成，這樣進度條在按下選項時就會前進。
  */
-function speakTextOf(item, lang) {
-  return lang === 'ja' ? item.reading || item.target : item.target;
+export function progressPercent(session) {
+  const questions = session?.questions || [];
+  if (!questions.length) return 0;
+  const done = questions.filter((q) => q.answeredIndex !== null && q.answeredIndex !== undefined).length;
+  return Math.round((done / questions.length) * 100);
 }
 
 /**

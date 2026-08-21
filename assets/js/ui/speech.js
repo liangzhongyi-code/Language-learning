@@ -20,6 +20,18 @@ let voices = [];
 const readyCallbacks = [];
 
 /**
+ * 目前正在朗讀的那一段。
+ * 被取消的前一段會非同步收到 error/end，如果不比對是不是「當前這一段」，
+ * 它的清理動作會把後來才開始的那一段的視覺回饋一起抹掉。
+ */
+let currentUtterance = null;
+
+/**
+ * 語音清單更新時要重新評估的降級提示
+ */
+const pendingNotices = [];
+
+/**
  * 這個瀏覽器有沒有語音合成
  */
 export function isSupported() {
@@ -34,8 +46,21 @@ export function isSupported() {
 function refreshVoices() {
   if (!isSupported()) return;
   voices = window.speechSynthesis.getVoices() || [];
-  if (voices.length) {
-    while (readyCallbacks.length) readyCallbacks.shift()();
+  if (!voices.length) return;
+
+  while (readyCallbacks.length) readyCallbacks.shift()();
+
+  /**
+   * 清單晚到的情況：先前已經因為抓不到語音而掛出「可能沒有安裝語音」的提示，
+   * 現在語音真的來了就要把它收掉。沒有這一步，慢一點的裝置會永遠掛著
+   * 一則錯誤資訊，把使用者導去做完全不必要的系統設定。
+   */
+  for (let i = pendingNotices.length - 1; i >= 0; i--) {
+    const { lang, node } = pendingNotices[i];
+    if (hasVoiceFor(lang)) {
+      node.remove();
+      pendingNotices.splice(i, 1);
+    }
   }
 }
 
@@ -75,7 +100,9 @@ export function hasVoiceFor(lang) {
  * 停止目前的朗讀
  */
 export function cancel() {
-  if (isSupported()) window.speechSynthesis.cancel();
+  if (!isSupported()) return;
+  currentUtterance = null;
+  window.speechSynthesis.cancel();
 }
 
 /**
@@ -100,11 +127,19 @@ export function speak(text, lang, { el } = {}) {
 
   if (el) {
     el.classList.add('is-speaking');
-    const clear = () => el.classList.remove('is-speaking');
+    /**
+     * 只有當這一段仍然是「當前那一段」時才收掉高亮。
+     * 同一顆按鈕連按兩次時，第一段被取消後才非同步送出 error，
+     * 少了這道比對，它會把第二段正在播放的高亮一起抹掉。
+     */
+    const clear = () => {
+      if (currentUtterance === utterance) el.classList.remove('is-speaking');
+    };
     utterance.addEventListener('end', clear);
     utterance.addEventListener('error', clear);
   }
 
+  currentUtterance = utterance;
   window.speechSynthesis.speak(utterance);
 }
 
@@ -131,9 +166,17 @@ export function applySpeechFallback(lang, noticeHost) {
     const name = lang === 'ja' ? '日文' : '英文';
     noticeHost.insertAdjacentHTML(
       'afterbegin',
-      `<div class="notice"><b>這台裝置可能沒有安裝${name}語音。</b>` +
+      `<div class="notice" data-speech-notice><b>這台裝置可能沒有安裝${name}語音。</b>` +
         '朗讀按鈕仍可點，但可能沒有聲音——需要到系統設定安裝該語言的語音包。</div>'
     );
+
+    /**
+     * 這則提示有可能是誤判——onVoicesReady 有 1200ms 的逾時保險，
+     * 慢一點的裝置會在提示掛出來之後才把語音清單送到。
+     * 登記起來，refreshVoices 之後若真的抓到語音就把它收掉。
+     */
+    const node = noticeHost.querySelector('[data-speech-notice]');
+    if (node) pendingNotices.push({ lang, node });
   });
 }
 

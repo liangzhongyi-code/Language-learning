@@ -11,6 +11,7 @@
  */
 
 import { listCategories, filterWords } from '../core/filter.js';
+import { speakTextOf } from '../core/speech-text.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 
 /**
@@ -36,13 +37,6 @@ const DEBOUNCE_MS = 120;
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/**
- * 取這筆單字要交給語音引擎的文字。
- * 日文用假名讀音，其他語言用目標語言寫法。
- */
-function speakText(word, lang) {
-  return lang === 'ja' && word.reading ? word.reading : word.target;
-}
 
 /**
  * 一張單字卡。
@@ -66,7 +60,7 @@ function wordCard(word, lang) {
         <span class="tag">${esc(word.categoryLabel)}</span>
         <span class="tag">Lv${esc(word.level)}</span>
       </div>
-      <button type="button" class="speak" data-speak="${esc(speakText(word, lang))}"
+      <button type="button" class="speak" data-speak="${esc(speakTextOf(word, lang))}"
               data-speak-lang="${esc(lang)}" title="朗讀">🔊</button>
     </div>`;
 }

@@ -24,19 +24,16 @@
 <script type="module">
   import { renderNav } from '../assets/js/ui/nav.js';
   import { initQuizPage } from '../assets/js/ui/quiz-view.js';
-  import { applySpeechFallback } from '../assets/js/ui/speech.js';
   import { words } from '../assets/js/data/en/words.js';
   import { sentences } from '../assets/js/data/en/sentences.js';
 
   renderNav();
-  const noticeHost = document.getElementById('notice');
-  applySpeechFallback('en', noticeHost);
   initQuizPage({
     lang: 'en',
     words,
     sentences,
     mount: document.getElementById('app'),
-    noticeHost,
+    noticeHost: document.getElementById('notice'),
   });
 </script>
 </body>

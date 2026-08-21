@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSession, pickDistractors, answer } from '../assets/js/core/quiz-engine.js';
+import {
+  buildSession,
+  pickDistractors,
+  answer,
+  poolOf,
+  progressPercent,
+} from '../assets/js/core/quiz-engine.js';
 
 /**
  * 造一批單字：cats 個分類 × per 筆，方便測干擾選項的遞補行為
@@ -266,4 +272,44 @@ test('answer：題目索引超出範圍時拋錯而非默默失敗', () => {
 test('answer：選項索引不合法時拋錯', () => {
   const s = buildSession(base());
   assert.throws(() => answer(s, 0, 9));
+});
+
+/* ── 題源筆數與進度 ───────────────────────────────────────── */
+
+test('poolOf：三種題源的池子組成正確', () => {
+  assert.equal(poolOf('words', WORDS, SENTENCES).length, WORDS.length);
+  assert.equal(poolOf('sentences', WORDS, SENTENCES).length, SENTENCES.length);
+  assert.equal(poolOf('mixed', WORDS, SENTENCES).length, WORDS.length + SENTENCES.length);
+});
+
+test('poolOf：回傳新陣列，不會被外部改動汙染', () => {
+  const pool = poolOf('words', WORDS, SENTENCES);
+  pool.pop();
+  assert.equal(poolOf('words', WORDS, SENTENCES).length, WORDS.length);
+});
+
+test('poolOf：缺漏的題庫視為空陣列', () => {
+  assert.deepEqual(poolOf('words', undefined, SENTENCES), []);
+  assert.equal(poolOf('mixed', undefined, undefined).length, 0);
+});
+
+test('progressPercent：依已作答題數計算', () => {
+  const s = buildSession(base({ count: 10 }));
+  assert.equal(progressPercent(s), 0);
+  answer(s, 0, 0);
+  assert.equal(progressPercent(s), 10);
+  answer(s, 1, 0);
+  answer(s, 2, 0);
+  assert.equal(progressPercent(s), 30);
+});
+
+test('progressPercent：全部作答完為 100', () => {
+  const s = buildSession(base({ count: 5 }));
+  s.questions.forEach((q, i) => answer(s, i, q.correctIndex));
+  assert.equal(progressPercent(s), 100);
+});
+
+test('progressPercent：零題不產生 NaN', () => {
+  assert.equal(progressPercent({ questions: [] }), 0);
+  assert.equal(progressPercent(null), 0);
 });

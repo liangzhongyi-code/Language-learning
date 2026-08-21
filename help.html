@@ -50,16 +50,16 @@
       <div class="row-label">上排 · 中文語序</div>
       <div class="row" data-row="zh">
         <div class="blk r-subject" data-k="0"><span class="txt">我</span><span class="lbl">主詞</span></div>
-        <div class="blk r-time moved" data-k="3"><span class="txt">明天</span><span class="lbl">時間</span></div>
-        <div class="blk r-verb" data-k="1"><span class="txt">要買</span><span class="lbl">動詞</span></div>
-        <div class="blk r-object" data-k="2"><span class="txt">書</span><span class="lbl">受詞</span></div>
+        <div class="blk r-time moved" data-k="3"><span class="txt">今天</span><span class="lbl">時間</span></div>
+        <div class="blk r-verb" data-k="1"><span class="txt">去打</span><span class="lbl">動詞</span></div>
+        <div class="blk r-object" data-k="2"><span class="txt">羽毛球</span><span class="lbl">受詞</span></div>
       </div>
       <div class="gap-mid"><svg></svg></div>
       <div class="row" data-row="target">
         <div class="blk r-subject" data-k="0"><span class="txt">I</span><span class="lbl">主詞</span></div>
-        <div class="blk r-verb" data-k="1"><span class="txt">will buy</span><span class="lbl">動詞</span></div>
-        <div class="blk r-object" data-k="2"><span class="txt">a book</span><span class="lbl">受詞</span></div>
-        <div class="blk r-time moved" data-k="3"><span class="txt">tomorrow</span><span class="lbl">時間</span></div>
+        <div class="blk r-verb" data-k="1"><span class="txt">play</span><span class="lbl">動詞</span></div>
+        <div class="blk r-object" data-k="2"><span class="txt">badminton</span><span class="lbl">受詞</span></div>
+        <div class="blk r-time moved" data-k="3"><span class="txt">today</span><span class="lbl">時間</span></div>
       </div>
       <div class="row-label" style="margin-top:10px">下排 · 英文語序</div>
     </div>
@@ -67,7 +67,7 @@
     <p class="note-line" style="margin-top:20px">怎麼讀這張圖：</p>
     <ul>
       <li><b>上排是中文的說法，下排是外語的說法。</b>同一個顏色代表同一個語法角色——藍色永遠是主詞、紅色永遠是動詞。</li>
-      <li><b>虛線框加上「語序不同」標籤</b>，代表這一塊在兩種語言裡的位置不一樣。上面這句的「明天」在中文排第 2 個，
+      <li><b>虛線框加上「語序不同」標籤</b>，代表這一塊在兩種語言裡的位置不一樣。上面這句的「今天」在中文排第 2 個，
         到了英文卻跑到最後——這就是英文時間副詞的習慣。</li>
       <li><b>連接線</b>把兩排的同一塊連起來。線交叉，就代表語序換了。文法頁右上角可以關掉它。</li>
       <li>點下排的任何一塊，只會唸那一小段；點整句旁邊的喇叭才唸整句。</li>
@@ -152,9 +152,12 @@
       const rb = b.getBoundingClientRect();
       const x1 = ra.left + ra.width / 2 - box.left;
       const x2 = rb.left + rb.width / 2 - box.left;
-      const h = box.height;
+      /* y 也要現算，窄螢幕色塊換行時端點才不會懸在半空中 */
+      const y1 = ra.bottom - box.top;
+      const y2 = rb.top - box.top;
+      const mid = y1 + (y2 - y1) / 2;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', `M${x1},0 C${x1},${h * 0.5} ${x2},${h * 0.5} ${x2},${h}`);
+      path.setAttribute('d', `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`);
       path.setAttribute('stroke', getComputedStyle(a).getPropertyValue('--blk').trim() || 'currentColor');
       if (a.classList.contains('moved')) path.setAttribute('stroke-dasharray', '4 3');
       svg.appendChild(path);

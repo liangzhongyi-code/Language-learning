@@ -121,6 +121,28 @@ test('summarize：句子題的錯題帶出語序說明', () => {
   assert.equal(r.wrongList[0].note, '英文的時間副詞放句尾');
 });
 
+test('summarize：錯題帶出目標語言的朗讀文字', () => {
+  const s = makeSession([1], [0], { speakText: 'あめ', optionLang: 'ja' });
+  const r = summarize(s);
+  assert.equal(
+    r.wrongList[0].speakText,
+    'あめ',
+    '不能拿 correctText 代替：日文的正解是漢字，送語音引擎會唸錯'
+  );
+});
+
+test('summarize：外翻中的錯題一樣帶得出朗讀文字', () => {
+  /* 這個方向的正解是中文，但仍然要能唸出目標語言的說法 */
+  const s = makeSession([1], [0], { speakText: 'badminton', optionLang: 'zh', direction: 'target2zh' });
+  const r = summarize(s);
+  assert.equal(r.wrongList[0].speakText, 'badminton');
+});
+
+test('summarize：題目沒有朗讀文字時為 null 而非 undefined', () => {
+  const s = makeSession([1], [0]);
+  assert.equal(summarize(s).wrongList[0].speakText, null);
+});
+
 test('summarize：全對時錯題清單為空', () => {
   const s = makeSession([0, 1], [0, 1]);
   const r = summarize(s);

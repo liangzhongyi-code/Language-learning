@@ -24,6 +24,8 @@ export const ROLES = {
 export const ROLE_KEYS = Object.keys(ROLES);
 
 /**
- * 助詞在中文句裡沒有對應詞，中文排要畫成佔位的窄區塊而不是留白錯位
+ * 只存在於目標語言、中文沒有對應成分的角色。
+ * 這些區塊只畫在目標語言排，中文排完全不顯示——
+ * 助詞是日文特有的語法裝置，在中文排硬擠一格會讓人以為中文也有對應的詞。
  */
-export const PLACEHOLDER_ROLES = ['particle'];
+export const TARGET_ONLY_ROLES = ['particle'];

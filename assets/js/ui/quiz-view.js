@@ -8,9 +8,9 @@
  * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
  */
 
-import { buildSession, answer } from '../core/quiz-engine.js';
+import { buildSession, answer, poolOf, progressPercent } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
-import { speak } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 
 const DIRECTION_LABEL = {
   zh2target: { en: '中翻英', ja: '中翻日' },
@@ -44,14 +44,24 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     source: ['words', 'sentences', 'mixed'].includes(requested) ? requested : 'words',
     direction: 'zh2target',
     count: 10,
+    /**
+     * 使用者是不是選了「全部」。
+     * 只記數字不行——換題源之後舊的總數會變成一個沒有任何膠囊對應的幽靈值，
+     * 畫面上看不出這局到底會出幾題。記住「他要的是全部」才能跟著新題源走。
+     */
+    useAll: false,
   };
 
   let session = null;
   /* 統計只在進入結果畫面時寫入一次，避免重複累加 */
   let recorded = false;
+  /* 統計寫入失敗要一直提示到離開結果畫面，不能只在第一次渲染時顯示 */
+  let saveFailed = false;
+  /* 目前所在的畫面，鍵盤快捷鍵只在作答時生效 */
+  let phase = 'setup';
 
-  const poolSize = (source) =>
-    source === 'words' ? words.length : source === 'sentences' ? sentences.length : words.length + sentences.length;
+  /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
+  const poolSize = (source) => poolOf(source, words, sentences).length;
 
   /* ── 設定畫面 ─────────────────────────────────────────── */
 
@@ -93,23 +103,36 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
           <div class="chips">${chips('count', [
             [10, '10 題'],
             [20, '20 題'],
-            [total, `全部（${total}）`],
-          ], config.count)}</div>
+            ['all', `全部（${total}）`],
+          ], config.useAll ? 'all' : config.count)}</div>
         </div>
 
         ${errorMessage ? `<div class="notice"><b>無法開始：</b>${esc(errorMessage)}</div>` : ''}
 
         <div class="actions">
-          <button class="btn" data-start>開始測驗</button>
+          <button class="btn" type="button" data-start>開始測驗</button>
         </div>
       </div>`;
 
     mount.querySelectorAll('[data-set]').forEach((chip) => {
       chip.addEventListener('click', () => {
         const { set, value } = chip.dataset;
-        config[set] = set === 'count' ? Number(value) : value;
-        /* 換題源時題數上限會變，全部重畫最單純 */
-        if (set === 'source') config.count = Math.min(config.count, poolSize(value));
+
+        if (set === 'count') {
+          config.useAll = value === 'all';
+          if (!config.useAll) config.count = Number(value);
+        } else {
+          config[set] = value;
+        }
+
+        /**
+         * 換題源之後題數上限會變。選了「全部」就跟著新題源走；
+         * 選了固定題數則收斂到新上限，且一定要落在某顆膠囊上，
+         * 否則畫面會出現三顆都沒選取、使用者不知道會出幾題的狀態。
+         */
+        const limit = poolSize(config.source);
+        if (!config.useAll && config.count > limit) config.useAll = true;
+
         renderSetup();
       });
     });
@@ -119,12 +142,32 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
 
   function start() {
     try {
-      session = buildSession({ lang, words, sentences, ...config });
+      const count = config.useAll ? poolSize(config.source) : config.count;
+      session = buildSession({
+        lang,
+        words,
+        sentences,
+        source: config.source,
+        direction: config.direction,
+        count,
+      });
       recorded = false;
+      saveFailed = false;
+      phase = 'playing';
       renderQuestion();
     } catch (error) {
+      phase = 'setup';
       renderSetup(error.message);
     }
+  }
+
+  /**
+   * 回到設定畫面。session 一律丟掉——半局狀態不保留是刻意的設計。
+   */
+  function backToSetup() {
+    session = null;
+    phase = 'setup';
+    renderSetup();
   }
 
   /* ── 作答畫面 ─────────────────────────────────────────── */
@@ -139,7 +182,8 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     /* 題面是目標語言時才提供朗讀；中翻外的題面是中文，沒有朗讀的意義 */
     const promptSpeak =
       q.direction === 'target2zh'
-        ? `<button class="speak" data-speak-prompt title="朗讀題目">🔊</button>`
+        ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
+             data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">🔊</button>`
         : '';
 
     const options = q.options
@@ -155,14 +199,16 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
             mark = '<span class="mark">你選的</span>';
           }
         }
-        const button = `<button class="${cls}" data-opt="${i}" ${answered ? 'disabled' : ''}>
+        const button = `<button class="${cls}" type="button" data-opt="${i}" ${answered ? 'disabled' : ''}>
             <span class="key">${i + 1}</span>${esc(option.text)}${mark}
           </button>`;
 
         /* 作答後在正解旁邊補一顆朗讀鍵，讓使用者聽正確的說法 */
         const needsSpeak = answered && i === q.correctIndex && q.optionLang !== 'zh';
         return needsSpeak
-          ? `<div class="opt-row">${button}<button class="speak tall" data-speak-answer title="朗讀正解">🔊</button></div>`
+          ? `<div class="opt-row">${button}<button class="speak tall" type="button"
+               data-speak="${esc(q.speakText)}" data-speak-lang="${lang}"
+               title="朗讀正解" aria-label="朗讀正解">🔊</button></div>`
           : button;
       })
       .join('');
@@ -181,7 +227,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
           <span class="progress-text">第 ${index + 1} / ${total} 題 · ${esc(
             DIRECTION_LABEL[q.direction][lang]
           )}</span>
-          <span class="bar"><i style="width:${Math.round(((index + (answered ? 1 : 0)) / total) * 100)}%"></i></span>
+          <span class="bar"><i style="width:${progressPercent(session)}%"></i></span>
         </div>
 
         <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
@@ -191,25 +237,19 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
         ${feedback}
 
         <div class="actions">
-          <button class="btn" data-next ${answered ? '' : 'disabled'}>${isLast ? '看結果' : '下一題 →'}</button>
-          <button class="btn ghost" data-quit>結束這局</button>
+          <button class="btn" type="button" data-next ${answered ? '' : 'disabled'}>${
+            isLast ? '看結果' : '下一題 →'
+          }</button>
+          <button class="btn ghost" type="button" data-quit>結束這局</button>
         </div>
       </div>`;
 
+    /* 朗讀一律走 bindSpeakButtons 的事件委派，這裡只綁作答與流程控制 */
     mount.querySelectorAll('[data-opt]').forEach((button) => {
       button.addEventListener('click', () => choose(Number(button.dataset.opt)));
     });
-    mount.querySelector('[data-speak-prompt]')?.addEventListener('click', (event) => {
-      speak(q.speakText, lang, { el: event.currentTarget });
-    });
-    mount.querySelector('[data-speak-answer]')?.addEventListener('click', (event) => {
-      speak(q.speakText, lang, { el: event.currentTarget });
-    });
     mount.querySelector('[data-next]').addEventListener('click', next);
-    mount.querySelector('[data-quit]').addEventListener('click', () => {
-      session = null;
-      renderSetup();
-    });
+    mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
   }
 
   function choose(optionIndex) {
@@ -233,23 +273,29 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
   /* ── 結果畫面 ─────────────────────────────────────────── */
 
   function renderResult() {
+    phase = 'result';
     const s = summarize(session);
 
     /* 只有完整跑完的一局才計入統計，而且只寫一次 */
-    let saved = true;
     if (!recorded && isComplete(session)) {
       recorded = true;
       const store = storage();
-      saved = saveStats(store, applySession(loadStats(store), lang, session.source, s));
+      saveFailed = !saveStats(store, applySession(loadStats(store), lang, session.source, s));
     }
 
+    /**
+     * 錯題的朗讀一律用 speakText（目標語言，日文為假名），不分出題方向。
+     * 不能拿 correctText 代替：外翻中的正解是中文，日文的正解是漢字，
+     * 兩種都送不出正確的發音。
+     */
     const wrongItems = s.wrongList
       .map(
         (w) => `
         <div class="wrong">
           <div class="q">${esc(w.prompt)}${
-            w.optionLang !== 'zh'
-              ? `<button class="speak" data-speak="${esc(w.correctText)}" data-speak-lang="${lang}" title="朗讀正解">🔊</button>`
+            w.speakText
+              ? `<button class="speak" type="button" data-speak="${esc(w.speakText)}"
+                   data-speak-lang="${lang}" title="朗讀正確說法" aria-label="朗讀正確說法">🔊</button>`
               : ''
           }</div>
           <div class="ans">
@@ -274,29 +320,32 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
             : `<div class="wrong-list">${wrongItems}</div>`
         }
 
-        ${saved ? '' : '<div class="notice"><b>這次的成績無法保存。</b>瀏覽器的儲存空間被停用或已滿，測驗本身不受影響。</div>'}
+        ${saveFailed ? '<div class="notice"><b>這次的成績無法保存。</b>瀏覽器的儲存空間被停用或已滿，測驗本身不受影響。</div>' : ''}
 
         <div class="actions">
-          <button class="btn" data-again>再玩一局</button>
+          <button class="btn" type="button" data-again>再玩一局</button>
           <a class="btn ghost" href="./index.html">回首頁</a>
         </div>
       </div>`;
 
-    mount.querySelector('[data-again]').addEventListener('click', () => {
-      session = null;
-      renderSetup();
-    });
-
-    /* 錯題清單的朗讀鍵 */
-    mount.querySelectorAll('[data-speak]').forEach((button) => {
-      button.addEventListener('click', () => speak(button.dataset.speak, lang, { el: button }));
-    });
+    mount.querySelector('[data-again]').addEventListener('click', backToSetup);
   }
 
   /* ── 鍵盤操作 ─────────────────────────────────────────── */
 
+  /**
+   * 快捷鍵只在作答畫面生效，而且焦點在按鈕或連結上時一律讓路。
+   *
+   * 少了這兩道守衛，Enter 會被無條件攔截並 preventDefault，
+   * 結果畫面上「再玩一局」「回首頁」按了沒反應——純鍵盤使用者會卡在那一頁出不來。
+   */
+  const INTERACTIVE = 'button, a[href], input, select, textarea, [contenteditable]';
+
   document.addEventListener('keydown', (event) => {
-    if (!session) return;
+    if (phase !== 'playing' || !session) return;
+    if (event.target.closest?.(INTERACTIVE)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
     const q = session.questions[session.cursor];
     if (!q) return;
 
@@ -314,6 +363,12 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     }
   });
 
+  /**
+   * 語音降級與朗讀委派由這裡負責，與其他四支 view 一致。
+   * 頁面只需要呼叫 renderNav() 與 initQuizPage()，不必自己補呼叫。
+   */
+  applySpeechFallback(lang, noticeHost);
+  bindSpeakButtons(mount, lang);
+
   renderSetup();
-  return { noticeHost };
 }

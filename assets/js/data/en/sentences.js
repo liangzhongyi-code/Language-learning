@@ -455,7 +455,5 @@ export const sentences = [
     note: '中文把「今天」放在主詞後面，英文的時間副詞習慣擺句尾——這是最常見的語序落差。',
     category: 'sport',
     level: 1,
-    category: 'daily',
-    level: 2,
   },
 ];

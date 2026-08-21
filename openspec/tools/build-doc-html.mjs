@@ -11,7 +11,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,11 +25,20 @@ if (!changeId) {
   process.exit(1);
 }
 
-const changeDir = join(REPO_ROOT, 'openspec', 'changes', changeId);
-if (!existsSync(changeDir)) {
-  console.error(`找不到 change 目錄：${changeDir}`);
+/**
+ * 進行中的變更在 changes/、完成的在 archive/。
+ * 兩邊都找，歸檔之後仍然產得出閱讀版。
+ */
+const candidates = [
+  join(REPO_ROOT, 'openspec', 'changes', changeId),
+  join(REPO_ROOT, 'openspec', 'archive', changeId),
+];
+const changeDir = candidates.find((p) => existsSync(p));
+if (!changeDir) {
+  console.error(`找不到 change 目錄，已嘗試：\n  ${candidates.join('\n  ')}`);
   process.exit(1);
 }
+const isArchived = changeDir.includes(`${sep}archive${sep}`);
 
 /* ── markdown → HTML（只支援本專案文件用到的語法） ───────────────────── */
 
@@ -403,7 +412,7 @@ const docsHtml = rendered
       <div class="doc-meta">${
         d.isOverview
           ? escapeHtml(d.file)
-          : `原始檔：<code>openspec/changes/${changeId}/${d.file}</code>`
+          : `原始檔：<code>openspec/${isArchived ? 'archive' : 'changes'}/${changeId}/${d.file}</code>`
       }</div>
       ${d.html}
     </article>`
@@ -597,7 +606,7 @@ svg.flow text{font-family:var(--sans); fill:var(--fg-dim)}
     <nav id="nav">${navHtml}</nav>
     <div class="hint">
       本頁為閱讀副本，<b>不是</b>修改對象。<br>
-      原始 md 位於 <code>openspec/changes/${escapeHtml(changeId)}/</code>，
+      原始 md 位於 <code>openspec/${isArchived ? 'archive' : 'changes'}/${escapeHtml(changeId)}/</code>，
       修改請改 md 原檔，再重新執行<br>
       <code>node openspec/tools/build-doc-html.mjs ${escapeHtml(changeId)}</code>
     </div>

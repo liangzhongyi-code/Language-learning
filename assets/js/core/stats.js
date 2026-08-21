@@ -72,6 +72,12 @@ export function summarize(session) {
       note: q.note ?? null,
       direction: q.direction ?? null,
       optionLang: q.optionLang ?? null,
+      /**
+       * 目標語言的朗讀文字。
+       * 不能拿 correctText 代替——外翻中的題目正解是中文，
+       * 而日文的 correctText 是漢字，直接送語音引擎會被唸錯。
+       */
+      speakText: q.speakText ?? null,
     });
   }
 

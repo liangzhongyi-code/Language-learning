@@ -25,12 +25,12 @@
     <a class="entry" href="./vocabulary.html">
       <div class="icon">📇</div>
       <h3>單字</h3>
-      <p>83 個日常單字，可依主題篩選與搜尋。</p>
+      <p><span data-count="words">—</span> 個日常單字，可依主題篩選與搜尋。</p>
     </a>
     <a class="entry" href="./grammar.html">
       <div class="icon">🧩</div>
       <h3>文法句型</h3>
-      <p>27 組例句的色塊拆解，看中英語序差在哪。</p>
+      <p><span data-count="sentences">—</span> 組例句的色塊拆解，看中英語序差在哪。</p>
     </a>
     <a class="entry" href="./quiz.html">
       <div class="icon">🎯</div>
@@ -47,8 +47,15 @@
 <script type="module">
   import { renderNav } from '../assets/js/ui/nav.js';
   import { renderLangStats } from '../assets/js/ui/stats-view.js';
+  import { words } from '../assets/js/data/en/words.js';
+  import { sentences } from '../assets/js/data/en/sentences.js';
+
   renderNav();
   renderLangStats(document.getElementById('stats'), 'en');
+
+  /* 題庫筆數直接從資料檔數，寫死的數字遲早會跟實際內容脫節 */
+  document.querySelector('[data-count="words"]').textContent = words.length;
+  document.querySelector('[data-count="sentences"]').textContent = sentences.length;
 </script>
 </body>
 </html>

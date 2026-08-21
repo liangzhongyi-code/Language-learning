@@ -2,16 +2,37 @@
  * 全站主題與共用元件。
  *
  * 分成兩層：
- *   1. vendor/open-props.min.css 提供尺度（間距、字級、陰影、動畫曲線）
- *   2. 本檔的 :root 定義語意 token（顏色、圓角、字體），元件只吃 token
+ *   1. 尺度 token（間距、字級、動畫曲線）
+ *   2. 語意 token（顏色、圓角、字體）
+ * 元件只吃 token，不寫死任何值。所有色碼一律只出現在下面的 :root 區塊，
+ * 其他檔案一律用 var()——要換配色只需要動那一段。
  *
- * 所有色碼一律只出現在下面的 :root 區塊裡，其他地方一律用 var()。
- * 要換配色只需要動那一段。
+ * 尺度採用 Open Props（MIT）的比例。原本是整包 import 進來，
+ * 但實測全站只用到它 607 個變數裡的 13 個，其中還夾帶 344 個用不到的色碼，
+ * 反而違反了「色碼集中」與「零第三方套件」兩條規格。
+ * 所以改成直接採用那幾個值，不再引入整個檔案。
  */
 
-@import url('./vendor/open-props.min.css');
-
 :root {
+  /* ── 間距尺度 ── */
+  --size-1: 0.25rem;
+  --size-2: 0.5rem;
+  --size-3: 1rem;
+  --size-4: 1.25rem;
+  --size-5: 1.5rem;
+  --size-7: 2rem;
+  --size-8: 3rem;
+  --size-9: 4rem;
+  --size-10: 5rem;
+
+  /* ── 標題字級 ── */
+  --font-size-4: 1.5rem;
+  --font-size-5: 2rem;
+  --font-size-6: 2.5rem;
+
+  /* ── 動畫曲線 ── */
+  --ease-out-3: cubic-bezier(0, 0, 0.3, 1);
+
   /* ── 底色與表面 ── */
   --bg: #12141a;
   --surface: #1a1d25;
@@ -22,10 +43,15 @@
   --border: #2b3038;
   --border-strong: #3a4150;
 
-  /* ── 文字 ── */
+  /**
+   * 文字三階。
+   * 深色底上要讓第三階也達到 WCAG AA 的 4.5:1，它必然會逼近第二階，
+   * 所以第二階跟著往上提，才不會三階看起來像兩階。
+   * 對比度由 tests/structure.test.js 把關，改這幾行要重跑測試。
+   */
   --text: #e4e8ef;
-  --dim: #9aa4b2;
-  --mute: #6b7684;
+  --dim: #b3bcc9;
+  --mute: #9199a3;
 
   /* ── 語意色 ── */
   --accent: #7aa2f7;
@@ -46,7 +72,7 @@
   --r-place: #a98cd8;
   --r-adjective: #5fc0b8;
   --r-negation: #e09a6b;
-  --r-particle: #78828f;
+  --r-particle: #8b95a2;
   --r-other: #9aa4b2;
 
   /* ── 圓角 ── */
@@ -117,8 +143,6 @@ a:hover { text-decoration: underline; }
   margin: 0 auto;
   padding: 0 var(--size-4);
 }
-.wrap.wide { max-width: 1080px; }
-
 main { padding-bottom: var(--size-10); }
 
 /* ══════════════════════════════════════════════════════════

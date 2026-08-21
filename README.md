@@ -61,8 +61,10 @@ npm test
 - HTML 裡出現 `href="/` 或 `src="/`（會讓子路徑部署壞掉）
 - 引用任何外部網域（CDN、字型服務）
 - 在 `theme.css` 以外的地方寫死色碼
-- `core/` 底下出現 `document` / `window` / `localStorage`
+- 文字顏色在任何表面上低於 WCAG AA 的 4.5:1
+- `core/` 底下出現 `document` / `window` / `localStorage` 等瀏覽器全域
 - HTML 裡出現巢狀 `<button>`
+- 題庫的物件實字裡有重複的鍵（JS 會靜靜覆蓋，執行期驗證抓不到）
 
 ---
 
@@ -76,8 +78,7 @@ npm test
 ├── ja/                     日文區（index / kana / vocabulary / grammar / quiz）
 ├── assets/
 │   ├── css/
-│   │   ├── theme.css       語意 token 與全站元件樣式 ← 改配色只要動這裡
-│   │   └── vendor/         Open Props（MIT，提供間距與字級尺度）
+│   │   └── theme.css       尺度與語意 token + 全站元件樣式 ← 改配色只要動這裡
 │   └── js/
 │       ├── core/           純函式，零 DOM，可被 node:test 直接測
 │       ├── ui/             DOM 綁定層
@@ -226,5 +227,5 @@ chunks: [
 
 ## 授權
 
-`assets/css/vendor/open-props.min.css` 為 [Open Props](https://open-props.style)，MIT 授權。
-其餘為本專案內容。
+`theme.css` 的間距與字級尺度採用 [Open Props](https://open-props.style)（MIT）的比例值。
+其餘為本專案內容。網站執行期不引用任何第三方檔案。

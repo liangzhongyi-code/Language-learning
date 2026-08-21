@@ -11,6 +11,7 @@
 
 import { buildLayout } from '../core/grammar-layout.js';
 import { listPatterns, filterSentences } from '../core/filter.js';
+import { speakTextOf } from '../core/speech-text.js';
 import { patternsOf } from '../data/shared/patterns.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
@@ -75,7 +76,7 @@ function cardHtml(sentence, { lang, patternName }) {
   const targetLabel = `${LANG_LABEL[lang] || lang}語序`;
 
   /* 日文朗讀整句要用假名讀音，直接唸漢字容易被唸成中文音或訓讀錯誤 */
-  const fullSpeech = lang === 'ja' ? sentence.reading || sentence.target : sentence.target;
+  const fullSpeech = speakTextOf(sentence, lang);
   const readingHtml =
     lang === 'ja' && sentence.reading
       ? `<span class="word-reading">${esc(sentence.reading)}</span>`
@@ -115,6 +116,15 @@ function drawLinks(scope) {
   /* 連接線關掉時 CSS 會把 svg 藏起來，這時算座標純屬浪費 */
   if (document.documentElement.classList.contains('no-lines')) return;
 
+  /**
+   * 分兩階段跑：先把所有卡片的座標量完，再一次性動 DOM。
+   *
+   * 原本是「量一條、畫一條」交錯進行，而寫入 DOM 會讓下一次
+   * getBoundingClientRect 被迫重新排版。文法頁一次渲染 28-31 張卡、
+   * 每張 4-6 條線，等於每次重畫觸發上百次強制 layout——手機轉向時會明顯卡頓。
+   */
+  const plans = [];
+
   scope.querySelectorAll('.gram').forEach((gram) => {
     const gap = gram.querySelector('.gap-mid');
     const svg = gap && gap.querySelector('svg');
@@ -122,13 +132,11 @@ function drawLinks(scope) {
     const targetRow = gram.querySelector('.row[data-row="target"]');
     if (!svg || !zhRow || !targetRow) return;
 
-    svg.textContent = '';
-
     const box = gap.getBoundingClientRect();
-    const h = box.height;
     /* 卡片還沒有版面（例如被隱藏）時不畫，等下一次觸發 */
-    if (!h) return;
+    if (!box.height) return;
 
+    const segments = [];
     zhRow.querySelectorAll('.blk').forEach((topBlock) => {
       const key = topBlock.dataset.k;
       const bottomBlock = targetRow.querySelector(`.blk[data-k="${key}"]`);
@@ -137,24 +145,46 @@ function drawLinks(scope) {
 
       const ra = topBlock.getBoundingClientRect();
       const rb = bottomBlock.getBoundingClientRect();
-      const x1 = ra.left + ra.width / 2 - box.left;
-      const x2 = rb.left + rb.width / 2 - box.left;
-
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M${x1},0 C${x1},${h * 0.5} ${x2},${h * 0.5} ${x2},${h}`);
 
       /*
        * 線的顏色跟著色塊走，才看得出是同一個角色。
        * --blk 在少數瀏覽器讀不到已代換的值，退回用邊框色（一定是解析過的 rgb）。
        */
       const style = getComputedStyle(topBlock);
-      const color = style.getPropertyValue('--blk').trim() || style.borderTopColor;
-      path.setAttribute('stroke', color);
-      if (topBlock.classList.contains('moved')) path.setAttribute('stroke-dasharray', '4 3');
 
-      svg.appendChild(path);
+      segments.push({
+        x1: ra.left + ra.width / 2 - box.left,
+        x2: rb.left + rb.width / 2 - box.left,
+        /*
+         * y 也要現算。色塊在窄螢幕會換行，折到第二行的區塊離 .gap-mid 的
+         * 上下緣有好幾十 px；若把端點寫死在 0 與 h，線就會懸在半空中，
+         * 看起來像好幾條線都從同一塊長出來。svg 是 overflow: visible，
+         * 所以端點超出 gap 範圍也畫得出來。
+         */
+        y1: ra.bottom - box.top,
+        y2: rb.top - box.top,
+        color: style.getPropertyValue('--blk').trim() || style.borderTopColor,
+        moved: topBlock.classList.contains('moved'),
+      });
     });
+
+    if (segments.length) plans.push({ svg, segments });
   });
+
+  /* 第二階段：量測全部結束，現在才動 DOM */
+  for (const { svg, segments } of plans) {
+    const frag = document.createDocumentFragment();
+    for (const seg of segments) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      const mid = seg.y1 + (seg.y2 - seg.y1) / 2;
+      path.setAttribute('d', `M${seg.x1},${seg.y1} C${seg.x1},${mid} ${seg.x2},${mid} ${seg.x2},${seg.y2}`);
+      path.setAttribute('stroke', seg.color);
+      if (seg.moved) path.setAttribute('stroke-dasharray', '4 3');
+      frag.appendChild(path);
+    }
+    svg.textContent = '';
+    svg.appendChild(frag);
+  }
 }
 
 /**
