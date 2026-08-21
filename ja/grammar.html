@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文法句型 · 日文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="ja" data-page="grammar">
+<main class="wrap">
+  <div class="page-head">
+    <h1>日文句型拆解</h1>
+    <p>上排是中文語序、下排是日文語序，同顏色是同一個語法角色。助詞在中文沒有對應詞，只會出現在日文那一排。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+<footer class="wrap">
+  <p class="foot">純前端靜態網站，所有內容離線可讀；朗讀功能使用瀏覽器內建語音。</p>
+</footer>
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initGrammarPage } from '../assets/js/ui/grammar-view.js';
+  import { sentences } from '../assets/js/data/ja/sentences.js';
+
+  renderNav();
+  initGrammarPage({
+    lang: 'ja',
+    sentences,
+    mount: document.getElementById('app'),
+    noticeHost: document.getElementById('notice'),
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="ja" data-page="home">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>日文</h1>
+    <p>從五十音開始，看單字、拆句型，再用選題練習驗收。</p>
+  </div>
+
+  <div id="stats"></div>
+
+  <div class="grid-cards">
+    <a class="entry" href="./kana.html">
+      <div class="icon">🈁</div>
+      <h3>五十音</h3>
+      <p>清音、濁音、半濁音、拗音共 104 個，平假名與片假名可切換。</p>
+    </a>
+    <a class="entry" href="./vocabulary.html">
+      <div class="icon">📇</div>
+      <h3>單字</h3>
+      <p>84 個日常單字，附假名讀音與羅馬拼音。</p>
+    </a>
+    <a class="entry" href="./grammar.html">
+      <div class="icon">🧩</div>
+      <h3>文法句型</h3>
+      <p>30 組例句，看助詞怎麼用、動詞為什麼永遠在句尾。</p>
+    </a>
+    <a class="entry" href="./quiz.html">
+      <div class="icon">🎯</div>
+      <h3>選題測驗</h3>
+      <p>中翻日 / 日翻中，每局結束檢討錯題。</p>
+    </a>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">
+    日文朗讀需要裝置本身有日文語音包。沒有的話按鈕仍在，但可能沒有聲音——
+    頁面上會有提示。
+  </p>
+</footer>
+
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { renderLangStats } from '../assets/js/ui/stats-view.js';
+  renderNav();
+  renderLangStats(document.getElementById('stats'), 'ja');
+</script>
+</body>
+</html>

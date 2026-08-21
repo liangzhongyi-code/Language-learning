@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用教學 · 語言學習</title>
+<link rel="stylesheet" href="./assets/css/theme.css">
+</head>
+<body data-page="help">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>使用教學</h1>
+    <p>四個學習模組各自在幹嘛、什麼時候該用哪一個，以及色塊拆解怎麼讀。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>🔊 發音</h2>
+    <p>英文是 26 字母與音標，日文是 104 個假名。</p>
+  </div>
+  <div class="card">
+    <p>點卡片就會唸出來。英文字母卡上另外有一個例字，例字旁邊的喇叭會唸<b>整個單字</b>而不是字母本身。</p>
+    <p>日文的假名分成<b>清音、濁音、半濁音、拗音</b>四個區塊，可以各自收合。濁音格子會標出它的清音來源
+      （<code>が ← か</code>），因為濁點的規則就是「清音加兩點」，擺在一起看比死背快。
+      右上角可以切換平假名、片假名或兩者並列，羅馬拼音在三種模式下都會一直顯示。</p>
+    <p class="note-line"><b>什麼時候用它：</b>剛開始學，或看到某個假名念不出來的時候。這是唯一不需要先懂任何單字就能用的模組。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>📇 單字</h2>
+    <p>可以搜尋、依主題篩選，每個字都能朗讀。</p>
+  </div>
+  <div class="card">
+    <p>搜尋框同時比對<b>中文、外語寫法、假名讀音、羅馬拼音</b>四個欄位，所以查日文的「雨」時，
+      打 <code>雨</code>、<code>あめ</code>、<code>ame</code> 都找得到，大小寫也不影響。</p>
+    <p>主題分類（食物、交通、天氣⋯）不只是給你篩選用的——<b>測驗的干擾選項會優先從同一個分類裡挑</b>，
+      所以題目才不會出現「蘋果」的選項是 apple / run / beautiful 這種一眼就猜到的組合。</p>
+    <p class="note-line"><b>什麼時候用它：</b>測驗前想先掃一遍，或測驗後想針對某個主題補強。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>🧩 文法句型</h2>
+    <p>這是這個網站的重點。</p>
+  </div>
+
+  <div class="card">
+    <p>每個句子被切成幾個<b>語意區塊</b>，畫成上下兩排。下面是一個真實的例子：</p>
+
+    <div class="gram" style="margin-top:20px">
+      <div class="row-label">上排 · 中文語序</div>
+      <div class="row" data-row="zh">
+        <div class="blk r-subject" data-k="0"><span class="txt">我</span><span class="lbl">主詞</span></div>
+        <div class="blk r-time moved" data-k="3"><span class="txt">明天</span><span class="lbl">時間</span></div>
+        <div class="blk r-verb" data-k="1"><span class="txt">要買</span><span class="lbl">動詞</span></div>
+        <div class="blk r-object" data-k="2"><span class="txt">書</span><span class="lbl">受詞</span></div>
+      </div>
+      <div class="gap-mid"><svg></svg></div>
+      <div class="row" data-row="target">
+        <div class="blk r-subject" data-k="0"><span class="txt">I</span><span class="lbl">主詞</span></div>
+        <div class="blk r-verb" data-k="1"><span class="txt">will buy</span><span class="lbl">動詞</span></div>
+        <div class="blk r-object" data-k="2"><span class="txt">a book</span><span class="lbl">受詞</span></div>
+        <div class="blk r-time moved" data-k="3"><span class="txt">tomorrow</span><span class="lbl">時間</span></div>
+      </div>
+      <div class="row-label" style="margin-top:10px">下排 · 英文語序</div>
+    </div>
+
+    <p class="note-line" style="margin-top:20px">怎麼讀這張圖：</p>
+    <ul>
+      <li><b>上排是中文的說法，下排是外語的說法。</b>同一個顏色代表同一個語法角色——藍色永遠是主詞、紅色永遠是動詞。</li>
+      <li><b>虛線框加上「語序不同」標籤</b>，代表這一塊在兩種語言裡的位置不一樣。上面這句的「明天」在中文排第 2 個，
+        到了英文卻跑到最後——這就是英文時間副詞的習慣。</li>
+      <li><b>連接線</b>把兩排的同一塊連起來。線交叉，就代表語序換了。文法頁右上角可以關掉它。</li>
+      <li>點下排的任何一塊，只會唸那一小段；點整句旁邊的喇叭才唸整句。</li>
+    </ul>
+
+    <p>日文還會多出一種<b>灰色的窄塊：助詞</b>（は、を、で⋯）。它們<b>只出現在下排</b>，
+      上排完全不顯示——因為中文根本沒有對應的詞。硬要在中文排擠一格出來反而會讓人以為中文也有這個成分。</p>
+
+    <p class="note-line"><b>什麼時候用它：</b>當你單字都認得、但句子就是拼不出來的時候。問題通常不在字，在語序。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>🎯 選題測驗</h2>
+    <p>四選一，雙向出題。</p>
+  </div>
+  <div class="card">
+    <p>開始前可以選三件事：</p>
+    <ul>
+      <li><b>題源</b>——只考單字、只考整句，或兩者混合</li>
+      <li><b>方向</b>——中翻外（看中文選外語）、外翻中，或每題隨機</li>
+      <li><b>題數</b>——10 題、20 題，或整個題庫</li>
+    </ul>
+    <p>選了答案就<b>立刻鎖定</b>，答錯時會同時標出「你選的」和「正解」。不提供回上一題，
+      因為能改答案的正確率沒有意義。可以按鍵盤 <code>1</code>–<code>4</code> 選項、<code>Enter</code> 下一題。</p>
+    <p>每局結束會列出所有答錯的題目：題面、你選的、正解，句型題還會附上那句的語序說明。
+      成績會累加到該語言的統計裡，顯示在語言首頁。</p>
+    <p class="note-line"><b>注意：</b>作答到一半離開或重新整理，那一局<b>完全不計入</b>統計。這是刻意的——
+      不然可以一直重開到手氣好為止。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>❓ 聽不到聲音怎麼辦</h2>
+  </div>
+  <div class="card">
+    <p>發音功能用的是<b>瀏覽器內建的語音合成</b>，網站本身沒有夾帶任何音檔，所以不用等下載、離線也能用。
+      代價是它得靠你的作業系統有沒有裝該語言的語音。</p>
+    <p>如果按了喇叭卻沒聲音，最可能的原因是<b>這台裝置沒有安裝該語言的語音包</b>——
+      日文在 Windows 上特別常見，需要到「設定 → 時間與語言 → 語言」加入日文並安裝語音。
+      這種情況下頁面上方會出現一則提示，按鈕仍然保留可點。</p>
+    <p>如果整個瀏覽器都不支援語音合成，所有喇叭按鈕會直接隱藏，其餘內容照常可讀。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>🔒 你的資料</h2>
+  </div>
+  <div class="card">
+    <p>沒有帳號、沒有後端、沒有任何對外連線。答對率統計只寫在<b>這台裝置的瀏覽器</b>裡，
+      換一台裝置就是全新的。語言首頁上有「清除統計」可以隨時歸零。</p>
+  </div>
+
+  <div class="actions" style="margin-top:28px">
+    <a class="btn" href="./en/index.html">開始學英文</a>
+    <a class="btn" href="./ja/index.html">開始學日文</a>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">想新增自己的單字或句型？改 <code>assets/js/data/</code> 底下的資料檔再 push 就好，README 有步驟。</p>
+</footer>
+
+<script type="module">
+  import { renderRootNav } from './assets/js/ui/nav.js';
+  renderRootNav('help');
+
+  /**
+   * 教學頁只有一個示範句，所以連接線就地畫，不引入文法頁的整套邏輯。
+   * 畫法與 grammar-view 相同：把兩排 data-k 相同的區塊用貝茲曲線連起來。
+   */
+  function drawSampleLines() {
+    const gap = document.querySelector('.gap-mid');
+    if (!gap) return;
+    const svg = gap.querySelector('svg');
+    const top = document.querySelector('[data-row="zh"]');
+    const bottom = document.querySelector('[data-row="target"]');
+    const box = gap.getBoundingClientRect();
+    svg.innerHTML = '';
+
+    for (const a of top.children) {
+      const b = bottom.querySelector(`[data-k="${a.dataset.k}"]`);
+      if (!b) continue;
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      const x1 = ra.left + ra.width / 2 - box.left;
+      const x2 = rb.left + rb.width / 2 - box.left;
+      const h = box.height;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${x1},0 C${x1},${h * 0.5} ${x2},${h * 0.5} ${x2},${h}`);
+      path.setAttribute('stroke', getComputedStyle(a).getPropertyValue('--blk').trim() || 'currentColor');
+      if (a.classList.contains('moved')) path.setAttribute('stroke-dasharray', '4 3');
+      svg.appendChild(path);
+    }
+  }
+
+  let timer;
+  window.addEventListener('resize', () => {
+    clearTimeout(timer);
+    timer = setTimeout(drawSampleLines, 120);
+  });
+  window.addEventListener('load', drawSampleLines);
+  drawSampleLines();
+</script>
+</body>
+</html>

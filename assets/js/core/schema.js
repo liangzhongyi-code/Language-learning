@@ -1,0 +1,351 @@
+/**
+ * 題庫資料驗證。
+ * 題庫是長期手動增補的靜態資料，寫錯一個欄位不會在瀏覽器上立刻爆炸，
+ * 而是變成一題怪題目或一個唸錯的字，所以驗證一律在測試階段跑完。
+ *
+ * 所有 validate* 都回傳 { ok, errors }，errors 每筆為 { id, field, message }，
+ * 且一律把該筆的所有錯誤蒐集完才回傳，不會遇到第一個錯誤就中止。
+ */
+
+import { CATEGORY_KEYS } from '../data/shared/categories.js';
+import { ROLE_KEYS } from '../data/shared/roles.js';
+import { patternById } from '../data/shared/patterns.js';
+
+/**
+ * 允許的詞性
+ */
+export const POS_KEYS = ['noun', 'verb', 'adjective', 'adverb', 'other'];
+
+/**
+ * 允許的難度
+ */
+export const LEVELS = [1, 2, 3];
+
+/**
+ * 允許的假名類型
+ */
+export const KANA_TYPES = ['seion', 'dakuon', 'handakuon', 'youon'];
+
+/**
+ * 需要讀音欄位的語言。英文的 reading / romaji 必須是 null
+ */
+const READING_REQUIRED = ['ja'];
+
+const isFilledString = (v) => typeof v === 'string' && v.trim() !== '';
+
+/**
+ * 錯誤蒐集器，把重複的 push 樣板收斂成一個小物件
+ */
+function collector(id) {
+  const errors = [];
+  return {
+    errors,
+    add(field, message) {
+      errors.push({ id, field, message });
+    },
+    result() {
+      return { ok: errors.length === 0, errors };
+    },
+  };
+}
+
+/**
+ * 共用的讀音欄位檢查。
+ * 日文必須有讀音、英文必須是 null。
+ * 單字有 reading 與 romaji 兩個欄位，句子只有整句 reading，
+ * 所以要檢查哪些欄位由呼叫端指定。
+ */
+function checkReading(c, entry, lang, fields = ['reading', 'romaji']) {
+  const required = READING_REQUIRED.includes(lang);
+  for (const field of fields) {
+    if (required) {
+      if (!isFilledString(entry[field])) c.add(field, `${lang} 的 ${field} 不可為空`);
+    } else if (entry[field] !== null) {
+      c.add(field, `${lang} 的 ${field} 必須是 null，實際為 ${JSON.stringify(entry[field])}`);
+    }
+  }
+}
+
+/**
+ * 驗證一筆單字
+ */
+export function validateWord(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!new RegExp(`^${lang}-w-\\d{3}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-w-NNN，實際為 ${JSON.stringify(entry.id)}`);
+  }
+  if (!isFilledString(entry.zh)) c.add('zh', 'zh 不可為空');
+  if (!isFilledString(entry.target)) c.add('target', 'target 不可為空');
+  checkReading(c, entry, lang);
+  if (!POS_KEYS.includes(entry.pos)) c.add('pos', `pos 不在允許值內：${JSON.stringify(entry.pos)}`);
+  if (!CATEGORY_KEYS.includes(entry.category)) {
+    c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
+  }
+  if (!LEVELS.includes(entry.level)) c.add('level', `level 必須是 1/2/3，實際為 ${JSON.stringify(entry.level)}`);
+
+  return c.result();
+}
+
+/**
+ * 去掉全部空白後比對，用於目標語言整句的串接檢查。
+ * 英文的 chunk 之間有空白、日文沒有，統一忽略空白就不必分語言處理。
+ */
+const stripSpaces = (s) => String(s).replace(/\s+/g, '');
+
+/**
+ * 驗證一筆句子。
+ * 最關鍵的是三條一致性規則：
+ *   1. 依陣列順序串接 target，忽略空白後等於整句 target
+ *   2. 依 zhIndex 排序串接 zh，等於整句 zh
+ *   3. zhIndex 為 0 起算、不跳號、不重複的連續整數
+ * 這三條讓手寫題庫幾乎不可能默默寫錯，是這個資料結構最大的價值。
+ */
+export function validateSentence(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!new RegExp(`^${lang}-s-\\d{3}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-s-NNN，實際為 ${JSON.stringify(entry.id)}`);
+  }
+  if (!isFilledString(entry.zh)) c.add('zh', 'zh 不可為空');
+  if (!isFilledString(entry.target)) c.add('target', 'target 不可為空');
+  if (!isFilledString(entry.note)) c.add('note', 'note 不可為空，要說明語序差異或文法重點');
+  checkReading(c, entry, lang, ['reading']);
+  if (!CATEGORY_KEYS.includes(entry.category)) {
+    c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
+  }
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 1/2/3，實際為 ${JSON.stringify(entry.level)}`);
+  }
+
+  const chunks = entry.chunks;
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    c.add('chunks', 'chunks 必須是非空陣列');
+    return c.result();
+  }
+
+  /* 逐塊的欄位檢查 */
+  for (const [i, ch] of chunks.entries()) {
+    if (!ROLE_KEYS.includes(ch?.role)) {
+      c.add('chunks.role', `第 ${i} 塊的 role 未定義：${JSON.stringify(ch?.role)}`);
+    }
+    if (!isFilledString(ch?.target)) {
+      c.add('chunks.target', `第 ${i} 塊的 target 不可為空`);
+    }
+    if (typeof ch?.zh !== 'string') {
+      c.add('chunks.zh', `第 ${i} 塊的 zh 必須是字串（助詞用空字串）`);
+    }
+    if (!Number.isInteger(ch?.zhIndex)) {
+      c.add('chunks.zhIndex', `第 ${i} 塊的 zhIndex 必須是整數：${JSON.stringify(ch?.zhIndex)}`);
+    }
+  }
+
+  /* 句型比對：陣列順序即目標語言語序，必須與句型定義的 roles 一致 */
+  const pattern = patternById(entry.patternId);
+  if (!pattern) {
+    c.add('patternId', `找不到句型：${JSON.stringify(entry.patternId)}`);
+  } else if (pattern.lang !== lang) {
+    c.add('patternId', `句型 ${pattern.id} 屬於 ${pattern.lang}，與本檔的 ${lang} 不符`);
+  } else {
+    const actual = chunks.map((ch) => ch?.role).join(' + ');
+    const expected = pattern.roles.join(' + ');
+    if (actual !== expected) {
+      c.add('patternId', `chunks 的角色順序與句型 ${pattern.id} 不符：期望 [${expected}]，實際 [${actual}]`);
+    }
+  }
+
+  /* 規則 3：zhIndex 必須是 0 起算的連續序列 */
+  const indices = chunks.map((ch) => ch?.zhIndex);
+  if (indices.every(Number.isInteger)) {
+    const sorted = [...indices].sort((a, b) => a - b);
+    const expected = chunks.map((_, i) => i);
+    if (sorted.join(',') !== expected.join(',')) {
+      c.add(
+        'chunks.zhIndex',
+        `zhIndex 必須是 0 起算、不跳號、不重複的連續整數，期望 [${expected}]，實際排序後為 [${sorted}]`
+      );
+    }
+  }
+
+  /* 規則 1：依陣列順序串接 target */
+  const joinedTarget = chunks.map((ch) => ch?.target ?? '').join(' ');
+  if (stripSpaces(joinedTarget) !== stripSpaces(entry.target ?? '')) {
+    c.add(
+      'chunks.target',
+      `依陣列順序串接的 target 組不回整句：串接為「${joinedTarget.trim()}」，整句為「${entry.target}」`
+    );
+  }
+
+  /* 規則 2：依 zhIndex 排序串接 zh。助詞的 zh 是空字串，不貢獻任何字 */
+  const joinedZh = [...chunks]
+    .sort((a, b) => (a?.zhIndex ?? 0) - (b?.zhIndex ?? 0))
+    .map((ch) => ch?.zh ?? '')
+    .join('');
+  if (joinedZh !== (entry.zh ?? '')) {
+    c.add('chunks.zh', `依 zhIndex 排序串接的 zh 組不回整句：串接為「${joinedZh}」，整句為「${entry.zh}」`);
+  }
+
+  return c.result();
+}
+
+/**
+ * 拗音的小字與段位對照。
+ * きゃ 必須配 column 'ya'，寫成 'yu' 是資料錯誤，會讓假名表排到錯誤的欄位。
+ */
+const SMALL_KANA_COLUMN = { ゃ: 'ya', ゅ: 'yu', ょ: 'yo', ャ: 'ya', ュ: 'yu', ョ: 'yo' };
+
+const SEION_COLUMNS = ['a', 'i', 'u', 'e', 'o'];
+const YOUON_COLUMNS = ['ya', 'yu', 'yo'];
+
+/**
+ * 需要標註清音來源的假名類型
+ */
+const NEEDS_SEION_SOURCE = ['dakuon', 'handakuon'];
+
+/**
+ * 驗證一筆假名
+ */
+export function validateKana(entry) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!isFilledString(entry.romaji)) {
+    c.add('romaji', 'romaji 不可為空');
+  } else if (!/^[a-z]+$/.test(entry.romaji)) {
+    c.add('romaji', `romaji 只能是小寫英文字母：${JSON.stringify(entry.romaji)}`);
+  } else if (entry.id !== `ja-k-${entry.romaji}`) {
+    c.add('id', `id 必須是 ja-k-${entry.romaji}，實際為 ${JSON.stringify(entry.id)}`);
+  }
+
+  if (!KANA_TYPES.includes(entry.type)) {
+    c.add('type', `type 不在允許值內：${JSON.stringify(entry.type)}`);
+  }
+  if (!isFilledString(entry.row)) c.add('row', 'row 不可為空');
+  if (!isFilledString(entry.exampleWord)) c.add('exampleWord', 'exampleWord 不可為空');
+  if (!isFilledString(entry.exampleZh)) c.add('exampleZh', 'exampleZh 不可為空');
+
+  const isYouon = entry.type === 'youon';
+  const expectedLength = isYouon ? 2 : 1;
+  for (const field of ['hiragana', 'katakana']) {
+    const v = entry[field];
+    if (!isFilledString(v)) {
+      c.add(field, `${field} 不可為空`);
+      continue;
+    }
+    if ([...v].length !== expectedLength) {
+      c.add(field, `${entry.type} 的 ${field} 應為 ${expectedLength} 個字元，實際為「${v}」`);
+      continue;
+    }
+    if (isYouon) {
+      const small = [...v][1];
+      if (!SMALL_KANA_COLUMN[small]) {
+        c.add(field, `拗音的第二個字必須是小字（ゃ/ゅ/ょ），實際為「${small}」`);
+      } else if (SMALL_KANA_COLUMN[small] !== entry.column) {
+        c.add(field, `「${v}」的小字對應段位 ${SMALL_KANA_COLUMN[small]}，與 column ${JSON.stringify(entry.column)} 不符`);
+      }
+    }
+  }
+
+  const allowedColumns = isYouon ? YOUON_COLUMNS : SEION_COLUMNS;
+  if (!allowedColumns.includes(entry.column)) {
+    c.add('column', `${entry.type} 的 column 限 ${allowedColumns.join('/')}，實際為 ${JSON.stringify(entry.column)}`);
+  }
+
+  if (NEEDS_SEION_SOURCE.includes(entry.type)) {
+    if (!isFilledString(entry.seionSource)) {
+      c.add('seionSource', `${entry.type} 必須標註清音來源，例如 が 的來源是 か`);
+    }
+  } else if (entry.seionSource !== null) {
+    c.add('seionSource', `${entry.type} 的 seionSource 必須是 null，實際為 ${JSON.stringify(entry.seionSource)}`);
+  }
+
+  return c.result();
+}
+
+/**
+ * 驗證一筆英文字母
+ */
+export function validateLetter(entry) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!/^[A-Z]$/.test(entry.upper || '')) {
+    c.add('upper', `upper 必須是單一大寫字母：${JSON.stringify(entry.upper)}`);
+  }
+  if (entry.lower !== String(entry.upper || '').toLowerCase()) {
+    c.add('lower', `lower 必須是 upper 的小寫，實際為 ${JSON.stringify(entry.lower)}`);
+  }
+  if (entry.id !== `en-a-${entry.lower}`) {
+    c.add('id', `id 必須是 en-a-${entry.lower}，實際為 ${JSON.stringify(entry.id)}`);
+  }
+  if (!isFilledString(entry.ipa)) c.add('ipa', 'ipa 不可為空');
+  if (!isFilledString(entry.exampleZh)) c.add('exampleZh', 'exampleZh 不可為空');
+
+  if (!isFilledString(entry.exampleWord)) {
+    c.add('exampleWord', 'exampleWord 不可為空');
+  } else if (!entry.exampleWord.toLowerCase().startsWith(String(entry.lower || '').toLowerCase())) {
+    c.add('exampleWord', `例字「${entry.exampleWord}」必須以字母 ${entry.upper} 開頭`);
+  }
+
+  return c.result();
+}
+
+/**
+ * 找出清單中重複的 id。
+ * 同一個 id 出現多次也只回報一次。
+ */
+export function findDuplicateIds(list) {
+  const seen = new Set();
+  const dups = new Set();
+  for (const item of list || []) {
+    if (seen.has(item?.id)) dups.add(item.id);
+    else seen.add(item?.id);
+  }
+  return [...dups];
+}
+
+/**
+ * 每個資料區塊對應的驗證函式。
+ * words 與 sentences 需要語言參數，kana 與 letters 不需要。
+ */
+const SECTION_VALIDATORS = {
+  words: (entry, lang) => validateWord(entry, lang),
+  sentences: (entry, lang) => validateSentence(entry, lang),
+  kana: (entry) => validateKana(entry),
+  letters: (entry) => validateLetter(entry),
+};
+
+/**
+ * 一次驗證某語言的全部題庫。
+ * 一律把所有錯誤蒐集完才回傳，這樣修資料時可以一次看到全貌，
+ * 不必反覆跑測試一個一個修。
+ */
+export function validateDataset(dataset, lang) {
+  const errors = [];
+  for (const [section, validate] of Object.entries(SECTION_VALIDATORS)) {
+    const list = dataset?.[section];
+    if (!Array.isArray(list)) continue;
+
+    for (const entry of list) {
+      errors.push(...validate(entry, lang).errors);
+    }
+    for (const dup of findDuplicateIds(list)) {
+      errors.push({ id: dup, field: 'id', message: `${section} 中有重複的 id：${dup}` });
+    }
+  }
+  return errors;
+}

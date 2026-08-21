@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>單字 · 英文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="en" data-page="vocab">
+<main class="wrap">
+  <div class="page-head">
+    <h1>英文單字</h1>
+    <p>搜尋、依主題篩選，點喇叭聽發音。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+<footer class="wrap"><p class="foot">純前端靜態網站，資料與進度都留在這台裝置上。</p></footer>
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initVocabPage } from '../assets/js/ui/vocab-view.js';
+  import { words } from '../assets/js/data/en/words.js';
+
+  renderNav();
+  initVocabPage({
+    lang: 'en',
+    words,
+    mount: document.getElementById('app'),
+    noticeHost: document.getElementById('notice'),
+  });
+</script>
+</body>
+</html>

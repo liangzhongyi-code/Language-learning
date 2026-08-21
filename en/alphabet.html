@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字母發音 · 英文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="en" data-page="pron">
+<main class="wrap">
+  <div class="page-head">
+    <h1>英文字母與發音</h1>
+    <p>點卡片聽字母怎麼唸，點例字旁的喇叭聽單字。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+<footer class="wrap"><p class="foot">純前端靜態網站 · 發音使用瀏覽器內建語音，不夾帶任何音檔</p></footer>
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initAlphabetPage } from '../assets/js/ui/kana-view.js';
+  import { letters } from '../assets/js/data/en/alphabet.js';
+  renderNav();
+  initAlphabetPage({ letters, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
+</script>
+</body>
+</html>

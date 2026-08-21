@@ -1,0 +1,17 @@
+{
+  "name": "lang-learn",
+  "version": "0.1.0",
+  "description": "純前端語言學習網站：英文與日文的發音、單字、文法與雙向選題遊戲",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "serve": "npx -y serve ."
+  },
+  "keywords": [
+    "language-learning",
+    "static-site",
+    "github-pages"
+  ],
+  "license": "MIT"
+}

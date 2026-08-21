@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英文測驗 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="en" data-page="quiz">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>英文測驗</h1>
+    <p>四選一。答完一題會立刻告訴你對不對，每局結束檢討錯在哪。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">作答到一半重新整理會回到設定畫面，未完成的局不計入統計。</p>
+</footer>
+
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initQuizPage } from '../assets/js/ui/quiz-view.js';
+  import { applySpeechFallback } from '../assets/js/ui/speech.js';
+  import { words } from '../assets/js/data/en/words.js';
+  import { sentences } from '../assets/js/data/en/sentences.js';
+
+  renderNav();
+  const noticeHost = document.getElementById('notice');
+  applySpeechFallback('en', noticeHost);
+  initQuizPage({
+    lang: 'en',
+    words,
+    sentences,
+    mount: document.getElementById('app'),
+    noticeHost,
+  });
+</script>
+</body>
+</html>

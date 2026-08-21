@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="en" data-page="home">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>英文</h1>
+    <p>從字母發音開始，看單字、拆句型，再用選題練習驗收。</p>
+  </div>
+
+  <div id="stats"></div>
+
+  <div class="grid-cards">
+    <a class="entry" href="./alphabet.html">
+      <div class="icon">🔤</div>
+      <h3>字母發音</h3>
+      <p>26 個字母的 IPA 音標與例字，點卡片就唸。</p>
+    </a>
+    <a class="entry" href="./vocabulary.html">
+      <div class="icon">📇</div>
+      <h3>單字</h3>
+      <p>83 個日常單字，可依主題篩選與搜尋。</p>
+    </a>
+    <a class="entry" href="./grammar.html">
+      <div class="icon">🧩</div>
+      <h3>文法句型</h3>
+      <p>27 組例句的色塊拆解，看中英語序差在哪。</p>
+    </a>
+    <a class="entry" href="./quiz.html">
+      <div class="icon">🎯</div>
+      <h3>選題測驗</h3>
+      <p>中翻英 / 英翻中，每局結束檢討錯題。</p>
+    </a>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">統計只存在這台裝置的瀏覽器裡，換裝置或清除瀏覽資料就會歸零。</p>
+</footer>
+
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { renderLangStats } from '../assets/js/ui/stats-view.js';
+  renderNav();
+  renderLangStats(document.getElementById('stats'), 'en');
+</script>
+</body>
+</html>

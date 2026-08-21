@@ -1,0 +1,37 @@
+{
+  "title": "語言學習網站",
+  "mode": "完整模式",
+  "phases": [
+    { "no": 1, "name": "需求捕捉", "detail": "提案 + spec deltas", "status": "done" },
+    { "no": 2, "name": "設計規劃", "detail": "設計文件 + 任務清單", "status": "done" },
+    { "no": 3, "name": "TDD 實作", "detail": "紅燈 → 綠燈 → 重構", "status": "done" },
+    { "no": 4, "name": "子代理執行", "detail": "8 隻平行實作", "status": "done" },
+    { "no": 5, "name": "程式碼審查", "detail": "branch-review + 報告", "status": "current" },
+    { "no": 6, "name": "完成歸檔", "detail": "歸檔規格 + 交付指令", "status": "todo" }
+  ],
+  "gates": [
+    { "no": 1, "name": "設計文件（design.md）核准", "note": "已核准 2026-08-21", "status": "passed" },
+    { "no": 2, "name": "任務清單（tasks.md）核准", "note": "已核准 2026-08-21", "status": "passed" }
+  ],
+  "docStatus": {
+    "proposal.md": "approved",
+    "design.md": "approved",
+    "tasks.md": "approved",
+    "review-report.md": "na"
+  },
+  "docNote": {
+    "proposal.md": "為什麼做、做什麼、明確不做什麼",
+    "design.md": "架構、8 個技術決策、資料模型、測試策略",
+    "tasks.md": "把每個 Scenario 拆成可執行的 TDD 任務",
+    "review-report.md": "Phase 5 才產出"
+  },
+  "specNote": {
+    "site-shell.md": "首頁、使用教學、導覽、深色主題、Pages 部署",
+    "content-data.md": "單字／句型／假名三種 schema 與驗證規則",
+    "pronunciation.md": "英文字母音標、日文清濁半濁拗四區塊",
+    "vocabulary.md": "單字瀏覽、搜尋、分類篩選",
+    "grammar.md": "雙排色塊語序拆解與差異標記",
+    "quiz-game.md": "雙向選題、干擾選項策略、作答判定",
+    "progress.md": "錯題檢討與 localStorage 統計"
+  }
+}

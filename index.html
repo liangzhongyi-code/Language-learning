@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>語言學習</title>
+<meta name="description" content="英文與日文的發音、單字、文法與雙向選題練習。純前端、免註冊、可離線。">
+<link rel="stylesheet" href="./assets/css/theme.css">
+</head>
+<body data-page="root">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>語言學習</h1>
+    <p>字母發音、單字、句型拆解，以及中翻外 / 外翻中的選題練習。<br>
+       免註冊、不連線、題庫全部寫在前端。</p>
+  </div>
+
+  <div class="grid-cards">
+    <a class="entry" href="./en/index.html">
+      <div class="icon">🇬🇧</div>
+      <h3>英文</h3>
+      <p>26 字母與音標、83 個單字、27 組句型</p>
+    </a>
+    <a class="entry" href="./ja/index.html">
+      <div class="icon">🇯🇵</div>
+      <h3>日文</h3>
+      <p>104 個假名（清濁半濁拗）、84 個單字、30 組句型</p>
+    </a>
+  </div>
+
+  <div class="sec-head">
+    <h2>這個網站能做什麼</h2>
+  </div>
+
+  <div class="grid-cards">
+    <div class="entry" style="cursor:default">
+      <div class="icon">🔊</div>
+      <h3>基礎發音</h3>
+      <p>點卡片就唸。日文假名分清音、濁音、半濁音、拗音四區，濁音會標出清音來源。</p>
+    </div>
+    <div class="entry" style="cursor:default">
+      <div class="icon">🧩</div>
+      <h3>句型拆解</h3>
+      <p>把「我今天去打羽毛球 = 主詞 + 時間 + 動詞 + 受詞」畫成上下兩排色塊，語序差在哪一眼看出來。</p>
+    </div>
+    <div class="entry" style="cursor:default">
+      <div class="icon">🎯</div>
+      <h3>選題練習</h3>
+      <p>雙向出題，每局結束顯示錯在哪、正解是什麼，並累計答對率。</p>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top:28px">
+    <a class="btn ghost" href="./help.html">第一次來？看使用教學 →</a>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">
+    純靜態網站，沒有後端也沒有帳號。學習統計只存在你自己的瀏覽器裡，
+    不會傳送到任何地方。
+  </p>
+</footer>
+
+<script type="module">
+  import { renderRootNav } from './assets/js/ui/nav.js';
+  renderRootNav('home');
+</script>
+</body>
+</html>

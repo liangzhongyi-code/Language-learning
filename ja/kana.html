@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>五十音 · 日文 · 語言學習</title>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="ja" data-page="pron">
+<main class="wrap">
+  <div class="page-head">
+    <h1>日文五十音</h1>
+    <p>清音、濁音、半濁音與拗音四張表，點格子聽發音；可切換平假名／片假名顯示。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+<footer class="wrap"><p class="foot">純前端靜態網站 · 發音使用瀏覽器內建語音，不夾帶任何音檔</p></footer>
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initKanaPage } from '../assets/js/ui/kana-view.js';
+  import { kana } from '../assets/js/data/ja/kana.js';
+  renderNav();
+  initKanaPage({ kana, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
+</script>
+</body>
+</html>
