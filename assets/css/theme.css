@@ -246,7 +246,18 @@ main { padding-bottom: var(--size-10); }
   text-decoration: none;
   transform: translateY(-2px);
 }
-.entry .icon { font-size: 22px; line-height: 1; }
+/**
+ * 圖示明確指定 emoji 字型。
+ *
+ * 不指定的話 Windows 會在 Segoe UI Symbol 與 Segoe UI Emoji 之間各自 fallback，
+ * 同一排卡片會出現「🧩 是彩色、🔊 是單色輪廓」的混搭，看起來很雜。
+ * 國旗類（🇬🇧🇯🇵）連 Segoe UI Emoji 都沒有字型，一律不要用。
+ */
+.entry .icon {
+  font-size: 22px;
+  line-height: 1;
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', var(--font-body);
+}
 .entry h3 { font-size: 17px; margin: var(--size-2) 0 var(--size-1); }
 .entry p { color: var(--mute); font-size: 13px; margin: 0; line-height: 1.6; }
 

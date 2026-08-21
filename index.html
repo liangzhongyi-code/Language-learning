@@ -17,13 +17,18 @@
   </div>
 
   <div class="grid-cards">
+    <!--
+      不要用 🇬🇧 🇯🇵 這類國旗 emoji：Windows 沒有 regional indicator 的字型，
+      會直接渲染成 "GB" "JP" 兩個字母，看起來像壞掉。
+      改用該語言的文字本身，任何平台都顯示得出來，語意也更貼切。
+    -->
     <a class="entry" href="./en/index.html">
-      <div class="icon">🇬🇧</div>
+      <div class="icon">Aa</div>
       <h3>英文</h3>
       <p>26 個字母與音標，加上日常單字與句型</p>
     </a>
     <a class="entry" href="./ja/index.html">
-      <div class="icon">🇯🇵</div>
+      <div class="icon">あ</div>
       <h3>日文</h3>
       <p>104 個假名（清音、濁音、半濁音、拗音），加上日常單字與句型</p>
     </a>
