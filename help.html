@@ -103,10 +103,40 @@
   </div>
   <div class="card">
     <p>發音功能用的是<b>瀏覽器內建的語音合成</b>，網站本身沒有夾帶任何音檔，所以不用等下載、離線也能用。
-      代價是它得靠你的作業系統有沒有裝該語言的語音。</p>
-    <p>如果按了喇叭卻沒聲音，最可能的原因是<b>這台裝置沒有安裝該語言的語音包</b>——
-      日文在 Windows 上特別常見，需要到「設定 → 時間與語言 → 語言」加入日文並安裝語音。
-      這種情況下頁面上方會出現一則提示，按鈕仍然保留可點。</p>
+      代價是聲音由<b>你的作業系統或瀏覽器</b>提供——網頁沒有任何辦法自己安裝語音，
+      這也是為什麼英文通常有聲音（Windows 裝英文時就一併裝了英文語音）而日文常常沒有。</p>
+
+    <h3>這台裝置現在有什麼語音</h3>
+    <div id="voice-check"></div>
+
+    <h3>怎麼裝日文語音</h3>
+    <details class="kana-section">
+      <summary>Windows 11 / 10<span class="n">最常漏掉一步</span></summary>
+      <ul>
+        <li>設定 → <b>時間與語言</b> → <b>語言與地區</b></li>
+        <li>按<b>新增語言</b>，選「日本語」</li>
+        <li>裝完之後點進該語言的<b>語言選項</b>，找到「<b>語音</b>」項目按下載</li>
+      </ul>
+      <p class="note-line">只裝語言包不夠，一定要確認裡面的<b>語音（Speech）</b>元件也裝了——
+        這是最常漏掉的一步，也是「明明裝了日文卻還是沒聲音」的原因。</p>
+    </details>
+    <details class="kana-section">
+      <summary>Android</summary>
+      <ul>
+        <li>設定 → 系統 → 語言與輸入 → <b>文字轉語音輸出</b></li>
+        <li>Google 文字轉語音引擎 → <b>安裝語音資料</b> → 日本語</li>
+      </ul>
+    </details>
+    <details class="kana-section">
+      <summary>iPhone / iPad / Mac</summary>
+      <ul>
+        <li>設定 → <b>輔助使用</b> → <b>朗讀內容</b> → <b>語音</b></li>
+        <li>加入「日本語」並下載</li>
+      </ul>
+    </details>
+
+    <p class="note-line">裝完重開瀏覽器就好。網站會在語音清單更新時重新偵測，
+      頁面上那則「可能沒有安裝語音」的提示會自己消失，不用做別的事。</p>
     <p>如果整個瀏覽器都不支援語音合成，所有喇叭按鈕會直接隱藏，其餘內容照常可讀。</p>
   </div>
 
@@ -130,7 +160,10 @@
 
 <script type="module">
   import { renderRootNav } from './assets/js/ui/nav.js';
+  import { renderVoiceCheck } from './assets/js/ui/voice-check.js';
+
   renderRootNav('help');
+  renderVoiceCheck(document.getElementById('voice-check'));
 
   /**
    * 教學頁只有一個示範句，所以連接線就地畫，不引入文法頁的整套邏輯。

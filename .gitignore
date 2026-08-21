@@ -6,3 +6,4 @@ Thumbs.db
 # QA 的截圖會累積而且很大，不進版控；報告本身（.md / .json）留著
 .gstack/qa-reports/screenshots/
 .gstack/browse-audit.jsonl
+.gstack/

@@ -97,6 +97,37 @@ export function hasVoiceFor(lang) {
 }
 
 /**
+ * 目前可用的語音清單。
+ *
+ * 回傳的是複本而不是內部陣列，呼叫端改不到我們的狀態。
+ * localService 為 true 代表語音裝在這台裝置上（離線可用），
+ * false 代表由瀏覽器廠商的雲端提供（需要連網）。
+ */
+export function listVoices() {
+  return voices.map((v) => ({
+    name: v.name,
+    lang: v.lang,
+    localService: v.localService,
+    isDefault: v.default,
+  }));
+}
+
+/**
+ * 訂閱語音清單的變化，回傳取消訂閱的函式。
+ *
+ * 會立刻先呼叫一次 callback，呼叫端不必自己處理「清單已經載入好了」
+ * 與「還在等 voiceschanged」這兩種情況。
+ */
+export function onVoicesChanged(callback) {
+  callback(listVoices());
+  if (!isSupported()) return () => {};
+
+  const handler = () => callback(listVoices());
+  window.speechSynthesis.addEventListener('voiceschanged', handler);
+  return () => window.speechSynthesis.removeEventListener('voiceschanged', handler);
+}
+
+/**
  * 停止目前的朗讀
  */
 export function cancel() {
