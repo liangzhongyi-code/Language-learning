@@ -257,6 +257,16 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     if (q.answeredIndex !== null) return;
     answer(session, session.cursor, optionIndex);
     renderQuestion();
+
+    /**
+     * 作答後把「下一題」帶進視野。
+     *
+     * 實測 720px 高的筆電視窗：四個選項加上回饋文字之後，
+     * 按鈕底部落在 751px——每一題都要手動捲動才能繼續，一局就是十次。
+     * 句子題的選項更長，落差更大。
+     * block:'nearest' 只在真的看不到時才捲，大螢幕上完全不動。
+     */
+    mount.querySelector('[data-next]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   function next() {
