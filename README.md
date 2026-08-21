@@ -21,6 +21,12 @@ npx -y serve .
 然後開 `http://localhost:3000`（或它印出來的網址）。
 VS Code 的 Live Server 擴充套件也可以。
 
+> 專案根目錄的 `serve.json` 關掉了 `serve` 的 clean-URL 功能，**不要刪它**。
+> 開著的話 `serve` 會把 `/en/index.html` 轉址成 `/en`（沒有結尾斜線），
+> 頁面裡的 `./alphabet.html` 就會解析成 `/alphabet.html` 而 404。
+> GitHub Pages 沒有這個行為（它直接服務 `.html`，裸目錄會補斜線），
+> 所以這純粹是為了讓本機開發與線上一致。
+
 ---
 
 ## 部署到 GitHub Pages
