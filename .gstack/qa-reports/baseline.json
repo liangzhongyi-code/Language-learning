@@ -1,0 +1,14 @@
+{
+  "date": "2026-08-21",
+  "url": "http://localhost:9240",
+  "healthScore": 99,
+  "baselineScore": 95,
+  "issues": [
+    { "id": "ISSUE-001", "title": "測驗頁下一題落在視窗外", "severity": "medium", "category": "ux", "status": "fixed" },
+    { "id": "ISSUE-002", "title": "國旗 emoji 在 Windows 渲染成 GB/JP", "severity": "medium", "category": "visual", "status": "fixed" },
+    { "id": "ISSUE-003", "title": "教學頁連接線開關位置描述錯誤", "severity": "low", "category": "content", "status": "fixed" },
+    { "id": "ISSUE-004", "title": "本機 serve clean-URL 造成相對連結 404", "severity": "medium", "category": "functional", "status": "fixed" },
+    { "id": "ISSUE-005", "title": "假名卡例字朗讀鍵無法鍵盤操作", "severity": "medium", "category": "accessibility", "status": "deferred" }
+  ],
+  "categoryScores": { "console": 100, "links": 100, "visual": 100, "functional": 100, "ux": 100, "performance": 100, "content": 100, "accessibility": 92 }
+}

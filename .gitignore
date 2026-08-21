@@ -1,6 +1,7 @@
-﻿node_modules/
+node_modules/
 .DS_Store
 Thumbs.db
 *.log
-.gstack/
-.gstack/
+
+# QA 的截圖會累積而且很大，不進版控；報告本身（.md / .json）留著
+.gstack/qa-reports/screenshots/
