@@ -27,9 +27,10 @@ import { words as ngsl07 } from './words/ngsl-07.js';
 import { words as ngsl08 } from './words/ngsl-08.js';
 import { words as ngsl09 } from './words/ngsl-09.js';
 import { words as ngsl10 } from './words/ngsl-10.js';
+import { words as ngsl11 } from './words/ngsl-11.js';
 
 export const words = [
   ...core,
   ...tsl01, ...tsl02, ...tsl03, ...tsl04, ...tsl05, ...tsl06,
-  ...ngsl01, ...ngsl02, ...ngsl03, ...ngsl04, ...ngsl05, ...ngsl06, ...ngsl07, ...ngsl08, ...ngsl09, ...ngsl10,
+  ...ngsl01, ...ngsl02, ...ngsl03, ...ngsl04, ...ngsl05, ...ngsl06, ...ngsl07, ...ngsl08, ...ngsl09, ...ngsl10, ...ngsl11,
 ];
