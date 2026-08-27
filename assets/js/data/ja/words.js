@@ -12,5 +12,6 @@
 
 import { words as core } from './words/core.js';
 import { words as n501 } from './words/n5-01.js';
+import { words as n401 } from './words/n4-01.js';
 
-export const words = [...core, ...n501];
+export const words = [...core, ...n501, ...n401];
