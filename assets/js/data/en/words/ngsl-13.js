@@ -254,9 +254,9 @@ const rows = [
 const LEVEL = 4;
 
 /**
- * 這一批的起始流水號，接在 ngsl-12.js 的 en-w-3637 之後
+ * 這一批的起始流水號，接在 ngsl-12.js 的 en-w-3638 之後
  */
-const START = 3638;
+const START = 3639;
 
 export const words = rows.map(([zh, target, pos, category], i) => ({
   id: `en-w-${String(START + i).padStart(3, '0')}`,

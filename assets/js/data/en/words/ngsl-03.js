@@ -70,6 +70,7 @@ const TIER_1 = [
   ['條件', 'condition', 'noun', 'law'],
   ['攜帶', 'carry', 'verb', 'movement'],
   ['挑選', 'choose', 'verb', 'abstract'],
+  ['決策', 'decision', 'noun', 'abstract'],
   ['桌子', 'table', 'noun', 'house'],
   ['確切的', 'certain', 'adjective', 'quality'],
   ['向前', 'forward', 'adverb', 'movement'],
