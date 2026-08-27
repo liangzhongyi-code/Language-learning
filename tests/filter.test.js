@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   listCategories,
   listLevels,
+  groupState,
+  selectionSummary,
   filterWords,
   listPatterns,
   filterSentences,
@@ -166,4 +168,84 @@ test('filterWords：等級、分類、關鍵字三個條件同時生效', () => 
   assert.equal(filterWords(WORDS, { level: 1, category: 'weather' }).length, 2);
   assert.equal(filterWords(WORDS, { level: 1, category: 'weather', query: '雪' }).length, 1);
   assert.equal(filterWords(WORDS, { level: 2, category: 'weather' }).length, 0);
+});
+
+/* ── 多選篩選 ─────────────────────────────────────────────── */
+
+test('filterWords：分類可傳陣列，取聯集', () => {
+  const r = filterWords(WORDS, { category: ['weather', 'food'] });
+  assert.deepEqual(r.map((w) => w.id), ['ja-w-001', 'ja-w-002', 'ja-w-003']);
+});
+
+test('filterWords：等級可傳陣列，數字與字串混用都要篩得到', () => {
+  assert.equal(filterWords(WORDS, { level: [1, 2] }).length, 4);
+  assert.equal(filterWords(WORDS, { level: ['1', '2'] }).length, 4);
+  assert.equal(filterWords(WORDS, { level: [2] }).length, 1);
+});
+
+/**
+ * 這是多選介面最容易寫錯的一條：全部取消勾選時，
+ * 使用者期待的是「沒有符合的單字」，不是「顯示全部」。
+ * 空陣列若被當成「不篩選」，取消全選會變成什麼都沒篩，完全反直覺。
+ */
+test('filterWords：空陣列代表一筆都不留，不是不篩選', () => {
+  assert.deepEqual(filterWords(WORDS, { category: [] }), []);
+  assert.deepEqual(filterWords(WORDS, { level: [] }), []);
+});
+
+test('filterWords：全選等同於不篩選', () => {
+  const allCats = [...new Set(WORDS.map((w) => w.category))];
+  assert.equal(filterWords(WORDS, { category: allCats }).length, WORDS.length);
+  assert.equal(filterWords(WORDS, { category: 'all' }).length, WORDS.length);
+});
+
+test('filterWords：分類與等級都是陣列時同時生效', () => {
+  const r = filterWords(WORDS, { category: ['weather', 'sport'], level: [1] });
+  assert.deepEqual(r.map((w) => w.id), ['ja-w-001', 'ja-w-002']);
+});
+
+/* ── 群組核取方塊的三態 ───────────────────────────────────── */
+
+test('groupState：全勾是 all、全不勾是 none、勾一部分是 partial', () => {
+  const keys = ['food', 'drink', 'animal'];
+  assert.equal(groupState(keys, new Set(keys)), 'all');
+  assert.equal(groupState(keys, new Set()), 'none');
+  assert.equal(groupState(keys, new Set(['food'])), 'partial');
+  assert.equal(groupState(keys, new Set(['food', 'drink'])), 'partial');
+});
+
+test('groupState：只勾到一個就不能算全選，即使清單只有一項也要分清楚', () => {
+  assert.equal(groupState(['food'], new Set(['food'])), 'all');
+  assert.equal(groupState(['food'], new Set(['drink'])), 'none');
+});
+
+/**
+ * 小分類清單是空的時候不能顯示成全選——
+ * 「零個項目全部勾起來了」在畫面上會變成一個沒有任何子項的打勾群組。
+ */
+test('groupState：空清單回傳 none 而不是 all', () => {
+  assert.equal(groupState([], new Set()), 'none');
+  assert.equal(groupState(null, new Set(['food'])), 'none');
+});
+
+test('groupState：selected 不是 Set 也不會爆', () => {
+  assert.equal(groupState(['food'], null), 'none');
+  assert.equal(groupState(['food'], undefined), 'none');
+});
+
+/* ── 篩選摘要文字 ─────────────────────────────────────────── */
+
+test('selectionSummary：全選顯示「全部」而不是列出四十個名字', () => {
+  assert.equal(selectionSummary(['食物', '飲料', '動物'], 3), '全部');
+});
+
+test('selectionSummary：選得少就列名字，選得多就報數量', () => {
+  assert.equal(selectionSummary(['食物'], 5), '食物');
+  assert.equal(selectionSummary(['食物', '飲料'], 5), '食物、飲料');
+  assert.equal(selectionSummary(['食物', '飲料', '動物'], 5), '已選 3 項');
+});
+
+test('selectionSummary：一個都沒選顯示「未選取」', () => {
+  assert.equal(selectionSummary([], 5), '未選取');
+  assert.equal(selectionSummary(null, 5), '未選取');
 });

@@ -327,21 +327,40 @@ main { padding-bottom: var(--size-10); }
 .field:focus { outline: none; border-color: var(--accent); }
 
 /**
- * 下拉式篩選。
+ * 收合式的多選篩選面板。
  *
  * 主題分類有四十個，攤成膠囊在手機上會吃掉三分之二個螢幕，
- * 得捲過一整屏才看得到第一個單字，所以收成一個下拉清單。
- * 用原生 select 而不是自己刻選單：手機會叫出系統選單，
- * 鍵盤操作與螢幕閱讀器也不必自己重做一遍。
+ * 得捲過一整屏才看得到第一個單字，所以預設收起來，只留一行標題。
+ * 用 details/summary 而不是自刻收合：開合狀態、鍵盤操作與
+ * 螢幕閱讀器的展開語意都由瀏覽器處理。
  */
-.select-wrap { position: relative; }
-.select {
-  appearance: none;
-  cursor: pointer;
-  padding-right: 40px;
+.filter-bar { display: flex; flex-direction: column; gap: var(--size-2); }
+
+.filter {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
 }
-/* 原生箭頭被 appearance:none 拿掉了，用邊框轉 45 度補一個回來 */
-.select-wrap::after {
+.filter > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2);
+  min-height: 44px;
+  padding: 10px 40px 10px 15px;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  font-size: 15px;
+  color: var(--text);
+}
+/* Safari 用 -webkit-details-marker 畫三角形，list-style:none 蓋不掉 */
+.filter > summary::-webkit-details-marker { display: none; }
+.filter > summary:hover { background: var(--surface-3); }
+.filter > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 收起時朝下、展開時朝上的箭頭 */
+.filter > summary::after {
   content: '';
   position: absolute;
   right: 16px;
@@ -351,13 +370,57 @@ main { padding-bottom: var(--size-10); }
   border-right: 2px solid var(--mute);
   border-bottom: 2px solid var(--mute);
   transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
+  transition: transform var(--t-fast);
 }
-/* 選單本身由系統繪製，深色背景要明講，否則部分瀏覽器會給白底 */
-.select option,
-.select optgroup {
-  background: var(--surface-2);
-  color: var(--text);
+.filter[open] > summary::after { transform: translateY(-30%) rotate(-135deg); }
+
+.filter-name { color: var(--dim); font-size: 13px; }
+.filter-state { color: var(--text); font-weight: 500; }
+
+.filter-body { padding: 4px 15px 14px; border-top: 1px solid var(--border); }
+.filter-actions { display: flex; gap: var(--size-3); padding: 10px 0 6px; }
+
+.link-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 4px 0;
+  min-height: 32px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
+
+.opt-group + .opt-group { margin-top: var(--size-2); }
+.opt-children { display: flex; flex-wrap: wrap; gap: 2px var(--size-3); }
+/* 群組底下的小項目縮排，一眼看得出從屬關係 */
+.opt-group > .opt-children { padding-left: var(--size-4); }
+
+.opt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  font-size: 14px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.opt-check:hover { color: var(--text); }
+.opt-check.is-group { font-size: 15px; color: var(--text); font-weight: 500; }
+.opt-check .n { color: var(--mute); font-size: 11.5px; }
+
+/**
+ * 維持原生外框，只換顏色。
+ * 自己刻核取方塊就得自己畫「部分選取」的橫槓，而 indeterminate
+ * 正是這個介面的重點狀態——交給瀏覽器畫最不會出錯。
+ */
+.opt-check input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
 }
 
 .toggle {
@@ -758,6 +821,16 @@ html.no-lines .gap-mid svg { display: none; }
 
   .speak { width: 44px; height: 44px; font-size: 17px; }
   .speak.tall { width: 56px; }
+
+  /**
+   * 篩選面板的每一列與勾選格都放大。
+   * 核取方塊本身是最小的目標，17px 在手指下幾乎點不到——
+   * 但整列都是 label，所以放大列高就等於放大可點範圍。
+   */
+  .opt-check { min-height: 44px; font-size: 15px; }
+  .opt-check input[type='checkbox'] { width: 20px; height: 20px; }
+  .opt-children { gap: 0 var(--size-4); }
+  .link-btn { min-height: 44px; font-size: 14px; }
   /* 小按鈕在桌機刻意做小（次要動作），但手指沒有那個精度 */
   .btn.sm { min-height: 44px; padding: 10px 18px; }
   .chip { min-height: 42px; padding: 8px 15px; font-size: 14px; }

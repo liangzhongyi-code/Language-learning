@@ -10,7 +10,13 @@
  * 這一層只負責把結果畫出來。
  */
 
-import { listCategories, listLevels, filterWords } from '../core/filter.js';
+import {
+  listCategories,
+  listLevels,
+  filterWords,
+  groupState,
+  selectionSummary,
+} from '../core/filter.js';
 import { CATEGORY_GROUPS } from '../data/shared/categories.js';
 import { levelLabel, SCALE_NAME, SCALE_NOTE } from '../data/shared/levels.js';
 import { speakTextOf } from '../core/speech-text.js';
@@ -77,57 +83,77 @@ function wordCard(word, lang) {
 }
 
 /**
- * 分類篩選膠囊。第一顆固定是「全部」，其餘由題庫推導，
- * 所以不會出現一個點下去是空清單的分類。
+ * 一列可勾選的項目。
+ * 用 label 包住 input，點文字也能勾，手機上才不必瞄準那個小方格。
  */
-function categorySelectHtml(categories, total) {
-  const byKey = new Map(categories.map((c) => [c.key, c]));
+function optionRow(item, attr) {
+  const title = item.desc ? ` title="${esc(item.desc)}"` : '';
+  const count = item.count === undefined ? '' : `<span class="n">${item.count}</span>`;
+  return `
+    <label class="opt-check"${title}>
+      <input type="checkbox" data-${esc(attr)}="${esc(item.key)}" checked>
+      <span class="opt-label">${esc(item.label)}</span>
+      ${count}
+    </label>`;
+}
 
-  /* 依 CATEGORY_GROUPS 的順序分組，沒歸類到任何一組的收在最後 */
-  const grouped = CATEGORY_GROUPS.map((g) => ({
+/**
+ * 收合式的多選篩選面板。
+ *
+ * 用 details/summary 而不是自刻收合：開合、鍵盤操作與螢幕閱讀器的
+ * 展開狀態都由瀏覽器處理，不必自己維護 aria-expanded。
+ *
+ * groups 每一項若有 label 就多一個群組勾選格，勾它等於底下小項目全選；
+ * 沒有 label 就攤平（等級只有五項，不需要分群）。
+ */
+function filterPanelHtml({ key, name, groups, note, attr }) {
+  const body = groups
+    .map((g) =>
+      g.label
+        ? `<div class="opt-group">
+             <label class="opt-check is-group">
+               <input type="checkbox" data-group="${esc(g.key)}" checked>
+               <span class="opt-label">${esc(g.label)}</span>
+             </label>
+             <div class="opt-children">${g.items.map((i) => optionRow(i, attr)).join('')}</div>
+           </div>`
+        : `<div class="opt-children is-flat">${g.items.map((i) => optionRow(i, attr)).join('')}</div>`
+    )
+    .join('');
+
+  return `
+    <details class="filter" data-filter="${esc(key)}">
+      <summary>
+        <span class="filter-name">${esc(name)}</span>
+        <span class="filter-state" data-state>全部</span>
+      </summary>
+      <div class="filter-body">
+        <div class="filter-actions">
+          <button type="button" class="link-btn" data-all>全選</button>
+          <button type="button" class="link-btn" data-none>全部清除</button>
+        </div>
+        ${body}
+        ${note ? `<p class="note-line">${esc(note)}</p>` : ''}
+      </div>
+    </details>`;
+}
+
+/**
+ * 把分類清單依 CATEGORY_GROUPS 排成群組。
+ * 沒歸到任何一組的收在最後的「其他」，不會憑空消失。
+ */
+function groupCategories(categories) {
+  const byKey = new Map(categories.map((c) => [c.key, c]));
+  const groups = CATEGORY_GROUPS.map((g) => ({
+    key: g.key,
     label: g.label,
     items: g.keys.map((k) => byKey.get(k)).filter(Boolean),
   })).filter((g) => g.items.length);
 
   const claimed = new Set(CATEGORY_GROUPS.flatMap((g) => g.keys));
   const rest = categories.filter((c) => !claimed.has(c.key));
-  if (rest.length) grouped.push({ label: '其他', items: rest });
-
-  const option = (c) =>
-    `<option value="${esc(c.key)}">${esc(c.label)}（${c.count}）</option>`;
-
-  const groups = grouped
-    .map((g) => `<optgroup label="${esc(g.label)}">${g.items.map(option).join('')}</optgroup>`)
-    .join('');
-
-  return `
-    <div class="select-wrap">
-      <select class="field select" data-category-select aria-label="依主題篩選">
-        <option value="all">全部主題（${total}）</option>
-        ${groups}
-      </select>
-    </div>`;
-}
-
-/**
- * 等級篩選膠囊。
- *
- * 只有題庫實際涵蓋兩個以上等級時才輸出——題庫是分批匯入的，
- * 剛開始只有一個等級時多一排只能點「全部」的按鈕是純粹的噪音。
- */
-function levelChipsHtml(levels, total, lang) {
-  if (levels.length < 2) return '';
-  const all = `<button type="button" class="chip" data-level="all" aria-pressed="true">全部<span class="n">${total}</span></button>`;
-  const rest = levels
-    .map(
-      (l) =>
-        `<button type="button" class="chip" data-level="${l.level}" aria-pressed="false" ` +
-        `title="${esc(l.desc)}">${esc(l.label)}<span class="n">${l.count}</span></button>`
-    )
-    .join('');
-  return `
-    <div class="chips" role="group" aria-label="依${esc(SCALE_NAME[lang] || '等級')}篩選">${all}${rest}</div>
-    <p class="note-line">${esc(SCALE_NOTE[lang] || '')}</p>`;
+  if (rest.length) groups.push({ key: 'other', label: '其他', items: rest });
+  return groups;
 }
 
 /**
@@ -151,10 +177,29 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
     levelLabel: levelLabel(lang, w.level),
   }));
 
+  /* 等級只有一種時整個面板都不必出現，題庫剛匯入時會有這種階段 */
+  const levelPanel =
+    levels.length < 2
+      ? ''
+      : filterPanelHtml({
+          key: 'level',
+          name: SCALE_NAME[lang] || '等級',
+          attr: 'level',
+          note: SCALE_NOTE[lang],
+          groups: [{ items: levels.map((l) => ({ key: String(l.level), label: l.label, count: l.count, desc: l.desc })) }],
+        });
+
   mount.innerHTML = `
     <input class="field" type="search" placeholder="搜尋中文、英文或拼音…" aria-label="搜尋單字">
-    ${levelChipsHtml(levels, all.length, lang)}
-    ${categorySelectHtml(categories, all.length)}
+    <div class="filter-bar">
+      ${levelPanel}
+      ${filterPanelHtml({
+        key: 'category',
+        name: '主題',
+        attr: 'category',
+        groups: groupCategories(categories),
+      })}
+    </div>
     <p class="count-line"></p>
     <div class="word-list"></div>
     <div class="actions">
@@ -162,12 +207,22 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
     </div>`;
 
   const input = mount.querySelector('[type="search"]');
-  const levelChips = mount.querySelector('[data-level]')?.closest('.chips') || null;
-  const categorySelect = mount.querySelector('[data-category-select]');
   const countLine = mount.querySelector('.count-line');
   const list = mount.querySelector('.word-list');
 
-  const state = { category: 'all', level: 'all', query: '' };
+  /**
+   * 兩個篩選都是多選，預設全選——使用者是「取消不要的」而不是「一個一個挑」。
+   *
+   * 推導不出任何值時要退回 'all' 而不是留空陣列。
+   * 空陣列在 filterWords 的語意是「一筆都不留」，
+   * 而等級清單來自 levels.js 的靜態表，語言代碼對不上就會是空的，
+   * 那時整頁單字會憑空消失，看起來像資料壞掉。
+   */
+  const state = {
+    category: categories.length ? categories.map((c) => c.key) : 'all',
+    level: levels.length ? levels.map((l) => String(l.level)) : 'all',
+    query: '',
+  };
 
   /* 目前這一組篩選結果要畫幾筆。換篩選條件時歸零回 PAGE_SIZE */
   let limit = PAGE_SIZE;
@@ -222,28 +277,67 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
   });
 
   /**
-   * 膠囊列共用的點擊處理：同一列內只有一顆是按下狀態。
-   * 分類與等級兩列的差別只有寫進 state 的哪個欄位，所以共用這一支。
+   * 把面板目前的勾選狀況同步到 state、群組三態與標題摘要。
+   *
+   * 群組格子的 indeterminate 只能用 JS 設，寫不進 HTML，
+   * 所以每次變動都要重算一遍，不能只在建立時設一次。
    */
-  function bindChips(row, field, attr) {
-    if (!row) return;
-    row.addEventListener('click', (event) => {
-      const chip = event.target.closest('.chip');
-      if (!chip || !row.contains(chip)) return;
-      state[field] = chip.dataset[attr];
-      row.querySelectorAll('.chip').forEach((c) => {
-        c.setAttribute('aria-pressed', String(c === chip));
-      });
-      reset();
-    });
+  function syncPanel(panel, attr) {
+    const boxes = [...panel.querySelectorAll(`[data-${attr}]`)];
+    const selected = new Set(boxes.filter((b) => b.checked).map((b) => b.dataset[attr]));
+    state[attr] = [...selected];
+
+    for (const groupBox of panel.querySelectorAll('[data-group]')) {
+      const childKeys = [...groupBox.closest('.opt-group').querySelectorAll(`[data-${attr}]`)]
+        .map((b) => b.dataset[attr]);
+      const st = groupState(childKeys, selected);
+      groupBox.checked = st === 'all';
+      groupBox.indeterminate = st === 'partial';
+    }
+
+    const labels = boxes
+      .filter((b) => b.checked)
+      .map((b) => b.closest('.opt-check').querySelector('.opt-label').textContent);
+    panel.querySelector('[data-state]').textContent = selectionSummary(labels, boxes.length);
   }
 
-  bindChips(levelChips, 'level', 'level');
+  /**
+   * 一個篩選面板的全部互動：勾選、群組連動、全選、全部清除。
+   */
+  function bindPanel(panel, attr) {
+    if (!panel) return;
 
-  categorySelect.addEventListener('change', () => {
-    state.category = categorySelect.value;
-    reset();
-  });
+    panel.addEventListener('change', (event) => {
+      const box = event.target;
+      if (box.type !== 'checkbox') return;
+
+      /* 群組格子帶動底下的小項目一起開關 */
+      if (box.dataset.group !== undefined) {
+        panel
+          .querySelectorAll(`[data-${attr}]`)
+          .forEach((child) => {
+            if (box.closest('.opt-group').contains(child)) child.checked = box.checked;
+          });
+      }
+      syncPanel(panel, attr);
+      reset();
+    });
+
+    panel.addEventListener('click', (event) => {
+      const selectAll = event.target.closest('[data-all]');
+      if (!selectAll && !event.target.closest('[data-none]')) return;
+      panel.querySelectorAll(`[data-${attr}]`).forEach((b) => {
+        b.checked = Boolean(selectAll);
+      });
+      syncPanel(panel, attr);
+      reset();
+    });
+
+    syncPanel(panel, attr);
+  }
+
+  bindPanel(mount.querySelector('[data-filter="level"]'), 'level');
+  bindPanel(mount.querySelector('[data-filter="category"]'), 'category');
 
   /* 展開更多：每按一次多畫一頁，事件委派掛在清單上，重繪後照樣有效 */
   list.addEventListener('click', (event) => {
