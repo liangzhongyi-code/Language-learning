@@ -12,5 +12,6 @@
 
 import { words as core } from './words/core.js';
 import { words as tsl01 } from './words/tsl-01.js';
+import { words as tsl02 } from './words/tsl-02.js';
 
-export const words = [...core, ...tsl01];
+export const words = [...core, ...tsl01, ...tsl02];
