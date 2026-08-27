@@ -17,5 +17,10 @@ import { words as tsl03 } from './words/tsl-03.js';
 import { words as tsl04 } from './words/tsl-04.js';
 import { words as tsl05 } from './words/tsl-05.js';
 import { words as tsl06 } from './words/tsl-06.js';
+import { words as ngsl01 } from './words/ngsl-01.js';
 
-export const words = [...core, ...tsl01, ...tsl02, ...tsl03, ...tsl04, ...tsl05, ...tsl06];
+export const words = [
+  ...core,
+  ...tsl01, ...tsl02, ...tsl03, ...tsl04, ...tsl05, ...tsl06,
+  ...ngsl01,
+];

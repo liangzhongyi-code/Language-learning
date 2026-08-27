@@ -43,7 +43,20 @@ export const CATEGORIES = {
   law: '法律合約',
   media: '媒體資訊',
   abstract: '抽象概念',
-  grammar: '功能詞',
+
+  /**
+   * 語法功能詞。
+   *
+   * NGSL 最高頻的兩百個字有一半是 of／to／would／because 這類功能詞，
+   * 塞進「食物」「辦公室」那種主題分類毫無意義，干擾選項也會爛掉。
+   * 而且它們必須彼此分開：介系詞的干擾項要是別的介系詞，
+   * 「在…上面」配 in／at／over 才考得出東西，配「我」「而且」等於送分。
+   */
+  preposition: '介系詞',
+  conjunction: '連接詞',
+  pronoun: '代名詞',
+  modal: '助動詞',
+  grammar: '其他功能詞',
 
   /* ── 商務職場（多益測驗內容領域）── */
   business: '一般商務',
@@ -74,7 +87,12 @@ export const CATEGORY_GROUPS = [
     key: 'general',
     label: '通用',
     keys: ['emotion', 'thought', 'communication', 'movement', 'quantity', 'quality',
-      'education', 'health', 'society', 'law', 'media', 'abstract', 'grammar'],
+      'education', 'health', 'society', 'law', 'media', 'abstract'],
+  },
+  {
+    key: 'function',
+    label: '語法',
+    keys: ['preposition', 'conjunction', 'pronoun', 'modal', 'grammar'],
   },
   {
     key: 'work',
