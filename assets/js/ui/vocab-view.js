@@ -295,10 +295,17 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
       groupBox.indeterminate = st === 'partial';
     }
 
-    const labels = boxes
+    /* 名稱與筆數都直接讀畫面上那一列，摘要的加總才一定和分項數字對得起來 */
+    const chosen = boxes
       .filter((b) => b.checked)
-      .map((b) => b.closest('.opt-check').querySelector('.opt-label').textContent);
-    panel.querySelector('[data-state]').textContent = selectionSummary(labels, boxes.length);
+      .map((b) => {
+        const row = b.closest('.opt-check');
+        return {
+          label: row.querySelector('.opt-label').textContent,
+          count: Number(row.querySelector('.n')?.textContent) || 0,
+        };
+      });
+    panel.querySelector('[data-state]').textContent = selectionSummary(chosen, boxes.length);
   }
 
   /**

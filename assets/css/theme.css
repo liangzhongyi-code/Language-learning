@@ -374,8 +374,20 @@ main { padding-bottom: var(--size-10); }
 }
 .filter[open] > summary::after { transform: translateY(-30%) rotate(-135deg); }
 
-.filter-name { color: var(--dim); font-size: 13px; }
-.filter-state { color: var(--text); font-weight: 500; }
+.filter-name { color: var(--dim); font-size: 13px; flex: none; }
+/**
+ * 摘要文字長度不受控（可能是兩個分類名加總數），
+ * 窄螢幕上撐破標題列會把箭頭擠出去，所以超出就截斷。
+ * flex 子元素預設 min-width:auto，不歸零 ellipsis 不會生效。
+ */
+.filter-state {
+  color: var(--text);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .filter-body { padding: 4px 15px 14px; border-top: 1px solid var(--border); }
 .filter-actions { display: flex; gap: var(--size-3); padding: 10px 0 6px; }

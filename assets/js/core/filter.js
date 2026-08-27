@@ -58,15 +58,26 @@ export function groupState(childKeys, selected) {
 
 /**
  * 篩選條件的摘要文字，給收合面板的標題列用。
+ *
  * 全選時只寫「全部」——這是預設狀態，列出四十個分類的名字沒有意義。
- * 選得少就直接列出名字，選得多就只報數量。
+ * 選得少就直接列出名字，選得多就只報項數。
+ *
+ * 後面一律括號附上這些項目涵蓋的單字總數，也就是面板裡每個勾選項
+ * 右邊那些數字的加總，使用者對得起來。
+ * 這個數字刻意不套用其他篩選條件（另一個面板、搜尋字串），
+ * 否則兩個面板會顯示同一個數字，而且和旁邊的分項數字兜不攏。
+ *
+ * selected 每一項為 { label, count }。
  */
-export function selectionSummary(selectedLabels, totalCount, maxNames = 2) {
-  const labels = selectedLabels || [];
-  if (!labels.length) return '未選取';
-  if (labels.length === totalCount) return '全部';
-  if (labels.length <= maxNames) return labels.join('、');
-  return `已選 ${labels.length} 項`;
+export function selectionSummary(selected, totalCount, maxNames = 2) {
+  const items = selected || [];
+  const total = items.reduce((n, it) => n + (Number(it?.count) || 0), 0);
+  const suffix = `（${total}）`;
+
+  if (!items.length) return `未選取${suffix}`;
+  if (items.length === totalCount) return `全部${suffix}`;
+  if (items.length <= maxNames) return items.map((it) => it.label).join('、') + suffix;
+  return `已選 ${items.length} 項${suffix}`;
 }
 
 /**

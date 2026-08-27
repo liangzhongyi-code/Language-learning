@@ -235,17 +235,37 @@ test('groupState：selected 不是 Set 也不會爆', () => {
 
 /* ── 篩選摘要文字 ─────────────────────────────────────────── */
 
+const ITEMS = [
+  { label: '食物', count: 18 },
+  { label: '飲料', count: 7 },
+  { label: '動物', count: 6 },
+];
+
 test('selectionSummary：全選顯示「全部」而不是列出四十個名字', () => {
-  assert.equal(selectionSummary(['食物', '飲料', '動物'], 3), '全部');
+  assert.equal(selectionSummary(ITEMS, 3), '全部（31）');
 });
 
-test('selectionSummary：選得少就列名字，選得多就報數量', () => {
-  assert.equal(selectionSummary(['食物'], 5), '食物');
-  assert.equal(selectionSummary(['食物', '飲料'], 5), '食物、飲料');
-  assert.equal(selectionSummary(['食物', '飲料', '動物'], 5), '已選 3 項');
+test('selectionSummary：選得少就列名字，選得多就報項數', () => {
+  assert.equal(selectionSummary(ITEMS.slice(0, 1), 5), '食物（18）');
+  assert.equal(selectionSummary(ITEMS.slice(0, 2), 5), '食物、飲料（25）');
+  assert.equal(selectionSummary(ITEMS, 5), '已選 3 項（31）');
 });
 
-test('selectionSummary：一個都沒選顯示「未選取」', () => {
-  assert.equal(selectionSummary([], 5), '未選取');
-  assert.equal(selectionSummary(null, 5), '未選取');
+test('selectionSummary：一個都沒選顯示「未選取（0）」', () => {
+  assert.equal(selectionSummary([], 5), '未選取（0）');
+  assert.equal(selectionSummary(null, 5), '未選取（0）');
+});
+
+/**
+ * 括號裡的數字是分項數字的加總，使用者會拿它跟旁邊每一列對帳，
+ * 所以加總必須精確，缺 count 的項目只能算 0，不能讓整串變成 NaN。
+ */
+test('selectionSummary：括號內是分項筆數的加總', () => {
+  assert.equal(selectionSummary([{ label: 'a', count: 100 }, { label: 'b', count: 23 }], 5), 'a、b（123）');
+});
+
+test('selectionSummary：count 缺漏或不是數字時算 0，不會出現 NaN', () => {
+  const out = selectionSummary([{ label: 'a' }, { label: 'b', count: '7' }, { label: 'c', count: 'x' }], 9);
+  assert.equal(out, '已選 3 項（7）');
+  assert.ok(!out.includes('NaN'), '摘要不可出現 NaN');
 });
