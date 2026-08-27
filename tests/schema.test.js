@@ -103,15 +103,33 @@ test('validateWord：category 不在列舉內被擋下', () => {
   assert.ok(fieldsOf(r).includes('category'));
 });
 
-test('validateWord：level 不在 1-3 被擋下', () => {
+test('validateWord：level 不在 1-5 被擋下', () => {
   assert.equal(validateWord({ ...EN_WORD, level: 0 }, 'en').ok, false);
-  assert.equal(validateWord({ ...EN_WORD, level: 4 }, 'en').ok, false);
+  assert.equal(validateWord({ ...EN_WORD, level: 6 }, 'en').ok, false);
   assert.equal(validateWord({ ...EN_WORD, level: '1' }, 'en').ok, false);
+});
+
+test('validateWord：level 4 與 5 是合法值（多益 800+ 與日檢 N2/N1）', () => {
+  assert.equal(validateWord({ ...EN_WORD, level: 4 }, 'en').ok, true);
+  assert.equal(validateWord({ ...EN_WORD, level: 5 }, 'en').ok, true);
 });
 
 test('validateWord：id 格式不符被擋下', () => {
   assert.equal(validateWord({ ...EN_WORD, id: 'en-w-1' }, 'en').ok, false);
   assert.equal(validateWord({ ...EN_WORD, id: 'ja-w-001' }, 'en').ok, false);
+});
+
+/**
+ * 原本的 id 流水號寫死三位，題庫一過 999 筆就全部驗不過。
+ * 匯入多益與日檢題庫後單筆語言會到四位數，這裡把邊界釘住。
+ */
+test('validateWord：id 流水號可以是 3 到 5 位，超出範圍被擋下', () => {
+  for (const id of ['en-w-001', 'en-w-0850', 'en-w-12000']) {
+    assert.equal(validateWord({ ...EN_WORD, id }, 'en').ok, true, `${id} 應合法`);
+  }
+  for (const id of ['en-w-12', 'en-w-123456']) {
+    assert.equal(validateWord({ ...EN_WORD, id }, 'en').ok, false, `${id} 應被擋下`);
+  }
 });
 
 test('validateWord：錯誤回報帶有該筆的 id', () => {

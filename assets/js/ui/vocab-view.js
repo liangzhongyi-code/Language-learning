@@ -10,7 +10,8 @@
  * 這一層只負責把結果畫出來。
  */
 
-import { listCategories, filterWords } from '../core/filter.js';
+import { listCategories, listLevels, filterWords } from '../core/filter.js';
+import { levelLabel, SCALE_NAME, SCALE_NOTE } from '../data/shared/levels.js';
 import { speakTextOf } from '../core/speech-text.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 
@@ -27,9 +28,18 @@ const POS_LABEL = {
 
 /**
  * 搜尋輸入的去抖延遲（毫秒）。
- * 題庫只有 80 多筆，整份重畫本身很快，但逐字元重繪會讓輸入手感變黏。
+ * 逐字元重繪會讓輸入手感變黏，尤其題庫上千筆之後。
  */
 const DEBOUNCE_MS = 120;
+
+/**
+ * 一次最多畫幾張卡。
+ *
+ * 匯入多益與日檢題庫後單一語言會有數千筆，
+ * 全部塞進 innerHTML 會讓每次篩選都卡住主執行緒好幾百毫秒。
+ * 超過上限就先畫這麼多，剩下的由使用者按鈕決定要不要展開。
+ */
+const PAGE_SIZE = 300;
 
 /**
  * HTML 逸出，避免題庫內容裡的角括號或引號破壞結構
@@ -58,7 +68,7 @@ function wordCard(word, lang) {
       <div class="word-tags">
         <span class="tag">${esc(POS_LABEL[word.pos] || word.pos)}</span>
         <span class="tag">${esc(word.categoryLabel)}</span>
-        <span class="tag">Lv${esc(word.level)}</span>
+        <span class="tag">${esc(word.levelLabel)}</span>
       </div>
       <button type="button" class="speak" data-speak="${esc(speakTextOf(word, lang))}"
               data-speak-lang="${esc(lang)}" title="朗讀">🔊</button>
@@ -82,6 +92,27 @@ function chipsHtml(categories, total) {
 }
 
 /**
+ * 等級篩選膠囊。
+ *
+ * 只有題庫實際涵蓋兩個以上等級時才輸出——題庫是分批匯入的，
+ * 剛開始只有一個等級時多一排只能點「全部」的按鈕是純粹的噪音。
+ */
+function levelChipsHtml(levels, total, lang) {
+  if (levels.length < 2) return '';
+  const all = `<button type="button" class="chip" data-level="all" aria-pressed="true">全部<span class="n">${total}</span></button>`;
+  const rest = levels
+    .map(
+      (l) =>
+        `<button type="button" class="chip" data-level="${l.level}" aria-pressed="false" ` +
+        `title="${esc(l.desc)}">${esc(l.label)}<span class="n">${l.count}</span></button>`
+    )
+    .join('');
+  return `
+    <div class="chips" role="group" aria-label="依${esc(SCALE_NAME[lang] || '等級')}篩選">${all}${rest}</div>
+    <p class="note-line">${esc(SCALE_NOTE[lang] || '')}</p>`;
+}
+
+/**
  * 初始化單字頁。
  *
  * mount 內部的結構由上而下是：搜尋框、分類膠囊、筆數行、單字清單、進測驗按鈕。
@@ -92,13 +123,19 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
 
   const all = words || [];
   const categories = listCategories(all);
+  const levels = listLevels(all, lang);
 
-  /* 先把分類的中文標籤併回每一筆，卡片渲染時就不必再查表 */
+  /* 先把分類與等級的標籤併回每一筆，卡片渲染時就不必再查兩張表 */
   const labelOf = new Map(categories.map((c) => [c.key, c.label]));
-  const items = all.map((w) => ({ ...w, categoryLabel: labelOf.get(w.category) || w.category }));
+  const items = all.map((w) => ({
+    ...w,
+    categoryLabel: labelOf.get(w.category) || w.category,
+    levelLabel: levelLabel(lang, w.level),
+  }));
 
   mount.innerHTML = `
     <input class="field" type="search" placeholder="搜尋中文、英文或拼音…" aria-label="搜尋單字">
+    ${levelChipsHtml(levels, all.length, lang)}
     <div class="chips" role="group" aria-label="依主題篩選">${chipsHtml(categories, all.length)}</div>
     <p class="count-line"></p>
     <div class="word-list"></div>
@@ -107,22 +144,53 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
     </div>`;
 
   const input = mount.querySelector('.field');
-  const chips = mount.querySelector('.chips');
+  const levelChips = mount.querySelector('[data-level]')?.closest('.chips') || null;
+  const chips = mount.querySelector('[data-category]').closest('.chips');
   const countLine = mount.querySelector('.count-line');
   const list = mount.querySelector('.word-list');
 
-  const state = { category: 'all', query: '' };
+  const state = { category: 'all', level: 'all', query: '' };
+
+  /* 目前這一組篩選結果要畫幾筆。換篩選條件時歸零回 PAGE_SIZE */
+  let limit = PAGE_SIZE;
 
   /**
    * 依目前狀態重畫清單與筆數。
-   * 筆數一律取自實際渲染的陣列長度，不另外算，才不會和畫面對不起來。
+   * 筆數一律取自實際篩選結果的長度，不另外算，才不會和畫面對不起來；
+   * 超過上限時只畫前 limit 筆，並在清單尾端補一顆展開按鈕。
    */
   function render() {
     const shown = filterWords(items, state);
-    countLine.textContent = `目前 ${shown.length} 筆`;
-    list.innerHTML = shown.length
-      ? shown.map((w) => wordCard(w, lang)).join('')
-      : '<div class="empty">找不到符合的單字</div>';
+
+    if (!shown.length) {
+      countLine.textContent = '目前 0 筆';
+      list.innerHTML = '<div class="empty">找不到符合的單字</div>';
+      return;
+    }
+
+    const visible = shown.slice(0, limit);
+    const rest = shown.length - visible.length;
+
+    countLine.textContent = rest
+      ? `目前 ${shown.length} 筆，先顯示 ${visible.length} 筆`
+      : `目前 ${shown.length} 筆`;
+
+    list.innerHTML =
+      visible.map((w) => wordCard(w, lang)).join('') +
+      (rest
+        ? `<div class="actions"><button type="button" class="btn" data-more>` +
+          `再顯示 ${Math.min(rest, PAGE_SIZE)} 筆（還有 ${rest} 筆）</button></div>`
+        : '');
+  }
+
+  /**
+   * 換篩選條件時重畫並把展開狀態收回去。
+   * 不收回的話，從「全部 4000 筆」切到某個分類會沿用上一次展開的巨大 limit，
+   * 使用者會以為篩選沒作用。
+   */
+  function reset() {
+    limit = PAGE_SIZE;
+    render();
   }
 
   /* 搜尋：加去抖，避免每敲一個字元就重畫整份清單 */
@@ -131,18 +199,34 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
     clearTimeout(timer);
     timer = setTimeout(() => {
       state.query = input.value;
-      render();
+      reset();
     }, DEBOUNCE_MS);
   });
 
-  /* 分類：用事件委派，膠囊只建立一次 */
-  chips.addEventListener('click', (event) => {
-    const chip = event.target.closest('.chip');
-    if (!chip || !chips.contains(chip)) return;
-    state.category = chip.dataset.category;
-    chips.querySelectorAll('.chip').forEach((c) => {
-      c.setAttribute('aria-pressed', String(c === chip));
+  /**
+   * 膠囊列共用的點擊處理：同一列內只有一顆是按下狀態。
+   * 分類與等級兩列的差別只有寫進 state 的哪個欄位，所以共用這一支。
+   */
+  function bindChips(row, field, attr) {
+    if (!row) return;
+    row.addEventListener('click', (event) => {
+      const chip = event.target.closest('.chip');
+      if (!chip || !row.contains(chip)) return;
+      state[field] = chip.dataset[attr];
+      row.querySelectorAll('.chip').forEach((c) => {
+        c.setAttribute('aria-pressed', String(c === chip));
+      });
+      reset();
     });
+  }
+
+  bindChips(chips, 'category', 'category');
+  bindChips(levelChips, 'level', 'level');
+
+  /* 展開更多：每按一次多畫一頁，事件委派掛在清單上，重繪後照樣有效 */
+  list.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-more]')) return;
+    limit += PAGE_SIZE;
     render();
   });
 

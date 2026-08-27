@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   listCategories,
+  listLevels,
   filterWords,
   listPatterns,
   filterSentences,
@@ -126,4 +127,43 @@ test('filterSentences：all 或空值回傳全部', () => {
   assert.equal(filterSentences(SENTENCES, 'all').length, 3);
   assert.equal(filterSentences(SENTENCES, '').length, 3);
   assert.equal(filterSentences(SENTENCES).length, 3);
+});
+
+/* ── 等級篩選（多益分數帶 / JLPT 級別）─────────────────────── */
+
+test('listLevels：只列出題庫實際有資料的等級，並依由易到難排序', () => {
+  const levels = listLevels(WORDS, 'ja');
+  assert.deepEqual(levels.map((l) => l.level), [1, 2]);
+  assert.deepEqual(levels.map((l) => l.count), [3, 1]);
+  assert.deepEqual(levels.map((l) => l.label), ['N5', 'N4']);
+});
+
+test('listLevels：英文用多益分數帶當標籤，日文用 N 級', () => {
+  assert.equal(listLevels(EN_WORDS, 'en')[0].label, '≤400');
+  assert.equal(listLevels(WORDS, 'ja')[0].label, 'N5');
+});
+
+test('listLevels：未知語言回傳空陣列而不是丟例外', () => {
+  assert.deepEqual(listLevels(WORDS, 'kr'), []);
+});
+
+test('filterWords：依等級篩選', () => {
+  assert.equal(filterWords(WORDS, { level: 2 }).length, 1);
+  assert.equal(filterWords(WORDS, { level: 1 }).length, 3);
+  assert.equal(filterWords(WORDS, { level: 'all' }).length, 4);
+});
+
+/**
+ * 等級是從 dataset 讀出來的，一定是字串。
+ * 題庫裡卻是數字，用 === 直接比會一筆都篩不到。
+ */
+test('filterWords：等級傳字串時也要篩得到', () => {
+  assert.equal(filterWords(WORDS, { level: '2' }).length, 1);
+  assert.equal(filterWords(WORDS, { level: '1' }).length, 3);
+});
+
+test('filterWords：等級、分類、關鍵字三個條件同時生效', () => {
+  assert.equal(filterWords(WORDS, { level: 1, category: 'weather' }).length, 2);
+  assert.equal(filterWords(WORDS, { level: 1, category: 'weather', query: '雪' }).length, 1);
+  assert.equal(filterWords(WORDS, { level: 2, category: 'weather' }).length, 0);
 });

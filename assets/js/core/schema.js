@@ -10,6 +10,7 @@
 import { CATEGORY_KEYS } from '../data/shared/categories.js';
 import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
+import { LEVELS } from '../data/shared/levels.js';
 
 /**
  * 允許的詞性
@@ -17,9 +18,17 @@ import { patternById } from '../data/shared/patterns.js';
 export const POS_KEYS = ['noun', 'verb', 'adjective', 'adverb', 'other'];
 
 /**
- * 允許的難度
+ * 允許的難度。定義在 data/shared/levels.js，
+ * 那裡同時放各語言的顯示標籤，改分級時只要動一個檔案。
  */
-export const LEVELS = [1, 2, 3];
+export { LEVELS };
+
+/**
+ * id 的流水號位數。
+ * 原本寫死三位，題庫一過 999 筆就全部驗不過；
+ * 匯入多益與日檢題庫後單筆語言會到四位數，所以放寬成 3–5 位。
+ */
+const SERIAL = '\\d{3,5}';
 
 /**
  * 允許的假名類型
@@ -76,8 +85,8 @@ export function validateWord(entry, lang) {
     return c.result();
   }
 
-  if (!new RegExp(`^${lang}-w-\\d{3}$`).test(entry.id || '')) {
-    c.add('id', `id 必須符合 ${lang}-w-NNN，實際為 ${JSON.stringify(entry.id)}`);
+  if (!new RegExp(`^${lang}-w-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-w-NNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
   }
   if (!isFilledString(entry.zh)) c.add('zh', 'zh 不可為空');
   if (!isFilledString(entry.target)) c.add('target', 'target 不可為空');
@@ -86,7 +95,9 @@ export function validateWord(entry, lang) {
   if (!CATEGORY_KEYS.includes(entry.category)) {
     c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
   }
-  if (!LEVELS.includes(entry.level)) c.add('level', `level 必須是 1/2/3，實際為 ${JSON.stringify(entry.level)}`);
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
+  }
 
   return c.result();
 }
@@ -112,8 +123,8 @@ export function validateSentence(entry, lang) {
     return c.result();
   }
 
-  if (!new RegExp(`^${lang}-s-\\d{3}$`).test(entry.id || '')) {
-    c.add('id', `id 必須符合 ${lang}-s-NNN，實際為 ${JSON.stringify(entry.id)}`);
+  if (!new RegExp(`^${lang}-s-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-s-NNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
   }
   if (!isFilledString(entry.zh)) c.add('zh', 'zh 不可為空');
   if (!isFilledString(entry.target)) c.add('target', 'target 不可為空');
@@ -123,7 +134,7 @@ export function validateSentence(entry, lang) {
     c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
   }
   if (!LEVELS.includes(entry.level)) {
-    c.add('level', `level 必須是 1/2/3，實際為 ${JSON.stringify(entry.level)}`);
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
   }
 
   const chunks = entry.chunks;
