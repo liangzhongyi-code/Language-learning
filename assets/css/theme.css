@@ -326,6 +326,40 @@ main { padding-bottom: var(--size-10); }
 .field::placeholder { color: var(--mute); }
 .field:focus { outline: none; border-color: var(--accent); }
 
+/**
+ * 下拉式篩選。
+ *
+ * 主題分類有四十個，攤成膠囊在手機上會吃掉三分之二個螢幕，
+ * 得捲過一整屏才看得到第一個單字，所以收成一個下拉清單。
+ * 用原生 select 而不是自己刻選單：手機會叫出系統選單，
+ * 鍵盤操作與螢幕閱讀器也不必自己重做一遍。
+ */
+.select-wrap { position: relative; }
+.select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 40px;
+}
+/* 原生箭頭被 appearance:none 拿掉了，用邊框轉 45 度補一個回來 */
+.select-wrap::after {
+  content: '';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--mute);
+  border-bottom: 2px solid var(--mute);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+/* 選單本身由系統繪製，深色背景要明講，否則部分瀏覽器會給白底 */
+.select option,
+.select optgroup {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 .toggle {
   display: inline-flex;
   align-items: center;

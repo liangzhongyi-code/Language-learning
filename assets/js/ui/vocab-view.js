@@ -11,6 +11,7 @@
  */
 
 import { listCategories, listLevels, filterWords } from '../core/filter.js';
+import { CATEGORY_GROUPS } from '../data/shared/categories.js';
 import { levelLabel, SCALE_NAME, SCALE_NOTE } from '../data/shared/levels.js';
 import { speakTextOf } from '../core/speech-text.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
@@ -79,16 +80,33 @@ function wordCard(word, lang) {
  * 分類篩選膠囊。第一顆固定是「全部」，其餘由題庫推導，
  * 所以不會出現一個點下去是空清單的分類。
  */
-function chipsHtml(categories, total) {
-  const all = `<button type="button" class="chip" data-category="all" aria-pressed="true">全部<span class="n">${total}</span></button>`;
-  const rest = categories
-    .map(
-      (c) =>
-        `<button type="button" class="chip" data-category="${esc(c.key)}" aria-pressed="false">` +
-        `${esc(c.label)}<span class="n">${c.count}</span></button>`
-    )
+function categorySelectHtml(categories, total) {
+  const byKey = new Map(categories.map((c) => [c.key, c]));
+
+  /* 依 CATEGORY_GROUPS 的順序分組，沒歸類到任何一組的收在最後 */
+  const grouped = CATEGORY_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.keys.map((k) => byKey.get(k)).filter(Boolean),
+  })).filter((g) => g.items.length);
+
+  const claimed = new Set(CATEGORY_GROUPS.flatMap((g) => g.keys));
+  const rest = categories.filter((c) => !claimed.has(c.key));
+  if (rest.length) grouped.push({ label: '其他', items: rest });
+
+  const option = (c) =>
+    `<option value="${esc(c.key)}">${esc(c.label)}（${c.count}）</option>`;
+
+  const groups = grouped
+    .map((g) => `<optgroup label="${esc(g.label)}">${g.items.map(option).join('')}</optgroup>`)
     .join('');
-  return all + rest;
+
+  return `
+    <div class="select-wrap">
+      <select class="field select" data-category-select aria-label="依主題篩選">
+        <option value="all">全部主題（${total}）</option>
+        ${groups}
+      </select>
+    </div>`;
 }
 
 /**
@@ -136,16 +154,16 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
   mount.innerHTML = `
     <input class="field" type="search" placeholder="搜尋中文、英文或拼音…" aria-label="搜尋單字">
     ${levelChipsHtml(levels, all.length, lang)}
-    <div class="chips" role="group" aria-label="依主題篩選">${chipsHtml(categories, all.length)}</div>
+    ${categorySelectHtml(categories, all.length)}
     <p class="count-line"></p>
     <div class="word-list"></div>
     <div class="actions">
       <a class="btn" href="./quiz.html?source=words">開始單字測驗</a>
     </div>`;
 
-  const input = mount.querySelector('.field');
+  const input = mount.querySelector('[type="search"]');
   const levelChips = mount.querySelector('[data-level]')?.closest('.chips') || null;
-  const chips = mount.querySelector('[data-category]').closest('.chips');
+  const categorySelect = mount.querySelector('[data-category-select]');
   const countLine = mount.querySelector('.count-line');
   const list = mount.querySelector('.word-list');
 
@@ -220,8 +238,12 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
     });
   }
 
-  bindChips(chips, 'category', 'category');
   bindChips(levelChips, 'level', 'level');
+
+  categorySelect.addEventListener('change', () => {
+    state.category = categorySelect.value;
+    reset();
+  });
 
   /* 展開更多：每按一次多畫一頁，事件委派掛在清單上，重繪後照樣有效 */
   list.addEventListener('click', (event) => {
