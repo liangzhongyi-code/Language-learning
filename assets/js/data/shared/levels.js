@@ -19,7 +19,7 @@ export const LEVELS_BY_LANG = {
     { level: 2, label: '400–600', desc: '通用高頻字的第二段' },
     { level: 3, label: '600–800', desc: '通用高頻字的第三段' },
     { level: 4, label: '800–990', desc: '通用高頻字的尾段，開始出現低頻抽象詞' },
-    { level: 5, label: '多益專屬', desc: '多益語料庫特有的商務與職場字，一般英語課本少見' },
+    { level: 5, label: '多益進階', desc: '多益語料庫特有且出現頻率偏低的商務字，一般英語課本幾乎不教' },
   ],
   ja: [
     { level: 1, label: 'N5', desc: '日檢 N5，最基礎' },
