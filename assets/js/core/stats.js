@@ -4,7 +4,12 @@
  * 這個模組刻意不直接引用 localStorage，而是接受一個 storage 介面參數。
  * 這同時解決兩件事：測試可以注入假物件驗出降級路徑，
  * 而無痕模式或容量已滿導致的例外也能在同一條路徑上被吃掉。
+ *
+ * 「這題算不算作答完畢／算不算答對」不在這裡自己判斷，一律問 quiz-engine——
+ * 選擇題看選項索引、填空題看提交狀態，規則寫兩份遲早會分家。
  */
+
+import { isAnswered, isCorrect } from './quiz-engine.js';
 
 /**
  * localStorage 的 key。版本號寫在 key 與內容裡，日後改格式只要換版本號即可安全丟棄舊資料
@@ -46,7 +51,26 @@ export function calcAccuracy(correct, total) {
  */
 export function isComplete(session) {
   const qs = session?.questions || [];
-  return qs.length > 0 && qs.every((q) => q.answeredIndex !== null && q.answeredIndex !== undefined);
+  return qs.length > 0 && qs.every(isAnswered);
+}
+
+/**
+ * 錯題檢討要顯示的「你選的」文字。
+ * 沒作答回傳 null，讓畫面顯示「沒選」而不是空字串。
+ */
+function chosenTextOf(q) {
+  if (!isAnswered(q)) return null;
+  if (q.kind === 'cloze') return q.filled.join('');
+  return q.options?.[q.answeredIndex]?.text ?? null;
+}
+
+/**
+ * 錯題檢討要顯示的正解文字。
+ * 填空題把每一格的答案串起來，串出來就是完整的目標語言句子。
+ */
+function correctTextOf(q) {
+  if (q.kind === 'cloze') return q.blanks.map((b) => b.answer).join('');
+  return q.options?.[q.correctIndex]?.text ?? null;
 }
 
 /**
@@ -59,16 +83,15 @@ export function summarize(session) {
   let correct = 0;
 
   for (const q of questions) {
-    if (q.answeredIndex === q.correctIndex) {
+    if (isCorrect(q)) {
       correct += 1;
       continue;
     }
-    const chosen = q.options?.[q.answeredIndex];
     wrongList.push({
       sourceId: q.sourceId,
       prompt: q.prompt,
-      chosenText: chosen ? chosen.text : null,
-      correctText: q.options?.[q.correctIndex]?.text ?? null,
+      chosenText: chosenTextOf(q),
+      correctText: correctTextOf(q),
       note: q.note ?? null,
       direction: q.direction ?? null,
       optionLang: q.optionLang ?? null,
