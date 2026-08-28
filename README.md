@@ -1,6 +1,7 @@
 # 語言學習網站
 
-英文與日文的**發音、單字、文法句型**，加上中翻外 / 外翻中的**選題練習**。
+英文與日文的**發音、單字、文法句型**，加上六種題型的練習：
+選擇題（中翻外 / 外翻中）、句子**填空**、日文**情境**（自稱與敬語）、**閱讀**短文。
 
 純前端靜態網站——沒有後端、沒有帳號、沒有建置步驟、執行期零依賴。
 把整個資料夾丟上 GitHub Pages 就能跑，載入後也能離線使用。
@@ -127,7 +128,9 @@ npm test
 
 ### 加一個句型
 
-這是比較需要動腦的部分。編輯 `assets/js/data/en/sentences.js` 或 `ja/sentences.js`：
+這是比較需要動腦的部分。句型題庫是分批寫的，一批一個檔案放在
+`assets/js/data/<lang>/sentences/` 底下，`sentences.js` 只負責串起來。
+新增一批就是放新檔再到 barrel 多兩行。
 
 ```js
 {
@@ -183,11 +186,64 @@ chunks: [
 日文的**動詞（或否定）一律放在 `chunks` 陣列的最後一個位置**，這是日文的核心特徵，
 測試會檢查。
 
+### 加一題情境題（僅日文）
+
+編輯 `assets/js/data/ja/scenes.js`。這一頁考的不是「哪個字對」而是
+「這個場合該用哪個字」，所以**選項寫死在資料裡**，不像單字題那樣自動抽干擾選項——
+隨機抽出來的名詞構不成干擾，必須是「同樣是自稱、只是敬意等級不對」的字才有意義。
+
+```js
+{
+  id: 'ja-sc-041',
+  axis: 'self',                       // self / address / honorific / inout
+  scene: '公司的正式會議上，你要向社長報告。',
+  ask: '這時候該怎麼自稱？',
+  answer: 'わたくし',
+  reading: 'わたくし',                 // 朗讀用
+  options: ['わたくし', 'おれ', 'ぼく', 'うち'],   // 至少四個、含正解、不重複
+  note: '為什麼是這個而不是別的',
+  category: 'business',
+  level: 4,
+}
+```
+
+四條考點軸定義在 `assets/js/data/shared/scene-axes.js`，測試會檢查每條軸都有題目。
+
+### 加一篇閱讀短文
+
+編輯 `assets/js/data/<lang>/readings.js`。一篇短文帶三題以上，
+題目與選項一律用中文——用目標語言出選項會變成同時考閱讀與選項理解，
+錯了也分不出是哪一關卡住。
+
+```js
+{
+  id: 'en-r-009',
+  title: 'A Rainy Afternoon',
+  passage: '目標語言的短文，日文 80 字以上、英文 150 字以上',
+  translation: '中文翻譯，作答後才顯示',
+  category: 'daily',
+  level: 3,
+  questions: [
+    {
+      id: 'en-r-009-q1',              // 必須是「短文 id + -qN」
+      ask: '中文問題',
+      answer: '正解',
+      options: ['正解', '干擾一', '干擾二', '干擾三'],
+      note: '答案在文中的哪裡',
+    },
+  ],
+}
+```
+
+> 短文不提供朗讀。整篇的假名轉寫工程量太大，而日文漢字直接餵給語音引擎會唸錯讀音，
+> 寧可不給也不要唸錯。
+
 ### 加一個分類或語法角色
 
 - 分類：`assets/js/data/shared/categories.js`
 - 語法角色：`assets/js/data/shared/roles.js`（顏色的實際色碼在 `theme.css`，這裡只放變數名）
 - 句型：`assets/js/data/shared/patterns.js`
+- 情境題考點軸：`assets/js/data/shared/scene-axes.js`
 
 ---
 
@@ -220,7 +276,8 @@ chunks: [
 
 ## 學習統計
 
-存在 localStorage 的單一 key `lang-learn.stats.v1`，以「語言 × 題源」為粒度累計。
+存在 localStorage 的單一 key `lang-learn.stats.v1`，以「語言 × 題型」為粒度累計
+（`ja:words`、`ja:cloze`、`ja:scene`、`en:reading`⋯）。
 
 - **未完成的局完全不計入**——作答到一半離開或重新整理就不算
 - localStorage 被停用或已滿時會降級，測驗本身不受影響
