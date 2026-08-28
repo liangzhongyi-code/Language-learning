@@ -91,7 +91,7 @@ npm test
 │       ├── ui/             DOM 綁定層
 │       └── data/           靜態題庫 ← 新增內容改這裡
 ├── tests/
-└── openspec/               規格文件（提案、設計、7 份 spec、任務清單）
+└── openspec/               初版的規格文件（已歸檔的歷史紀錄）＋ 資料處理小工具
 ```
 
 **分層規則**：`頁面 → ui/ → core/ → data/`，方向不可反轉。
@@ -105,11 +105,12 @@ npm test
 
 ### 加一個單字
 
-編輯 `assets/js/data/en/words.js` 或 `ja/words.js`，在陣列尾端加一筆：
+`words.js` 只是匯總入口（barrel），真正的資料在 `words/` 底下的批次檔。
+在最後一個批次檔的陣列尾端加一筆，或另開一個批次檔再到 `words.js` 匯進去：
 
 ```js
 {
-  id: 'en-w-085',        // 接續前一筆的號碼，三位數
+  id: 'en-w-4034',       // 接續全檔最後一筆的號碼，不補零
   zh: '雨傘',
   target: 'umbrella',
   reading: null,          // 日文填假名讀音，英文固定 null
@@ -218,7 +219,7 @@ chunks: [
 {
   id: 'en-r-009',
   title: 'A Rainy Afternoon',
-  passage: '目標語言的短文，日文 80 字以上、英文 150 字以上',
+  passage: '目標語言的短文。日文 120 字以上，英文 50 詞以上——低於這個下限 schema 會擋下來',
   translation: '中文翻譯，作答後才顯示',
   category: 'daily',
   level: 3,
