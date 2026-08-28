@@ -431,8 +431,9 @@ export function validateReading(entry, lang) {
     if (!new RegExp(`^${entry.id}-q\\d+$`).test(q?.id || '')) {
       c.add(`${at}.id`, `題目 id 必須是「${entry.id}-qN」，實際為 ${JSON.stringify(q?.id)}`);
     }
-    if (!isFilledString(q?.ask)) c.add(`${at}.ask`, 'ask 不可為空');
-    if (!isFilledString(q?.answer)) c.add(`${at}.answer`, 'answer 不可為空');
+    /* 問法有中文與目標語言兩版，測驗頁可以切換，兩邊都不能缺 */
+    if (!isFilledString(q?.ask?.zh)) c.add(`${at}.ask.zh`, 'ask.zh 不可為空');
+    if (!isFilledString(q?.ask?.target)) c.add(`${at}.ask.target`, 'ask.target 不可為空');
     if (!isFilledString(q?.note)) c.add(`${at}.note`, 'note 不可為空，要指出答案在文中的哪裡');
 
     const options = q?.options;
@@ -440,10 +441,29 @@ export function validateReading(entry, lang) {
       c.add(`${at}.options`, `options 至少要 ${SCENE_OPTIONS} 個`);
       continue;
     }
-    if (options.some((o) => !isFilledString(o))) c.add(`${at}.options`, 'options 不可有空字串');
-    if (new Set(options).size !== options.length) c.add(`${at}.options`, 'options 有重複');
-    if (!options.includes(q.answer)) {
-      c.add(`${at}.options`, `options 必須包含正解「${q.answer}」，否則這題無解`);
+
+    /**
+     * 正解直接標在選項上（correct: true），不另外寫一個要去對照的 answer 欄位。
+     * 分成兩欄的話，改了選項卻忘了改 answer 就會產生一題無解的題目；
+     * 標在選項上就沒有東西可以對不起來。
+     */
+    const correct = options.filter((o) => o?.correct === true);
+    if (correct.length !== 1) {
+      c.add(`${at}.options`, `必須恰好有一個選項標記 correct: true，實際有 ${correct.length} 個`);
+    }
+
+    for (const [k, o] of options.entries()) {
+      if (!isFilledString(o?.zh)) c.add(`${at}.options[${k}].zh`, '選項的中文不可為空');
+      if (!isFilledString(o?.target)) c.add(`${at}.options[${k}].target`, '選項的目標語言不可為空');
+    }
+
+    /* 兩種語言各自都不能有重複的選項，否則切到那一邊就會出現兩個一樣的按鈕 */
+    for (const field of ['zh', 'target']) {
+      const texts = options.map((o) => o?.[field]);
+      const dups = texts.filter((v, k) => v && texts.indexOf(v) !== k);
+      if (dups.length) {
+        c.add(`${at}.options`, `${field} 選項有重複：${[...new Set(dups)].join('、')}`);
+      }
     }
   }
 

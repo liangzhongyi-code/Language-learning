@@ -1,12 +1,14 @@
 /**
  * 英文閱讀短文題庫。
  *
- * 題目與選項一律用中文問。這裡考的是讀懂了沒有，
- * 用英文出選項會變成同時考閱讀與選項理解，錯了也分不出是哪一關卡住。
+ * 每道題的問法與選項都有中文與英文兩版，測驗頁可以切換：
+ *   中文版純粹測「讀懂了沒」，答錯就是沒讀懂，不會跟選項的理解混在一起；
+ *   英文版是全英文的閱讀測驗形式，連題目都要先讀懂。
+ * note 一律中文——那是解說，翻成英文就失去它存在的意義。
  *
- * 短文刻意埋進幾個中文母語者容易讀錯的地方，
- * note 就寫在那裡：時態透露的先後順序、代名詞指的是誰、
- * 片語動詞（run out of、put off）的字面與實際意思差很遠。
+ * 短文刻意埋進幾個中文母語者容易讀錯的地方，note 就寫在那裡：
+ * 時態透露的先後順序、代名詞指的是誰、
+ * 片語動詞（turn in、make up for）的字面與實際意思差很遠。
  */
 export const readings = [
   {
@@ -26,30 +28,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-001-q1',
-        ask: '艾瑪原本打算做什麼？',
-        answer: '去跑步',
-        options: ['去跑步', '做早餐', '搭公車', '開會'],
+        ask: { zh: '艾瑪原本打算做什麼？', target: 'What had Emma planned to do?' },
+        options: [
+          { zh: '去跑步', target: 'Go for a run', correct: true },
+          { zh: '做早餐', target: 'Make breakfast' },
+          { zh: '搭公車', target: 'Take the bus' },
+          { zh: '開會', target: 'Attend a meeting' },
+        ],
         note: 'had planned 是過去完成式，表示這個計畫比後面的事情更早發生，而且沒有實現。',
       },
       {
         id: 'en-r-001-q2',
-        ask: '她為什麼改變計畫？',
-        answer: '因為下雨',
-        options: ['因為下雨', '因為起得太晚', '因為公車誤點', '因為要開會'],
+        ask: { zh: '她為什麼改變計畫？', target: 'Why did she change her plan?' },
+        options: [
+          { zh: '因為下雨', target: 'Because it was raining', correct: true },
+          { zh: '因為起得太晚', target: 'Because she woke up late' },
+          { zh: '因為公車誤點', target: 'Because the bus was late' },
+          { zh: '因為要開會', target: 'Because of the meeting' },
+        ],
         note: 'but it was raining, so she made breakfast instead——so 帶出結果，instead 表示這是替代方案。',
       },
       {
         id: 'en-r-001-q3',
-        ask: '她到公司時會議的狀況是？',
-        answer: '已經開始十分鐘了',
-        options: ['已經開始十分鐘了', '再十分鐘才開始', '剛好準時開始', '已經結束了'],
+        ask: { zh: '她到公司時會議的狀況是？', target: 'What had happened by the time she arrived?' },
+        options: [
+          { zh: '已經開始十分鐘了', target: 'The meeting had started ten minutes earlier', correct: true },
+          { zh: '再十分鐘才開始', target: 'The meeting would start in ten minutes' },
+          { zh: '剛好準時開始', target: 'The meeting started right on time' },
+          { zh: '已經結束了', target: 'The meeting had already finished' },
+        ],
         note: 'arrived ten minutes after the meeting had started——過去完成式 had started 表示會議先開始、她後到。',
       },
       {
         id: 'en-r-001-q4',
-        ask: '主管的反應是什麼？',
-        answer: '什麼都沒說',
-        options: ['什麼都沒說', '責備了她', '要她提早出門', '也遲到了'],
+        ask: { zh: '主管的反應是什麼？', target: 'How did her manager react?' },
+        options: [
+          { zh: '什麼都沒說', target: 'Said nothing', correct: true },
+          { zh: '責備了她', target: 'Scolded her' },
+          { zh: '要她提早出門', target: 'Told her to leave earlier' },
+          { zh: '也遲到了', target: 'Was late as well' },
+        ],
         note: 'did not say anything 是完全沒說。後半句的 but 表示轉折：主管沒怪她，她自己還是很在意。',
       },
     ],
@@ -71,30 +89,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-002-q1',
-        ask: '他隔天用什麼方式聯絡失物招領處？',
-        answer: '打電話',
-        options: ['打電話', '親自去', '寫電子郵件', '請朋友去問'],
+        ask: { zh: '他隔天用什麼方式聯絡失物招領處？', target: 'How did he contact the lost and found the next day?' },
+        options: [
+          { zh: '打電話', target: 'He called them', correct: true },
+          { zh: '親自去', target: 'He went there in person' },
+          { zh: '寫電子郵件', target: 'He sent an email' },
+          { zh: '請朋友去問', target: 'He asked a friend to go' },
+        ],
         note: 'called 是打電話。親自去（in person）是星期一才發生的，兩件事差了兩天。',
       },
       {
         id: 'en-r-002-q2',
-        ask: '「nobody had turned it in」是什麼意思？',
-        answer: '沒有人把傘交上來',
-        options: ['沒有人把傘交上來', '沒有人打開過那把傘', '沒有人轉身進去', '沒有人拿走那把傘'],
+        ask: { zh: '「nobody had turned it in」是什麼意思？', target: 'What does "nobody had turned it in" mean?' },
+        options: [
+          { zh: '沒有人把傘交上來', target: 'No one had handed the umbrella over', correct: true },
+          { zh: '沒有人打開過那把傘', target: 'No one had opened the umbrella' },
+          { zh: '沒有人轉身進去', target: 'No one had turned around and gone in' },
+          { zh: '沒有人拿走那把傘', target: 'No one had taken the umbrella away' },
+        ],
         note: 'turn in 是片語動詞，意思是把撿到的東西交出去，跟 turn（轉）與 in（裡面）的字面完全無關。',
       },
       {
         id: 'en-r-002-q3',
-        ask: '櫃員拿出來的傘是誰的？',
-        answer: '不是丹尼爾的',
-        options: ['不是丹尼爾的', '是丹尼爾的', '是櫃員自己的', '文中沒有提到'],
+        ask: { zh: '櫃員拿出來的傘是誰的？', target: 'Whose umbrella did the clerk pull out?' },
+        options: [
+          { zh: '不是丹尼爾的', target: 'It was not Daniel’s', correct: true },
+          { zh: '是丹尼爾的', target: 'It was Daniel’s' },
+          { zh: '是櫃員自己的', target: 'It belonged to the clerk' },
+          { zh: '文中沒有提到', target: 'The passage does not say' },
+        ],
         note: 'It was not his 直接否定了。前一句詳細描述那把傘的樣子，是為了讓這個轉折更明顯。',
       },
       {
         id: 'en-r-002-q4',
-        ask: '最後他怎麼處理這件事？',
-        answer: '買了一把新傘',
-        options: ['買了一把新傘', '把黑傘帶回家', '繼續等失物招領', '跟車站抱怨'],
+        ask: { zh: '最後他怎麼處理這件事？', target: 'What did he do in the end?' },
+        options: [
+          { zh: '買了一把新傘', target: 'He bought a new umbrella', correct: true },
+          { zh: '把黑傘帶回家', target: 'He took the black umbrella home' },
+          { zh: '繼續等失物招領', target: 'He kept waiting for the lost and found' },
+          { zh: '跟車站抱怨', target: 'He complained to the station' },
+        ],
         note: 'bought a new one 的 one 代替前面的 umbrella，避免整個字重複——這是英文常見的代稱用法。',
       },
     ],
@@ -116,30 +150,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-003-q1',
-        ask: '店員問的三個問題不包含下列哪一個？',
-        answer: '要不要加糖',
-        options: ['要不要加糖', '要什麼尺寸', '內用還是外帶', '她叫什麼名字'],
+        ask: { zh: '店員問的三個問題不包含下列哪一個？', target: 'Which question did the barista NOT ask?' },
+        options: [
+          { zh: '要不要加糖', target: 'Whether she wanted sugar', correct: true },
+          { zh: '要什麼尺寸', target: 'What size she wanted' },
+          { zh: '內用還是外帶', target: 'Whether it was for here or to go' },
+          { zh: '她叫什麼名字', target: 'What her name was' },
+        ],
         note: '文中列出的三項是 what size、for here or to go、what her name was，沒有提到糖。',
       },
       {
         id: 'en-r-003-q2',
-        ask: '「for here or to go」是在問什麼？',
-        answer: '內用還是外帶',
-        options: ['內用還是外帶', '要現在喝還是等一下', '要在這裡付錢還是刷卡', '要不要繼續往前走'],
+        ask: { zh: '「for here or to go」是在問什麼？', target: 'What does "for here or to go" ask about?' },
+        options: [
+          { zh: '內用還是外帶', target: 'Eating in or taking away', correct: true },
+          { zh: '要現在喝還是等一下', target: 'Drinking now or drinking later' },
+          { zh: '要在這裡付錢還是刷卡', target: 'Paying in cash or by card' },
+          { zh: '要不要繼續往前走', target: 'Whether to keep walking' },
+        ],
         note: 'to go 是美式說法的外帶，英式常說 takeaway。字面上的 go 跟走路無關。',
       },
       {
         id: 'en-r-003-q3',
-        ask: '她對哪一個問題沒有反應過來？',
-        answer: '最後一個',
-        options: ['最後一個', '第一個', '第二個', '全部三個'],
+        ask: { zh: '她對哪一個問題沒有反應過來？', target: 'Which question did she fail to understand?' },
+        options: [
+          { zh: '最後一個', target: 'The last one', correct: true },
+          { zh: '第一個', target: 'The first one' },
+          { zh: '第二個', target: 'The second one' },
+          { zh: '全部三個', target: 'All three of them' },
+        ],
         note: 'the last question 指剛才列舉的三個裡的最後一項，也就是問名字那一題。',
       },
       {
         id: 'en-r-003-q4',
-        ask: '店員接下來怎麼做？',
-        answer: '放慢速度再問一次',
-        options: ['放慢速度再問一次', '直接幫她做了', '請經理過來', '要她排到後面'],
+        ask: { zh: '店員接下來怎麼做？', target: 'What did the barista do next?' },
+        options: [
+          { zh: '放慢速度再問一次', target: 'Asked again, more slowly', correct: true },
+          { zh: '直接幫她做了', target: 'Just made the drink for her' },
+          { zh: '請經理過來', target: 'Called the manager over' },
+          { zh: '要她排到後面', target: 'Asked her to go to the back of the queue' },
+        ],
         note: 'asked more slowly 的 more slowly 是比較級副詞，表示比剛才慢——不是慢慢地，而是「比剛才慢」。',
       },
     ],
@@ -161,30 +211,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-004-q1',
-        ask: '他投了幾份工作才拿到面試？',
-        answer: '六份',
-        options: ['六份', '一份', '兩份', '七份'],
+        ask: { zh: '他投了幾份工作才拿到面試？', target: 'How many jobs had he applied for before the interview?' },
+        options: [
+          { zh: '六份', target: 'Six', correct: true },
+          { zh: '一份', target: 'One' },
+          { zh: '兩份', target: 'Two' },
+          { zh: '七份', target: 'Seven' },
+        ],
         note: 'had applied for six jobs before he got his first interview——過去完成式表示投履歷發生在面試之前。',
       },
       {
         id: 'en-r-004-q2',
-        ask: '他準備了多久？',
-        answer: '一週',
-        options: ['一週', '兩天', '六天', '一個月'],
+        ask: { zh: '他準備了多久？', target: 'How long did he prepare?' },
+        options: [
+          { zh: '一週', target: 'For a week', correct: true },
+          { zh: '兩天', target: 'For two days' },
+          { zh: '六天', target: 'For six days' },
+          { zh: '一個月', target: 'For a month' },
+        ],
         note: 'prepared for a week。文中的 two days 是拿到結果的時間，不是準備的時間。',
       },
       {
         id: 'en-r-004-q3',
-        ask: '他說想換工作的理由是什麼？',
-        answer: '想承擔更多責任',
-        options: ['想承擔更多責任', '想要更高的薪水', '不喜歡現在的主管', '想搬到別的城市'],
+        ask: { zh: '他說想換工作的理由是什麼？', target: 'Why did he say he wanted to change jobs?' },
+        options: [
+          { zh: '想承擔更多責任', target: 'He wanted more responsibility', correct: true },
+          { zh: '想要更高的薪水', target: 'He wanted a higher salary' },
+          { zh: '不喜歡現在的主管', target: 'He disliked his current manager' },
+          { zh: '想搬到別的城市', target: 'He wanted to move to another city' },
+        ],
         note: 'more responsibility, not more money——not 前後對照，正是為了排除「為了錢」這個常見答案。',
       },
       {
         id: 'en-r-004-q4',
-        ask: '結果如何？',
-        answer: '兩天後拿到錄取',
-        options: ['兩天後拿到錄取', '兩天後被拒絕', '還在等消息', '要再面試一次'],
+        ask: { zh: '結果如何？', target: 'What was the result?' },
+        options: [
+          { zh: '兩天後拿到錄取', target: 'He was offered the job two days later', correct: true },
+          { zh: '兩天後被拒絕', target: 'He was rejected two days later' },
+          { zh: '還在等消息', target: 'He is still waiting to hear back' },
+          { zh: '要再面試一次', target: 'He has to interview again' },
+        ],
         note: 'offered him the position 是給他這個職位，也就是錄取。offer 當動詞是提供，當名詞就是錄取通知。',
       },
     ],
@@ -206,34 +272,45 @@ export const readings = [
     questions: [
       {
         id: 'en-r-005-q1',
-        ask: '她剛搬去的第一個月怎麼過？',
-        answer: '幾乎每晚獨自吃晚餐',
-        options: ['幾乎每晚獨自吃晚餐', '每晚跟同事聚餐', '每天都去跑步', '常常回老家'],
+        ask: { zh: '她剛搬去的第一個月怎麼過？', target: 'How did she spend her first month there?' },
+        options: [
+          { zh: '幾乎每晚獨自吃晚餐', target: 'Eating dinner alone almost every night', correct: true },
+          { zh: '每晚跟同事聚餐', target: 'Having dinner with colleagues every night' },
+          { zh: '每天都去跑步', target: 'Going running every day' },
+          { zh: '常常回老家', target: 'Going back to her home town often' },
+        ],
         note: 'ate dinner alone almost every night——almost 表示幾乎但不是全部，比 every night 保守一點。',
       },
       {
         id: 'en-r-005-q2',
-        ask: '跑步社團什麼時候聚會？',
-        answer: '星期六早上',
-        options: ['星期六早上', '星期天早上', '每天晚上', '每個月一次'],
+        ask: { zh: '跑步社團什麼時候聚會？', target: 'When did the running club meet?' },
+        options: [
+          { zh: '星期六早上', target: 'On Saturday mornings', correct: true },
+          { zh: '星期天早上', target: 'On Sunday mornings' },
+          { zh: '每天晚上', target: 'Every evening' },
+          { zh: '每個月一次', target: 'Once a month' },
+        ],
         note: 'that met on Saturday mornings 是關係子句，修飾前面的 club，說明這個社團的聚會時間。',
       },
       {
         id: 'en-r-005-q3',
-        ask: '兩個月後她的進步是什麼？',
-        answer: '能不停地跑完全程',
-        options: ['能不停地跑完全程', '能跑完一半', '變成社團教練', '開始參加比賽'],
+        ask: { zh: '兩個月後她的進步是什麼？', target: 'What could she do after two months?' },
+        options: [
+          { zh: '能不停地跑完全程', target: 'Run the whole route without stopping', correct: true },
+          { zh: '能跑完一半', target: 'Finish half the route' },
+          { zh: '變成社團教練', target: 'Become the club coach' },
+          { zh: '開始參加比賽', target: 'Start entering races' },
+        ],
         note: 'ran the whole thing without stopping。the whole thing 指的是前一句提到的 route（路線）。',
       },
       {
         id: 'en-r-005-q4',
-        ask: '最後一句想表達什麼？',
-        answer: '認識的人比跑步本身更重要',
+        ask: { zh: '最後一句想表達什麼？', target: 'What does the last sentence suggest?' },
         options: [
-          '認識的人比跑步本身更重要',
-          '她後來不再跑步了',
-          '跑步是她唯一的興趣',
-          '社團裡的人跑得比她快',
+          { zh: '認識的人比跑步本身更重要', target: 'The people mattered more than the running', correct: true },
+          { zh: '她後來不再跑步了', target: 'She eventually stopped running' },
+          { zh: '跑步是她唯一的興趣', target: 'Running was her only interest' },
+          { zh: '社團裡的人跑得比她快', target: 'The others ran faster than she did' },
         ],
         note: 'mattered less than 是「比…不重要」。matter 當動詞是「要緊」，不是「事情」。',
       },
@@ -256,30 +333,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-006-q1',
-        ask: '祖母為什麼寫信而不是寄電子郵件？',
-        answer: '她從來不用電子郵件',
-        options: ['她從來不用電子郵件', '她的網路壞了', '信比較快', '她想寄果醬'],
+        ask: { zh: '祖母為什麼寫信而不是寄電子郵件？', target: 'Why did his grandmother write a letter?' },
+        options: [
+          { zh: '她從來不用電子郵件', target: 'She never uses email', correct: true },
+          { zh: '她的網路壞了', target: 'Her internet was broken' },
+          { zh: '信比較快', target: 'A letter is faster' },
+          { zh: '她想寄果醬', target: 'She wanted to send the jam' },
+        ],
         note: 'who never uses email 是關係子句，補充說明祖母這個人的特點——這就是她寫信的原因。',
       },
       {
         id: 'en-r-006-q2',
-        ask: '蘋果樹的情況是什麼？',
-        answer: '五年後終於結果了',
-        options: ['五年後終於結果了', '已經枯死了', '每年都結很多果', '剛種下五年'],
+        ask: { zh: '蘋果樹的情況是什麼？', target: 'What had happened to the apple tree?' },
+        options: [
+          { zh: '五年後終於結果了', target: 'It finally produced fruit after five years', correct: true },
+          { zh: '已經枯死了', target: 'It had died' },
+          { zh: '每年都結很多果', target: 'It produces a lot of fruit every year' },
+          { zh: '剛種下五年', target: 'It had just been planted five years ago' },
+        ],
         note: 'had finally produced fruit after five years——finally 帶著「等了很久」的語氣，也暗示前四年都沒結果。',
       },
       {
         id: 'en-r-006-q3',
-        ask: '她要寄什麼給湯姆？',
-        answer: '一罐果醬',
-        options: ['一罐果醬', '一箱蘋果', '一棵樹苗', '一張照片'],
+        ask: { zh: '她要寄什麼給湯姆？', target: 'What was she sending him?' },
+        options: [
+          { zh: '一罐果醬', target: 'A jar of jam', correct: true },
+          { zh: '一箱蘋果', target: 'A box of apples' },
+          { zh: '一棵樹苗', target: 'A young tree' },
+          { zh: '一張照片', target: 'A photograph' },
+        ],
         note: 'a jar of jam。jar 是罐子，是不可數名詞 jam 的計量單位——英文的不可數名詞都要靠容器來計數。',
       },
       {
         id: 'en-r-006-q4',
-        ask: '祖母希望他什麼時候來？',
-        answer: '冬天之前',
-        options: ['冬天之前', '冬天的時候', '明年春天', '果醬寄到之後'],
+        ask: { zh: '祖母希望他什麼時候來？', target: 'When did she want him to visit?' },
+        options: [
+          { zh: '冬天之前', target: 'Before winter', correct: true },
+          { zh: '冬天的時候', target: 'During the winter' },
+          { zh: '明年春天', target: 'Next spring' },
+          { zh: '果醬寄到之後', target: 'After the jam arrives' },
+        ],
         note: 'before winter 是冬天之前。before 與 by 的差別在於 before 強調在那之前的任何時間點。',
       },
     ],
@@ -300,34 +393,45 @@ export const readings = [
     questions: [
       {
         id: 'en-r-007-q1',
-        ask: '車鏈是在什麼時候掉的？',
-        answer: '上學途中的一半路程',
-        options: ['上學途中的一半路程', '出門前', '放學回家時', '到學校之後'],
+        ask: { zh: '車鏈是在什麼時候掉的？', target: 'When did the chain come off?' },
+        options: [
+          { zh: '上學途中的一半路程', target: 'Halfway to school', correct: true },
+          { zh: '出門前', target: 'Before he left home' },
+          { zh: '放學回家時', target: 'On the way home from school' },
+          { zh: '到學校之後', target: 'After he got to school' },
+        ],
         note: 'halfway there 的 there 指的是前一句的 school，所以是上學路上的一半。',
       },
       {
         id: 'en-r-007-q2',
-        ask: '他怎麼走完剩下的路？',
-        answer: '推著腳踏車走',
-        options: ['推著腳踏車走', '搭公車', '請爸爸來接', '跑步'],
+        ask: { zh: '他怎麼走完剩下的路？', target: 'How did he cover the rest of the way?' },
+        options: [
+          { zh: '推著腳踏車走', target: 'He pushed the bike', correct: true },
+          { zh: '搭公車', target: 'He took the bus' },
+          { zh: '請爸爸來接', target: 'His father picked him up' },
+          { zh: '跑步', target: 'He ran' },
+        ],
         note: 'push the bike 是推車。had to 表示這是不得已的選擇，不是他想這麼做。',
       },
       {
         id: 'en-r-007-q3',
-        ask: '爸爸做了什麼？',
-        answer: '教他怎麼把車鏈裝回去',
-        options: ['教他怎麼把車鏈裝回去', '幫他修好車', '買了新腳踏車', '載他去上學'],
+        ask: { zh: '爸爸做了什麼？', target: 'What did his father do?' },
+        options: [
+          { zh: '教他怎麼把車鏈裝回去', target: 'Showed him how to fix the chain himself', correct: true },
+          { zh: '幫他修好車', target: 'Fixed the bike for him' },
+          { zh: '買了新腳踏車', target: 'Bought him a new bicycle' },
+          { zh: '載他去上學', target: 'Drove him to school' },
+        ],
         note: 'showed him how to 是示範教學，跟直接幫他修好（fixed it for him）不一樣。',
       },
       {
         id: 'en-r-007-q4',
-        ask: '這件事之後有什麼改變？',
-        answer: '他背包裡固定帶工具和手套',
+        ask: { zh: '這件事之後有什麼改變？', target: 'What has changed since then?' },
         options: [
-          '他背包裡固定帶工具和手套',
-          '他改成走路上學',
-          '他每天提早出門',
-          '他把腳踏車賣掉了',
+          { zh: '他背包裡固定帶工具和手套', target: 'He now carries a tool and gloves in his backpack', correct: true },
+          { zh: '他改成走路上學', target: 'He now walks to school' },
+          { zh: '他每天提早出門', target: 'He now leaves home earlier' },
+          { zh: '他把腳踏車賣掉了', target: 'He sold the bicycle' },
         ],
         note: 'now Sam keeps... 的現在式表示這是持續到現在的習慣，而不是那一天發生的事。',
       },
@@ -350,30 +454,46 @@ export const readings = [
     questions: [
       {
         id: 'en-r-008-q1',
-        ask: '她一週有幾天在家上班？',
-        answer: '三天',
-        options: ['三天', '五天', '一天', '每天'],
+        ask: { zh: '她一週有幾天在家上班？', target: 'How many days a week does she work from home?' },
+        options: [
+          { zh: '三天', target: 'Three days', correct: true },
+          { zh: '五天', target: 'Five days' },
+          { zh: '一天', target: 'One day' },
+          { zh: '每天', target: 'Every day' },
+        ],
         note: 'three days a week 的 a 在這裡等於 per，是「每」的意思，不是冠詞。',
       },
       {
         id: 'en-r-008-q2',
-        ask: '她想念辦公室的什麼？',
-        answer: '同事之間的閒聊',
-        options: ['同事之間的閒聊', '安靜的環境', '公司的咖啡', '主管的指導'],
+        ask: { zh: '她想念辦公室的什麼？', target: 'What does she miss about the office?' },
+        options: [
+          { zh: '同事之間的閒聊', target: 'The small conversations with colleagues', correct: true },
+          { zh: '安靜的環境', target: 'The quiet environment' },
+          { zh: '公司的咖啡', target: 'The office coffee' },
+          { zh: '主管的指導', target: 'Guidance from her manager' },
+        ],
         note: 'the small conversations 字面是小對話，指的是走廊上、茶水間那種不正式的交談。',
       },
       {
         id: 'en-r-008-q3',
-        ask: '「To make up for it」是什麼意思？',
-        answer: '為了彌補這件事',
-        options: ['為了彌補這件事', '為了整理它', '為了編造理由', '為了往上爬'],
+        ask: { zh: '「To make up for it」是什麼意思？', target: 'What does "to make up for it" mean here?' },
+        options: [
+          { zh: '為了彌補這件事', target: 'To compensate for what she misses', correct: true },
+          { zh: '為了整理它', target: 'To tidy it up' },
+          { zh: '為了編造理由', target: 'To invent an excuse' },
+          { zh: '為了往上爬', target: 'To get a promotion' },
+        ],
         note: 'make up for 是彌補，make up 單獨用則是「編造」或「化妝」——多一個 for 意思就完全不同。',
       },
       {
         id: 'en-r-008-q4',
-        ask: '主管認為遠距工作帶來的唯一麻煩是什麼？',
-        answer: '會議比較難約時間',
-        options: ['會議比較難約時間', '產出變少了', '同事感情變差', '沒有人準時上線'],
+        ask: { zh: '主管認為遠距工作帶來的唯一麻煩是什麼？', target: 'What is the only drawback her manager mentions?' },
+        options: [
+          { zh: '會議比較難約時間', target: 'Meetings take longer to arrange', correct: true },
+          { zh: '產出變少了', target: 'The team produces less' },
+          { zh: '同事感情變差', target: 'Colleagues get along worse' },
+          { zh: '沒有人準時上線', target: 'Nobody logs on punctually' },
+        ],
         note: 'though meetings take longer to arrange——though 帶出唯一的例外，前半句才是主要評價（產出一樣好）。',
       },
     ],

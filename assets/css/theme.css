@@ -942,6 +942,18 @@ html.no-lines .gap-mid svg { display: none; }
 .setting { margin-bottom: var(--size-4); }
 .setting > label { display: block; font-size: 13px; color: var(--dim); margin-bottom: var(--size-2); }
 
+/**
+ * 設定底下的一行說明。
+ * 用在選了會改變練習性質的開關上——只寫選項名稱的話，
+ * 使用者要按下去玩過一局才知道兩邊差在哪。
+ */
+.setting-note {
+  margin: var(--size-2) 0 0;
+  color: var(--mute);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 /* 結果畫面 */
 .score { display: flex; align-items: baseline; gap: var(--size-3); flex-wrap: wrap; }
 .score b { font-family: var(--font-display); font-size: 46px; font-weight: 600; color: var(--accent); line-height: 1; }

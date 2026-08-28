@@ -271,9 +271,18 @@ function buildSceneQuestion(scene, { lang, rng }) {
  * 沒有 speakText：整篇短文的假名轉寫工程量太大，而且日文漢字直接餵給
  * 語音引擎會唸錯讀音，寧可不提供也不要唸錯。閱讀練習的重點本來就不在發音。
  */
-function buildReadingQuestion(item, { lang, rng }) {
+function buildReadingQuestion(item, { lang, rng, askIn = 'zh' }) {
+  /**
+   * 問法與選項要嘛都用中文、要嘛都用目標語言，不能各用一種。
+   *
+   * 「日文選項配中文題目」是沒有人想要的半吊子模式：
+   * 想測純理解就該連題目都是中文，想模擬 JLPT 讀解就該整題都是日文。
+   * 所以這個欄位一次決定兩者。
+   */
+  const field = askIn === 'target' ? 'target' : 'zh';
+
   const options = shuffle(
-    item.options.map((text) => ({ text, isCorrect: text === item.answer })),
+    item.options.map((o) => ({ text: o[field], isCorrect: o.correct === true })),
     rng
   );
 
@@ -287,12 +296,17 @@ function buildReadingQuestion(item, { lang, rng }) {
     /* 作答後才顯示，讓人對照著看自己讀懂了多少 */
     translation: item.translation,
     contextLang: lang,
-    prompt: item.ask,
-    promptLang: 'zh',
-    /* 選項是中文，所以不掛朗讀鍵——那會唸出一串中文 */
-    optionLang: 'zh',
+    prompt: item.ask[field],
+    promptLang: field === 'target' ? lang : 'zh',
+    optionLang: field === 'target' ? lang : 'zh',
     options,
     correctIndex: options.findIndex((o) => o.isCorrect),
+    /**
+     * 一律不掛朗讀鍵。
+     * 中文模式的選項是中文，唸出來沒有意義；
+     * 目標語言模式的選項雖然是日文，但漢字直接餵給語音引擎會唸錯讀音，
+     * 而整篇短文的假名轉寫成本又太高——寧可不給也不要唸錯。
+     */
     speakText: null,
     note: item.note ?? null,
     answeredIndex: null,
@@ -469,6 +483,8 @@ export function buildSession({
   scenes,
   readings,
   source = 'words',
+  /* 閱讀題的問法與選項要用中文還是目標語言 */
+  readingAskIn = 'zh',
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
@@ -489,7 +505,7 @@ export function buildSession({
   const questions = picked.map((item) => {
     if (kind === 'cloze') return buildClozeQuestion(item, pool, { lang, rng });
     if (source === 'scene') return buildSceneQuestion(item, { lang, rng });
-    if (source === 'reading') return buildReadingQuestion(item, { lang, rng });
+    if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng });
   });

@@ -23,6 +23,17 @@ const report = (errors) =>
   errors.map((e) => `${e.id} · ${e.field}：${e.message}`).join('\n');
 
 /**
+ * 固定序列的假亂數，讓兩次抽題抽到同一批題目才比較得出差異
+ */
+function seeded() {
+  let n = 0;
+  return () => {
+    n += 1;
+    return ((n * 9301 + 49297) % 233280) / 233280;
+  };
+}
+
+/**
  * 統計某個欄位的值分佈
  */
 function countBy(list, key) {
@@ -374,15 +385,43 @@ test('情境題：一局跑完會寫進 ja:scene 這個統計分組', () => {
 
 /* ── 閱讀短文 ─────────────────────────────────────────────── */
 
-test('閱讀短文：每篇至少三題，每題四個不重複選項且含正解', () => {
+test('閱讀短文：每篇至少三題，每題四個選項且恰有一個正解', () => {
   for (const list of [jaReadings, enReadings]) {
     for (const r of list) {
       assert.ok(r.questions.length >= 3, `${r.id} 只有 ${r.questions.length} 題`);
       for (const q of r.questions) {
         assert.ok(q.options.length >= 4, `${q.id} 選項不足四個`);
-        assert.equal(new Set(q.options).size, q.options.length, `${q.id} 選項有重複`);
-        assert.ok(q.options.includes(q.answer), `${q.id} 的選項不含正解`);
+        assert.equal(
+          q.options.filter((o) => o.correct === true).length,
+          1,
+          `${q.id} 標記 correct 的選項不是恰好一個`
+        );
         assert.ok(q.note && q.note.trim(), `${q.id} 缺解說`);
+      }
+    }
+  }
+});
+
+/**
+ * 問法與選項各有中文與目標語言兩版，兩邊都要完整。
+ * 缺一邊的話，切到那個模式就會出現空白的題目或選項。
+ */
+test('閱讀短文：中文與目標語言兩版都齊全，而且各自不重複', () => {
+  for (const list of [jaReadings, enReadings]) {
+    for (const r of list) {
+      for (const q of r.questions) {
+        assert.ok(q.ask?.zh?.trim(), `${q.id} 缺中文問法`);
+        assert.ok(q.ask?.target?.trim(), `${q.id} 缺目標語言問法`);
+
+        for (const field of ['zh', 'target']) {
+          const texts = q.options.map((o) => o[field]);
+          assert.ok(texts.every((t) => t && t.trim()), `${q.id} 的 ${field} 選項有空的`);
+          assert.equal(
+            new Set(texts).size,
+            texts.length,
+            `${q.id} 的 ${field} 選項有重複：${texts.filter((t, i) => texts.indexOf(t) !== i)}`
+          );
+        }
       }
     }
   }
@@ -460,5 +499,57 @@ test('閱讀題：每一題都帶著自己的短文與翻譯，且不掛朗讀�
     assert.equal(q.optionLang, 'zh', '選項是中文，這樣考的才是讀懂沒有');
     assert.equal(q.speakText, null, '整篇短文不提供朗讀，漢字餵給語音引擎會唸錯');
     assert.equal(q.options.filter((o) => o.isCorrect).length, 1);
+  }
+});
+
+/**
+ * 開關要真的換掉題目與選項，而且是「一次換兩者」——
+ * 「日文選項配中文題目」是沒有人想要的半吊子模式。
+ */
+test('閱讀題：切換問法語言時，題目與選項一起換', () => {
+  const base = { lang: 'ja', words: [], sentences: [], readings: jaReadings, source: 'reading', count: 8 };
+  const zh = buildSession({ ...base, readingAskIn: 'zh', rng: seeded() });
+  const target = buildSession({ ...base, readingAskIn: 'target', rng: seeded() });
+
+  assert.deepEqual(
+    zh.questions.map((q) => q.sourceId),
+    target.questions.map((q) => q.sourceId),
+    '同一個亂數種子應該抽到同一批題目，才比較得出語言差異'
+  );
+
+  for (const [i, q] of zh.questions.entries()) {
+    const t = target.questions[i];
+    const source = jaReadings.flatMap((r) => r.questions).find((x) => x.id === q.sourceId);
+
+    assert.equal(q.prompt, source.ask.zh);
+    assert.equal(t.prompt, source.ask.target);
+    assert.notEqual(q.prompt, t.prompt, `${q.sourceId} 兩個模式的題目一樣，開關等於沒作用`);
+
+    assert.equal(q.promptLang, 'zh');
+    assert.equal(q.optionLang, 'zh');
+    assert.equal(t.promptLang, 'ja');
+    assert.equal(t.optionLang, 'ja');
+
+    /* 兩邊的正解必須指向同一個選項，只是換個語言寫 */
+    const zhAnswer = q.options[q.correctIndex].text;
+    const targetAnswer = t.options[t.correctIndex].text;
+    const correct = source.options.find((o) => o.correct === true);
+    assert.equal(zhAnswer, correct.zh);
+    assert.equal(targetAnswer, correct.target);
+  }
+});
+
+test('閱讀題：沒有指定語言時預設中文', () => {
+  const s = buildSession({
+    lang: 'en',
+    words: [],
+    sentences: [],
+    readings: enReadings,
+    source: 'reading',
+    count: 4,
+  });
+  for (const q of s.questions) {
+    assert.equal(q.optionLang, 'zh');
+    assert.equal(q.speakText, null, '兩種模式都不掛朗讀鍵');
   }
 });

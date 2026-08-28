@@ -8,9 +8,10 @@
  * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
  */
 
-import { buildSession, answer, poolOf, progressPercent, isAnswered, kindOf } from '../core/quiz-engine.js';
+import { buildSession, answer, poolOf, progressPercent, isAnswered } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { loadPrefs, setPref } from './prefs.js';
 
 const DIRECTION_LABEL = {
   zh2target: { en: '中翻英', ja: '中翻日' },
@@ -19,6 +20,12 @@ const DIRECTION_LABEL = {
 };
 
 const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀' };
+
+/**
+ * 會受「出題方向」影響的題型。
+ * 其餘題型的題面與選項語言是固定的，選了方向也不會有任何變化。
+ */
+const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -46,6 +53,12 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       : 'words',
     direction: 'zh2target',
     count: 10,
+    /**
+     * 閱讀題的問法與選項語言。
+     * 存在偏好設定裡而不是只活在這一局——「我要用哪種方式練」是長期選擇，
+     * 每次重開都回到預設會很煩。
+     */
+    readingAskIn: loadPrefs().readingAskIn === 'target' ? 'target' : 'zh',
     /**
      * 使用者是不是選了「全部」。
      * 只記數字不行——換題源之後舊的總數會變成一個沒有任何膠囊對應的幽靈值，
@@ -102,10 +115,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
         ${
           /**
-           * 填空題一律看中文填目標語言，沒有反向的意義，所以整組設定收起來。
-           * 留著但停用會讓人以為「這裡可以選，只是我還沒找到方法」。
+           * 只有單字、句型、混合三種題型吃「出題方向」。
+           *
+           * 填空題一律看中文填目標語言、情境題一律看中文場合選目標語言說法、
+           * 閱讀題的語言由下面那個開關決定——這三種選了方向也不會有任何變化。
+           * 留著一組按了沒反應的設定，比直接收起來更容易讓人以為是壞掉了。
            */
-          kindOf(config.source) === 'cloze'
+          !DIRECTIONAL_SOURCES.includes(config.source)
             ? ''
             : `<div class="setting">
           <label>出題方向</label>
@@ -119,6 +135,32 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             config.direction
           )}</div>
         </div>`
+        }
+
+        ${
+          /**
+           * 閱讀題專屬的開關，只在選了閱讀題時出現。
+           * 兩種模式差很多：中文版純粹測「讀懂了沒」，
+           * 目標語言版連題目都要先讀懂，接近 JLPT 讀解的實戰形式。
+           */
+          config.source === 'reading'
+            ? `<div class="setting">
+          <label>問法與選項的語言</label>
+          <div class="chips">${chips(
+            'readingAskIn',
+            [
+              ['zh', '中文（測讀懂了沒）'],
+              ['target', `${lang === 'ja' ? '日文' : '英文'}（全外語，接近實戰）`],
+            ],
+            config.readingAskIn
+          )}</div>
+          <p class="setting-note">${
+            config.readingAskIn === 'target'
+              ? '題目與選項都是外語，連題目都要先讀懂——答錯時分不出是短文沒讀懂還是題目沒讀懂。'
+              : '短文是外語、題目與選項是中文，答錯就是短文沒讀懂，原因很單純。'
+          }</p>
+        </div>`
+            : ''
         }
 
         <div class="setting">
@@ -146,6 +188,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           if (!config.useAll) config.count = Number(value);
         } else {
           config[set] = value;
+          /* 這一項是長期偏好，切了就記住 */
+          if (set === 'readingAskIn') setPref('readingAskIn', value);
         }
 
         /**
@@ -174,6 +218,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         readings,
         source: config.source,
         direction: config.direction,
+        readingAskIn: config.readingAskIn,
         count,
       });
       recorded = false;

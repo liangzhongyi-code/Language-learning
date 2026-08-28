@@ -212,8 +212,7 @@ chunks: [
 ### 加一篇閱讀短文
 
 編輯 `assets/js/data/<lang>/readings.js`。一篇短文帶三題以上，
-題目與選項一律用中文——用目標語言出選項會變成同時考閱讀與選項理解，
-錯了也分不出是哪一關卡住。
+**問法與選項都要寫中文與目標語言兩版**——測驗頁有開關可以切換，缺一邊那個模式就會出現空白。
 
 ```js
 {
@@ -226,15 +225,22 @@ chunks: [
   questions: [
     {
       id: 'en-r-009-q1',              // 必須是「短文 id + -qN」
-      ask: '中文問題',
-      answer: '正解',
-      options: ['正解', '干擾一', '干擾二', '干擾三'],
-      note: '答案在文中的哪裡',
+      ask: { zh: '中文問題', target: 'The question in English' },
+      options: [
+        { zh: '正解', target: 'The right answer', correct: true },
+        { zh: '干擾一', target: 'A wrong answer' },
+        { zh: '干擾二', target: 'Another wrong answer' },
+        { zh: '干擾三', target: 'A third wrong answer' },
+      ],
+      note: '答案在文中的哪裡（一律中文，這是解說）',
     },
   ],
 }
 ```
 
+> 正解直接標在選項上（`correct: true`），不另外寫一個要去對照的 `answer` 欄位——
+> 分成兩欄的話，改了選項卻忘了改 answer 就會產生一題無解的題目。
+>
 > 短文不提供朗讀。整篇的假名轉寫工程量太大，而日文漢字直接餵給語音引擎會唸錯讀音，
 > 寧可不給也不要唸錯。
 

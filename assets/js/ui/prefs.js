@@ -13,6 +13,12 @@ const DEFAULTS = {
   grammarLines: true,
   /* 假名表顯示模式：hiragana / katakana / both */
   kanaMode: 'both',
+  /**
+   * 閱讀題的問法與選項用哪一種語言：zh / target。
+   * 這是「我要用哪種方式練」的長期偏好，不是一局裡的臨時設定，
+   * 所以跟著偏好走而不是每次重開都回到預設。
+   */
+  readingAskIn: 'zh',
 };
 
 /**
