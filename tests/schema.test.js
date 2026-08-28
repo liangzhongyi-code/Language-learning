@@ -5,6 +5,8 @@ import {
   validateSentence,
   validateKana,
   validateLetter,
+  validateScene,
+  validateReading,
   validateDataset,
   findDuplicateIds,
 } from '../assets/js/core/schema.js';
@@ -519,4 +521,167 @@ test('validateDataset：日文的假名區塊也會被驗到', () => {
   const errors = validateDataset({ kana: [{ ...SEION, exampleWord: '' }] }, 'ja');
   assert.equal(errors.length, 1);
   assert.equal(errors[0].field, 'exampleWord');
+});
+
+/**
+ * 情境題與閱讀題的驗證。
+ *
+ * 這兩個驗證器是題庫的守門員，但它們自己也要被測——
+ * 只拿現有的合法資料跑，走的永遠是「通過」那條路，
+ * 拒絕分支有沒有真的攔得住人不會有人知道。
+ */
+const SCENE = {
+  id: 'ja-sc-001',
+  axis: 'self',
+  scene: '公司的正式會議上，你要向社長報告。',
+  ask: '這時候該怎麼自稱？',
+  answer: 'わたくし',
+  reading: 'わたくし',
+  options: ['わたくし', 'おれ', 'ぼく', 'うち'],
+  note: '最正式的自稱，商務場合對上位者用。',
+  category: 'business',
+  level: 4,
+};
+
+const READING = {
+  id: 'ja-r-001',
+  title: '田中さんの一日',
+  passage: 'あ'.repeat(150),
+  translation: '中文翻譯',
+  category: 'daily',
+  level: 2,
+  questions: [
+    {
+      id: 'ja-r-001-q1',
+      ask: { zh: '中文問題', target: '日本語の質問' },
+      options: [
+        { zh: '甲', target: 'こう', correct: true },
+        { zh: '乙', target: 'おつ' },
+        { zh: '丙', target: 'へい' },
+        { zh: '丁', target: 'てい' },
+      ],
+      note: '說明',
+    },
+    { ...{}, id: 'ja-r-001-q2', ask: { zh: '問題二', target: '質問二' },
+      options: [
+        { zh: '一', target: 'いち', correct: true },
+        { zh: '二', target: 'に' },
+        { zh: '三', target: 'さん' },
+        { zh: '四', target: 'よん' },
+      ], note: '說明' },
+    { id: 'ja-r-001-q3', ask: { zh: '問題三', target: '質問三' },
+      options: [
+        { zh: 'A', target: 'エー', correct: true },
+        { zh: 'B', target: 'ビー' },
+        { zh: 'C', target: 'シー' },
+        { zh: 'D', target: 'ディー' },
+      ], note: '說明' },
+  ],
+};
+
+test('validateScene：合法的情境題通過', () => {
+  assert.equal(validateScene(SCENE, 'ja').ok, true);
+});
+
+test('validateScene：answer 不在 options 裡會被擋下——那題無解', () => {
+  const r = validateScene({ ...SCENE, answer: 'わし' }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('options'));
+  assert.ok(r.errors.some((e) => e.message.includes('無解')));
+});
+
+test('validateScene：選項多一個也被擋下（鍵盤只到 4）', () => {
+  const r = validateScene({ ...SCENE, options: [...SCENE.options, 'わし'] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('options'));
+});
+
+test('validateScene：選項少一個也被擋下', () => {
+  const r = validateScene({ ...SCENE, options: SCENE.options.slice(0, 3) }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('options'));
+});
+
+test('validateScene：重複的選項會被擋下', () => {
+  const r = validateScene({ ...SCENE, options: ['わたくし', 'おれ', 'おれ', 'うち'] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('options'));
+});
+
+test('validateScene：未定義的考點軸會被擋下', () => {
+  const r = validateScene({ ...SCENE, axis: 'nonsense' }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('axis'));
+});
+
+test('validateScene：缺 note 會被擋下——沒有解釋就只是背答案', () => {
+  const r = validateScene({ ...SCENE, note: '' }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('note'));
+});
+
+test('validateReading：合法的短文通過', () => {
+  assert.equal(validateReading(READING, 'ja').ok, true);
+});
+
+test('validateReading：短文太短會被擋下', () => {
+  const r = validateReading({ ...READING, passage: 'あ'.repeat(80) }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('passage'));
+});
+
+test('validateReading：英文短文用詞數計量', () => {
+  const en = {
+    ...READING,
+    id: 'en-r-001',
+    passage: 'word '.repeat(60).trim(),
+    questions: READING.questions.map((q, i) => ({ ...q, id: `en-r-001-q${i + 1}` })),
+  };
+  assert.equal(validateReading(en, 'en').ok, true);
+  const short = { ...en, passage: 'word '.repeat(30).trim() };
+  assert.equal(validateReading(short, 'en').ok, false);
+});
+
+test('validateReading：題數不足三題會被擋下', () => {
+  const r = validateReading({ ...READING, questions: READING.questions.slice(0, 2) }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).includes('questions'));
+});
+
+test('validateReading：題目 id 不是「短文 id + -qN」會被擋下', () => {
+  const bad = { ...READING, questions: [{ ...READING.questions[0], id: 'ja-r-001-x1' }, ...READING.questions.slice(1)] };
+  const r = validateReading(bad, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).some((f) => f.includes('id')));
+});
+
+test('validateReading：沒有正解會被擋下', () => {
+  const q = { ...READING.questions[0], options: READING.questions[0].options.map((o) => ({ zh: o.zh, target: o.target })) };
+  const r = validateReading({ ...READING, questions: [q, ...READING.questions.slice(1)] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).some((f) => f.includes('options')));
+});
+
+test('validateReading：兩個正解會被擋下——那題會變成雙正解', () => {
+  const opts = READING.questions[0].options.map((o, i) => (i <= 1 ? { ...o, correct: true } : o));
+  const q = { ...READING.questions[0], options: opts };
+  const r = validateReading({ ...READING, questions: [q, ...READING.questions.slice(1)] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).some((f) => f.includes('options')));
+});
+
+test('validateReading：缺 target 版的問法會被擋下——語言開關會出現空白', () => {
+  const q = { ...READING.questions[0], ask: { zh: '中文問題' } };
+  const r = validateReading({ ...READING, questions: [q, ...READING.questions.slice(1)] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).some((f) => f.includes('ask')));
+});
+
+test('validateReading：同一語言的選項重複會被擋下', () => {
+  const opts = [...READING.questions[0].options];
+  opts[1] = { ...opts[1], zh: opts[0].zh };
+  const q = { ...READING.questions[0], options: opts };
+  const r = validateReading({ ...READING, questions: [q, ...READING.questions.slice(1)] }, 'ja');
+  assert.equal(r.ok, false);
+  assert.ok(fieldsOf(r).some((f) => f.includes('options')));
 });

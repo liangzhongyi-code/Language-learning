@@ -331,9 +331,13 @@ export function findDuplicateIds(list) {
 }
 
 /**
- * 情境題的選項數。與選擇題一致，四選一。
+ * 情境題與閱讀題的選項數。與選擇題一致，四選一。
+ *
+ * 上下限都要檢查。只擋下限的話，寫五個選項會通過驗證並在畫面上畫出五顆按鈕，
+ * 但鍵盤處理與題面提示都寫死 1-4，第五顆永遠選不到——
+ * 畫面正在告訴使用者可以按一個他按不到的鍵。
  */
-const SCENE_OPTIONS = 4;
+const CHOICE_OPTIONS = 4;
 
 /**
  * 驗證一筆情境題。
@@ -370,8 +374,8 @@ export function validateScene(entry, lang) {
   }
 
   const options = entry.options;
-  if (!Array.isArray(options) || options.length < SCENE_OPTIONS) {
-    c.add('options', `options 至少要 ${SCENE_OPTIONS} 個，實際為 ${JSON.stringify(options)}`);
+  if (!Array.isArray(options) || options.length !== CHOICE_OPTIONS) {
+    c.add('options', `options 必須剛好 ${CHOICE_OPTIONS} 個，實際為 ${JSON.stringify(options)}`);
     return c.result();
   }
   if (options.some((o) => !isFilledString(o))) c.add('options', 'options 不可有空字串');
@@ -392,6 +396,15 @@ export function validateScene(entry, lang) {
 const MIN_READING_QUESTIONS = 3;
 
 /**
+ * 短文的長度下限。
+ *
+ * 單位不同：日文沒有詞間空白只能數字數，英文數詞數。
+ * 這是「還算得上一篇短文」的底線，不是目標值——現有的日文是 155-199 字、
+ * 英文是 60-71 詞。少了這道下限，兩種語言的鬆緊會各自漂移。
+ */
+const MIN_PASSAGE = { ja: 120, en: 50 };
+
+/**
  * 驗證一篇閱讀短文。
  *
  * 短文與題目是一對多，所以驗證分兩層：外層檢查文章本身，
@@ -409,7 +422,19 @@ export function validateReading(entry, lang) {
     c.add('id', `id 必須符合 ${lang}-r-NNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
   }
   if (!isFilledString(entry.title)) c.add('title', 'title 不可為空');
-  if (!isFilledString(entry.passage)) c.add('passage', 'passage 不可為空');
+  if (!isFilledString(entry.passage)) {
+    c.add('passage', 'passage 不可為空');
+  } else {
+    /**
+     * 短文太短就不是閱讀題，是加長版的句型題——沒有足夠的上下文可以推。
+     * 兩種語言的計量單位不同：日文沒有詞間空白，只能數字數。
+     */
+    const size = lang === 'ja' ? entry.passage.length : entry.passage.trim().split(/\s+/).length;
+    const min = MIN_PASSAGE[lang] ?? 0;
+    if (size < min) {
+      c.add('passage', `短文長度不足：${lang === 'ja' ? `${size} 字` : `${size} 詞`}，至少要 ${min}`);
+    }
+  }
   if (!isFilledString(entry.translation)) {
     c.add('translation', 'translation 不可為空，作答後要讓人對照著看');
   }
@@ -437,8 +462,8 @@ export function validateReading(entry, lang) {
     if (!isFilledString(q?.note)) c.add(`${at}.note`, 'note 不可為空，要指出答案在文中的哪裡');
 
     const options = q?.options;
-    if (!Array.isArray(options) || options.length < SCENE_OPTIONS) {
-      c.add(`${at}.options`, `options 至少要 ${SCENE_OPTIONS} 個`);
+    if (!Array.isArray(options) || options.length !== CHOICE_OPTIONS) {
+      c.add(`${at}.options`, `options 必須剛好 ${CHOICE_OPTIONS} 個`);
       continue;
     }
 

@@ -129,3 +129,65 @@ test('buildLayout：空 chunks 不爆', () => {
   assert.deepEqual(r.targetRow, []);
   assert.equal(r.hasOrderDiff, false);
 });
+
+/**
+ * 拿真實題庫跑一遍。
+ *
+ * 上面那幾個手寫 fixture 只證明演算法對，不證明題庫餵得進去。
+ * 句庫從 31／28 長到 147／150 之後，新句子若有結構問題，
+ * 先炸的是文法頁的色塊與連接線，而不是測驗頁——這裡是那道防線。
+ */
+const { sentences: jaSentences } = await import('../assets/js/data/ja/sentences.js');
+const { sentences: enSentences } = await import('../assets/js/data/en/sentences.js');
+
+for (const [lang, corpus] of [['ja', jaSentences], ['en', enSentences]]) {
+  test(`${lang} 全部句子都排得出版面，兩排都不會是空的`, () => {
+    for (const s of corpus) {
+      const layout = buildLayout(s);
+      assert.ok(layout.zhRow.length > 0, `${s.id} 的中文排是空的`);
+      assert.ok(layout.targetRow.length > 0, `${s.id} 的目標語言排是空的`);
+    }
+  });
+
+  test(`${lang} 中文排串起來等於整句中文`, () => {
+    for (const s of corpus) {
+      const joined = buildLayout(s).zhRow.map((cell) => cell.text).join('');
+      assert.equal(joined, s.zh, `${s.id} 的中文排組不回整句`);
+    }
+  });
+
+  test(`${lang} 目標語言排的順序就是 chunks 的順序`, () => {
+    for (const s of corpus) {
+      const indices = buildLayout(s).targetRow.map((cell) => cell.chunkIndex);
+      assert.deepEqual(indices, s.chunks.map((_, i) => i), `${s.id} 的目標語言排順序不對`);
+    }
+  });
+
+  test(`${lang} 沒有整句每一塊都被標成語序不同的退化情況`, () => {
+    for (const s of corpus) {
+      const layout = buildLayout(s);
+      const moved = layout.targetRow.filter((cell) => cell.moved).length;
+      const comparable = layout.zhRow.length;
+      assert.ok(
+        moved < comparable || comparable <= 1,
+        `${s.id} 的每一塊都被標成語序不同，那等於沒有標`
+      );
+    }
+  });
+}
+
+test('日文的助詞只出現在目標語言排，中文排完全不顯示', () => {
+  for (const s of jaSentences) {
+    const layout = buildLayout(s);
+    const particles = s.chunks.filter((ch) => ch.role === 'particle');
+    if (!particles.length) continue;
+    for (const cell of layout.zhRow) {
+      assert.equal(cell.isParticle, false, `${s.id} 的中文排出現了助詞`);
+    }
+  }
+});
+
+test('英文句庫裡沒有助詞——那是日文才有的東西', () => {
+  const withParticle = enSentences.filter((s) => s.chunks.some((ch) => ch.role === 'particle'));
+  assert.deepEqual(withParticle.map((s) => s.id), []);
+});
