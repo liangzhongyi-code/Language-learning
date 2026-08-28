@@ -22,6 +22,13 @@ const OPTIONS_PER_QUESTION = 4;
 const DISTRACTORS_PER_QUESTION = OPTIONS_PER_QUESTION - 1;
 
 /**
+ * 題庫至少要有這麼多筆才出得出題。
+ * 匯出給 ui 用——設定畫面要在按下開始「之前」就知道某個題源能不能選，
+ * 兩邊各寫一個 4 遲早會分家。
+ */
+export const MIN_POOL = OPTIONS_PER_QUESTION;
+
+/**
  * 填空題的候選詞至少要比空格多幾個。
  * 一樣多的話用刪去法就能全對，等於沒考。
  */
@@ -92,6 +99,21 @@ export function isCorrect(question) {
 }
 
 /**
+ * 依 category 把題庫分桶，給 pickDistractors 的第一段用。
+ * 桶內順序與原本的陣列順序相同，所以抽出來的結果與掃全表時完全一樣。
+ */
+function indexByCategory(pool) {
+  const map = new Map();
+  for (const item of pool) {
+    const key = item.category ?? '';
+    const bucket = map.get(key);
+    if (bucket) bucket.push(item);
+    else map.set(key, [item]);
+  }
+  return map;
+}
+
+/**
  * 挑三個干擾選項。
  * 依「同 category → 同 level → 全域」三段遞補，讓干擾選項盡量與正解同一個
  * 語意範疇，題目才有鑑別度；但無論如何都要湊滿三個，湊不滿就是題庫太小，
@@ -99,31 +121,33 @@ export function isCorrect(question) {
  *
  * 顯示文字與正解相同的項目一律排除，否則會出現兩個都對的選項。
  */
-export function pickDistractors(pool, correct, optionField, rng = Math.random) {
-  const candidates = (pool || []).filter(
-    (item) => item.id !== correct.id && item[optionField] !== correct[optionField]
-  );
+export function pickDistractors(pool, correct, optionField, rng = Math.random, byCategory = null) {
+  const list = pool || [];
+  const usable = (item) => item.id !== correct.id && item[optionField] !== correct[optionField];
+  /* 有索引就從同 category 的桶子裡挑，沒有就退回掃全表（單獨呼叫時的路徑） */
+  const sameCategory = byCategory ? byCategory.get(correct.category ?? '') ?? [] : null;
 
-  if (candidates.length < DISTRACTORS_PER_QUESTION) {
-    throw new Error(
-      `題庫筆數不足：可用的干擾選項只有 ${candidates.length} 筆，` +
-        `每題需要 ${DISTRACTORS_PER_QUESTION} 個。請至少準備 ${OPTIONS_PER_QUESTION} 筆不重複的題目。`
-    );
-  }
-
+  /**
+   * 三段一律惰性求值。
+   *
+   * 以前是三段都先 filter 出來放進陣列，加上一開始的 candidates 共四趟全掃，
+   * 即使第一段就湊滿也照掃不誤。題數選「全部」時等於 7608 題 × 四趟 7608 筆，
+   * 主執行緒同步凍結 2.2 秒、畫面上沒有任何提示。
+   * 絕大多數情況同 category 就湊得滿，後兩段連掃都不該掃。
+   */
   const tiers = [
-    candidates.filter((c) => c.category === correct.category),
-    candidates.filter((c) => c.category !== correct.category && c.level === correct.level),
-    candidates,
+    () => (sameCategory || list).filter((c) => usable(c) && c.category === correct.category),
+    () => list.filter((c) => usable(c) && c.category !== correct.category && c.level === correct.level),
+    () => list.filter(usable),
   ];
 
   const picked = [];
   const takenIds = new Set();
   const takenTexts = new Set();
 
-  for (const tier of tiers) {
+  for (const tierOf of tiers) {
     if (picked.length >= DISTRACTORS_PER_QUESTION) break;
-    const fresh = tier.filter((c) => !takenIds.has(c.id) && !takenTexts.has(c[optionField]));
+    const fresh = tierOf().filter((c) => !takenIds.has(c.id) && !takenTexts.has(c[optionField]));
     for (const item of shuffle(fresh, rng)) {
       if (picked.length >= DISTRACTORS_PER_QUESTION) break;
       if (takenTexts.has(item[optionField])) continue;
@@ -133,7 +157,15 @@ export function pickDistractors(pool, correct, optionField, rng = Math.random) {
     }
   }
 
+  /* 湊不滿才回頭算總數——這一趟只在出錯時付，不在每一題上付 */
   if (picked.length < DISTRACTORS_PER_QUESTION) {
+    const total = list.filter(usable).length;
+    if (total < DISTRACTORS_PER_QUESTION) {
+      throw new Error(
+        `題庫筆數不足：可用的干擾選項只有 ${total} 筆，` +
+          `每題需要 ${DISTRACTORS_PER_QUESTION} 個。請至少準備 ${OPTIONS_PER_QUESTION} 筆不重複的題目。`
+      );
+    }
     throw new Error(
       `題庫筆數不足：湊不出 ${DISTRACTORS_PER_QUESTION} 個文字相異的干擾選項（正解：${correct.id}）。`
     );
@@ -199,9 +231,9 @@ export function progressPercent(session) {
 /**
  * 產生一題選擇題
  */
-function buildChoiceQuestion(item, pool, { lang, direction, rng }) {
+function buildChoiceQuestion(item, pool, { lang, direction, rng, byCategory = null }) {
   const fields = DIRECTION_FIELDS[direction];
-  const distractors = pickDistractors(pool, item, fields.option, rng);
+  const distractors = pickDistractors(pool, item, fields.option, rng, byCategory);
 
   const options = shuffle(
     [
@@ -343,7 +375,13 @@ function sampleReadingQuestions(pool, count, rng) {
  */
 function blankCountFor(chunkCount, rng) {
   const wanted = chunkCount <= 3 ? 1 : chunkCount <= 5 ? 2 : 2 + (rng() < 0.5 ? 0 : 1);
-  return Math.min(wanted, chunkCount - 1);
+  /**
+   * 上限有兩條：至少留一塊不挖，以及挖得出不相鄰的位置。
+   * 後者是 floor((n+1)/2)——n 塊最多能排下這麼多個彼此不相鄰的位置。
+   * 這條夾限就是 pickBlankIndices 的前提，寫在這裡才擋得住往後放寬挖空數時
+   * 悄悄開始出現相鄰空格。
+   */
+  return Math.min(wanted, chunkCount - 1, Math.floor((chunkCount + 1) / 2));
 }
 
 /**
@@ -357,13 +395,21 @@ function blankCountFor(chunkCount, rng) {
  * 這裡改用不相鄰組合與一般組合之間的標準對應：
  * 先從 n-k+1 個位置挑 k 個，再把第 j 個往後推 j 格，
  * 推完相鄰兩個的間距必定 ≥2。只要 k ≤ (n+1)/2 就一定挑得出來，不必重試。
+ * 那個前提由 blankCountFor 保證。
  */
 function pickBlankIndices(chunkCount, count, rng) {
   const room = chunkCount - count + 1;
 
-  /* 句子短到連一組不相鄰的位置都排不下時，寧可挖相鄰的也不要少挖 */
+  /**
+   * 前提不成立就是呼叫端算錯了挖空數，不是資料問題。
+   * 以前這裡是「排不下就改挖相鄰的」，但那條路現行的 blankCountFor 永遠走不到，
+   * 於是它成了唯一會產生相鄰空格、卻沒有任何測試會經過的分支。
+   * 放寬 blankCountFor 的人應該當場看到錯誤，而不是在題目上看到兩個連在一起的空格。
+   */
   if (count > room) {
-    return new Set(sample(Array.from({ length: chunkCount }, (_, i) => i), count, rng));
+    throw new Error(
+      `挖空數 ${count} 超過 ${chunkCount} 塊排得下的不相鄰位置（上限 ${Math.floor((chunkCount + 1) / 2)}）。`
+    );
   }
 
   const chosen = sample(Array.from({ length: room }, (_, i) => i), count, rng).sort((a, b) => a - b);
@@ -502,12 +548,20 @@ export function buildSession({
   const picked =
     source === 'reading' ? sampleReadingQuestions(pool, count, rng) : sample(pool, count, rng);
 
+  /**
+   * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。
+   * 一局 10 題感覺不出來，但題數選「全部」時是 7608 題 × 7608 筆的差別。
+   */
+  const byCategory = kind === 'choice' && source !== 'scene' && source !== 'reading'
+    ? indexByCategory(pool)
+    : null;
+
   const questions = picked.map((item) => {
     if (kind === 'cloze') return buildClozeQuestion(item, pool, { lang, rng });
     if (source === 'scene') return buildSceneQuestion(item, { lang, rng });
     if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
-    return buildChoiceQuestion(item, pool, { lang, direction: dir, rng });
+    return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });
   });
 
   return { lang, source, direction, questions, cursor: 0 };
