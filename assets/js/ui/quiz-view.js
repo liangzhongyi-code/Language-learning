@@ -754,6 +754,18 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       .map(
         (w) => `
         <div class="wrong">
+          ${
+            /**
+             * 閱讀題帶短文標題、情境題帶場合描述。
+             * 少了這一行，「他怎麼從車站到公司？」在檢討畫面上認不出是哪一篇；
+             * 情境題更嚴重——場合就是判斷的全部依據。
+             */
+            w.title
+              ? `<div class="wrong-src">${esc(w.title)}</div>`
+              : w.context
+                ? `<div class="wrong-src">${esc(w.context)}</div>`
+                : ''
+          }
           <div class="q">${esc(w.prompt)}${
             w.speakText
               ? `<button class="speak" type="button" data-speak="${esc(w.speakText)}"

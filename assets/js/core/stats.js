@@ -92,6 +92,13 @@ export function summarize(session) {
     wrongList.push({
       sourceId: q.sourceId,
       prompt: q.prompt,
+      /**
+       * 題目脫離情境就看不懂：閱讀題的 prompt 是「他怎麼從車站到公司？」，
+       * 情境題的判斷依據整個在場合描述裡。檢討畫面只印 prompt 的話，
+       * 八篇短文各四題會變成一串認不出屬於哪一篇的問句。
+       */
+      title: q.title ?? null,
+      context: q.context ?? null,
       chosenText: chosenTextOf(q),
       correctText: correctTextOf(q),
       note: q.note ?? null,

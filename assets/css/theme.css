@@ -975,6 +975,16 @@ html.no-lines .gap-mid svg { display: none; }
   border-left: 3px solid var(--bad);
   border-radius: var(--radius);
 }
+/* 錯題出自哪一篇短文／哪個場合。壓小一級，它是定位用的線索不是題目本身 */
+.wrong-src {
+  font-size: 12.5px;
+  color: var(--mute);
+  margin-bottom: 5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .wrong .q { font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: var(--size-2); flex-wrap: wrap; }
 .wrong .ans { font-size: 13px; color: var(--dim); display: flex; gap: var(--size-3); flex-wrap: wrap; }
 .wrong .ans i { font-style: normal; }
