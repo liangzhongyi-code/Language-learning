@@ -160,6 +160,28 @@ test('填空題：干擾詞優先取同一個語法角色', () => {
   }
 });
 
+/**
+ * 每一個空格都要有屬於自己角色的干擾詞。
+ *
+ * 只驗「干擾詞都是同角色」還不夠：兩個空格分別是主詞與時間時，
+ * 三個干擾詞可能全是主詞，時間那一格就只剩正解可填，等於送分。
+ */
+test('填空題：每個空格的角色都至少有一個同角色干擾詞', () => {
+  for (const q of cloze().questions) {
+    const answers = new Set(q.blanks.map((b) => b.answer));
+    const distractorRoles = q.bank
+      .filter((t) => !answers.has(t))
+      .map((t) => t.replace(/\d+$/, ''));
+
+    for (const blank of q.blanks) {
+      assert.ok(
+        distractorRoles.includes(blank.role),
+        `${q.sourceId} 的 ${blank.role} 空格沒有同角色干擾詞，候選只剩 ${distractorRoles.join('/')}`
+      );
+    }
+  }
+});
+
 test('填空題：干擾詞不會取自本句，否則等於送分', () => {
   for (const q of cloze().questions) {
     const source = CHUNKED.find((s) => s.id === q.sourceId);

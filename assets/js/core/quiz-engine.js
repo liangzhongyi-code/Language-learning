@@ -245,33 +245,52 @@ function pickBlankIndices(chunkCount, count, rng) {
 /**
  * 湊出填空題的候選詞。
  *
- * 干擾詞優先取「同一個語法角色」的塊——助詞的空格就配別的助詞，
- * 動詞的空格就配別的動詞。角色不同的干擾詞一眼就能刷掉，等於沒放。
- * 同角色湊不滿才往全部塊退，退到底仍不滿就只好少幾個，不拋錯：
- * 候選詞比空格多一個就還能考，沒必要為此讓整局出不來。
+ * 干擾詞取「同一個語法角色」的塊——助詞的空格配別的助詞，動詞的空格配別的動詞。
+ * 角色不同的干擾詞一眼就能刷掉，等於沒放。
+ *
+ * 而且要各個角色輪流取，不能一口氣從同一個角色抓滿。
+ * 「他昨天寄包裹」挖掉主詞與時間，若干擾詞全是主詞（They／She／I），
+ * 時間那一格就只剩正解可填，那一格等於送分。輪流取才能保證每一格都有像樣的對手。
+ *
+ * 同角色湊不滿才往全部塊退；退到底仍不滿就少放幾個，不拋錯——
+ * 候選詞比空格多就還能考，沒必要為此讓整局出不來。
  */
-function buildBank(answers, blankRoles, otherChunks, rng) {
+function buildBank(blanks, otherChunks, rng) {
+  const answers = blanks.map((b) => b.answer);
   const taken = new Set(answers);
-  const wanted = answers.length + BANK_EXTRA;
+  const roles = [...new Set(blanks.map((b) => b.role))];
   const picked = [];
 
-  const tiers = [
-    otherChunks.filter((ch) => blankRoles.has(ch.role)),
-    otherChunks,
-  ];
+  /* 先按角色分堆並各自洗牌，之後只要依序取用就是隨機的 */
+  const byRole = new Map(roles.map((r) => [r, shuffle(otherChunks.filter((c) => c.role === r), rng)]));
 
-  for (const tier of tiers) {
-    if (picked.length >= BANK_EXTRA) break;
-    for (const chunk of shuffle(tier, rng)) {
-      if (picked.length >= BANK_EXTRA) break;
+  const take = (list) => {
+    while (list.length) {
+      const chunk = list.shift();
       if (taken.has(chunk.target)) continue;
       taken.add(chunk.target);
       picked.push(chunk.target);
+      return true;
     }
+    return false;
+  };
+
+  /* 一輪給每個角色一個，輪到沒有人拿得出東西為止 */
+  while (picked.length < BANK_EXTRA) {
+    let progressed = false;
+    for (const role of roles) {
+      if (picked.length >= BANK_EXTRA) break;
+      if (take(byRole.get(role))) progressed = true;
+    }
+    if (!progressed) break;
   }
 
+  /* 同角色不夠用，退而取任何塊 */
+  const rest = shuffle(otherChunks, rng);
+  while (picked.length < BANK_EXTRA && take(rest));
+
   /* answers 保留重複：同一句出現兩個「を」時，候選區也要有兩張才填得完 */
-  return shuffle([...answers, ...picked], rng).slice(0, wanted);
+  return shuffle([...answers, ...picked], rng);
 }
 
 /**
@@ -300,7 +319,6 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
     }
   }
 
-  const blankRoles = new Set(blanks.map((b) => b.role));
   const otherChunks = pool
     .filter((s) => s.id !== sentence.id)
     .flatMap((s) => s.chunks || []);
@@ -317,7 +335,7 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
     blanks,
     /* 把區塊拼回整句時要用的間隔，畫面與錯題檢討都靠它 */
     gap: WORD_GAP[lang] ?? '',
-    bank: buildBank(blanks.map((b) => b.answer), blankRoles, otherChunks, rng),
+    bank: buildBank(blanks, otherChunks, rng),
     filled: blanks.map(() => null),
     submitted: false,
     speakText: speakTextOf(sentence, lang),

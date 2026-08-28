@@ -12,5 +12,7 @@
  */
 
 import { sentences as core } from './sentences/core.js';
+import { sentences as b01 } from './sentences/01.js';
+import { sentences as b02 } from './sentences/02.js';
 
-export const sentences = [...core];
+export const sentences = [...core, ...b01, ...b02];
