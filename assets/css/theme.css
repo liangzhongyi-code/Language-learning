@@ -857,6 +857,8 @@ html.no-lines .gap-mid svg { display: none; }
   word-break: break-word;
 }
 .cz-text { white-space: pre-wrap; }
+/* 詞與詞之間的空白。white-space: pre 才不會被 flex 當成可丟棄的空白節點 */
+.cz-gap { white-space: pre; }
 
 .cz-blank {
   display: inline-flex;
@@ -1062,16 +1064,6 @@ html.no-lines .gap-mid svg { display: none; }
   .word-romaji { font-size: 12.5px; }
   .progress-text { font-size: 13px; }
 
-  /**
-   * 單字卡在手機上要把寬度讓給單字本身。
-   * .word-main 是 flex: 1（basis 0），.word-tags 沒有設限就會撐成 max-content，
-   * 結果 375 寬的手機上標籤拿走 125px、單字只剩 108px，
-   * 「卵 たまご tamago」的羅馬拼音被擠到第二行，卡片高度在 84 / 112 之間跳。
-   * 給標籤一個上限讓它自己折行，單字欄就回到 149px，多數卡片一行放得下。
-   * 標籤是次要資訊（詞性、主題、級別），該讓的是它。
-   */
-  .word-tags { min-width: 0; flex-shrink: 1; justify-content: flex-end; max-width: 84px; }
-
   .page-head h1 { font-size: var(--font-size-5); }
   .prompt { font-size: var(--font-size-5); }
 
@@ -1101,19 +1093,23 @@ html.no-lines .gap-mid svg { display: none; }
   /**
    * 假名表的欄數是固定的（清音 5 欄、拗音 3 欄），才能排成傳統的五十音格狀。
    * 欄數是 kana-view.js 寫的 inline style，用的是 minmax(0,1fr)，本來就會跟著容器縮，
-   * 所以手機上讓它縮就好，只要把格子本身壓小到 320 寬也塞得下五欄。
+   * 所以手機上讓它縮就好，把格子壓小一點五欄就塞得下。
    *
    * 不要改回「固定 430px 寬 + 容器橫向捲動」：那樣在 375 寬的手機上，
    * 第五欄（お、こ、そ⋯）會整欄跑到畫面外，而且連一點邊都露不出來，
    * 看起來就是一張完整的四欄表，使用者不會知道還能往右捲。
    * 五十音表的意義就在同一列看得到五個母音，少一欄等於這張表白做。
+   *
+   * 這一級只縮到「360 寬放得下五欄」為止。再往下壓是 359px 以下才需要的，
+   * 套到整個 640px 會讓 400-640 這一段的格子明明有 85-118px 寬、字卻只有 20px，
+   * 比 641px 的桌機版還小——上面那段「小字在手機上往上調一級」就白寫了。
    */
-  .kana-grid { gap: 5px; }
-  .kana { padding: 10px 3px; }
-  .kana .glyph { font-size: 20px; }
-  .kana .glyph em { font-size: 13px; margin-left: 2px; }
-  .kana .romaji, .kana .example { font-size: 10px; }
-  /* 這一格裡是假名字元（が ← か），不是純裝飾，在塞得下的前提下盡量給大 */
+  .kana-grid { gap: 6px; }
+  .kana { padding: 12px 5px; }
+  .kana .glyph { font-size: 23px; }
+  .kana .glyph em { font-size: 15px; margin-left: 3px; }
+  .kana .romaji, .kana .example { font-size: 11px; }
+  /* 這一格裡是假名字元（が ← か），不是純裝飾，要看得清楚 */
   .kana .sub { font-size: 11px; }
 
   /* 字母卡只有一欄一個字母，沒有五十音的欄數限制，維持原本的寬鬆排版 */
@@ -1122,4 +1118,34 @@ html.no-lines .gap-mid svg { display: none; }
   .letter-grid .kana .glyph { font-size: 25px; }
   .letter-grid .kana .glyph em { font-size: 17px; margin-left: 5px; }
   .letter-grid .kana .romaji, .letter-grid .kana .example { font-size: 12px; }
+
+  /**
+   * 單字卡在手機上要把寬度讓給單字本身。
+   * .word-main 是 flex: 1（basis 0），.word-tags 沒有設限就會撐成 max-content，
+   * 結果 375 寬的手機上標籤拿走 125px、單字只剩 108px，
+   * 「卵 たまご tamago」的羅馬拼音被擠到第二行，卡片高度在 84 / 112 之間跳。
+   * 給標籤一個上限讓它自己折行，單字欄就回到 149px，多數卡片一行放得下。
+   * 標籤是次要資訊（詞性、主題、級別），該讓的是它。
+   *
+   * 480px 以上不需要——那時單字欄已經有 254px 以上，壓標籤只是白折一行。
+   */
+  .word-tags { min-width: 0; flex-shrink: 1; justify-content: flex-end; }
+}
+
+/**
+ * 窄螢幕（iPhone SE 一級）才需要的再壓一級。
+ * 320 寬時容器只有 288px，五欄扣掉間隔每格剩 54px，
+ * 上面那組 23px 的字會撐破格子——實測 320 有一格溢出、360 起就乾淨。
+ */
+@media (max-width: 359px) {
+  .kana-grid { gap: 5px; }
+  .kana { padding: 10px 3px; }
+  .kana .glyph { font-size: 20px; }
+  .kana .glyph em { font-size: 13px; margin-left: 2px; }
+  .kana .romaji, .kana .example { font-size: 10px; }
+}
+
+/* 標籤的上限只在真的擠的時候才給 */
+@media (max-width: 480px) {
+  .word-tags { max-width: 84px; }
 }
