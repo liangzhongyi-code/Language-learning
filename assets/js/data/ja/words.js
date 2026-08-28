@@ -26,5 +26,6 @@ import { words as n205 } from './words/n2-05.js';
 import { words as n206 } from './words/n2-06.js';
 import { words as n502 } from './words/n5-02.js';
 import { words as n402 } from './words/n4-02.js';
+import { words as n101 } from './words/n1-01.js';
 
-export const words = [...core, ...n501, ...n401, ...n301, ...n302, ...n303, ...n304, ...n305, ...n201, ...n202, ...n203, ...n204, ...n205, ...n206, ...n502, ...n402];
+export const words = [...core, ...n501, ...n401, ...n301, ...n302, ...n303, ...n304, ...n305, ...n201, ...n202, ...n203, ...n204, ...n205, ...n206, ...n502, ...n402, ...n101];
