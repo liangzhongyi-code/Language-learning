@@ -8,7 +8,7 @@
  * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
  */
 
-import { buildSession, answer, poolOf, progressPercent, isAnswered } from '../core/quiz-engine.js';
+import { buildSession, answer, poolOf, progressPercent, isAnswered, MIN_POOL } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
@@ -48,9 +48,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('source');
   const config = {
-    source: ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading'].includes(requested)
-      ? requested
-      : 'words',
+    /**
+     * 先放 words，真正的採用在下面——要等 poolSize 定義好才問得到題庫。
+     * 光比對名稱不夠：英文沒有情境題，`?source=scene` 會讓題型那一排
+     * 沒有任何一顆膠囊是選取狀態，使用者看不出這局會考什麼，
+     * 按了開始才跳出一句帶內部代號的「題源 scene 只有 0 筆」。
+     */
+    source: 'words',
     direction: 'zh2target',
     count: 10,
     /**
@@ -74,9 +78,20 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   let saveFailed = false;
   /* 目前所在的畫面，鍵盤快捷鍵只在作答時生效 */
   let phase = 'setup';
+  /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
+  let passageOpen = {};
 
   /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
   const poolSize = (source) => poolOf(source, words, sentences, scenes, readings).length;
+
+  /**
+   * 網址指定的題源，要這個語言真的出得出題才採用。
+   * 問 poolSize 而不是查白名單，同時解決「名稱有沒有效」與
+   * 「這個語言有沒有這份題庫」兩件事——後者是白名單永遠答不了的。
+   */
+  if (SOURCE_LABEL[requested] && poolSize(requested) >= MIN_POOL) {
+    config.source = requested;
+  }
 
   /* ── 設定畫面 ─────────────────────────────────────────── */
 
@@ -98,9 +113,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         <div class="setting">
           <label>題型</label>
           <div class="chips">${chips('source', [
-            ['words', `單字（${words.length}）`],
-            ['sentences', `句型（${sentences.length}）`],
-            ['mixed', `混合（${words.length + sentences.length}）`],
+            ['words', `單字（${poolSize('words')}）`],
+            ['sentences', `句型（${poolSize('sentences')}）`],
+            ['mixed', `混合（${poolSize('mixed')}）`],
             ['cloze', `填空（${poolSize('cloze')}）`],
             /**
              * 情境題只有日文有資料——自稱與敬語體系是日文特有的，
@@ -209,6 +224,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
   function start() {
     try {
+      resetPlayState();
       const count = config.useAll ? poolSize(config.source) : config.count;
       session = buildSession({
         lang,
@@ -232,19 +248,20 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   }
 
   /**
-   * 回到設定畫面。session 一律丟掉——半局狀態不保留是刻意的設計。
+   * 回到設定畫面。session 與填空暫存一律丟掉——半局狀態不保留是刻意的設計。
    */
   function backToSetup() {
     session = null;
+    resetPlayState();
     phase = 'setup';
     renderSetup();
   }
 
   /* ── 作答畫面 ─────────────────────────────────────────── */
 
-  function renderQuestion() {
+  function renderQuestion(errorMessage) {
     const q = session.questions[session.cursor];
-    if (q.kind === 'cloze') renderClozeQuestion();
+    if (q.kind === 'cloze') renderClozeQuestion(errorMessage);
     else renderChoiceQuestion();
   }
 
@@ -294,8 +311,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             <span class="key">${i + 1}</span>${esc(option.text)}${mark}
           </button>`;
 
-        /* 作答後在正解旁邊補一顆朗讀鍵，讓使用者聽正確的說法 */
-        const needsSpeak = answered && i === q.correctIndex && q.optionLang !== 'zh';
+        /**
+         * 作答後在正解旁邊補一顆朗讀鍵，讓使用者聽正確的說法。
+         * speakText 的檢查跟上面題面那顆是同一道守衛，不能只擋一邊——
+         * 閱讀題切到全外語模式時 optionLang 不是 zh，漏掉這個條件就會
+         * 在正解旁畫出一顆 data-speak 為空、按了完全沒反應的按鈕。
+         */
+        const needsSpeak = answered && i === q.correctIndex && q.optionLang !== 'zh' && q.speakText;
         return needsSpeak
           ? `<div class="opt-row">${button}<button class="speak tall" type="button"
                data-speak="${esc(q.speakText)}" data-speak-lang="${lang}"
@@ -331,10 +353,23 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const previous = index > 0 ? session.questions[index - 1] : null;
     const sameAsPrevious = isReading && previous?.passageId === q.passageId;
 
+    /**
+     * 展開狀態要跟著使用者走，不能每次重繪都回到預設。
+     *
+     * 作答會整塊重建 innerHTML，如果照 sameAsPrevious 重新決定 open，
+     * 使用者手動收起來的短文會在選完答案的瞬間又攤開，把剛出現的
+     * 「正解／你選的」標記推出視窗；反過來手動展開的也會被收掉，
+     * 正好是他要對照原文的那一刻。sameAsPrevious 只當作第一次出現時的初始值。
+     */
+    if (isReading && !(q.passageId in passageOpen)) {
+      passageOpen[q.passageId] = !sameAsPrevious;
+    }
+    const isOpen = isReading && passageOpen[q.passageId];
+
     const context = !q.context
       ? ''
       : isReading
-        ? `<details class="context passage" lang="${lang}" ${sameAsPrevious ? '' : 'open'}>
+        ? `<details class="context passage" lang="${lang}" data-passage="${esc(q.passageId)}" ${isOpen ? 'open' : ''}>
              <summary class="passage-title">${esc(q.title)}</summary>${esc(q.context)}
            </details>`
         : `<div class="context">${esc(q.context)}</div>`;
@@ -376,6 +411,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     mount.querySelectorAll('[data-opt]').forEach((button) => {
       button.addEventListener('click', () => choose(Number(button.dataset.opt)));
     });
+    mount.querySelector('[data-passage]')?.addEventListener('toggle', (event) => {
+      passageOpen[event.currentTarget.dataset.passage] = event.currentTarget.open;
+    });
     mount.querySelector('[data-next]').addEventListener('click', next);
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
   }
@@ -385,17 +423,53 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   /**
    * 填空題作答中的暫存。
    *
-   * 記的是「哪一格放了候選區的第幾張」而不是文字：同一句要填兩個「を」時，
+   * assign 記的是「哪一格放了候選區的第幾張」而不是文字：同一句要填兩個「を」時，
    * 只記文字就分不出使用者用掉的是哪一張，候選區會少扣一張。
+   * order 記的是放置的先後順序，退格鍵要靠它才知道「最後填的」是哪一格。
    * 換題就整組重來——這一頁本來就不支援回上一題。
    */
   let draft = null;
 
+  /**
+   * 快取鍵不能只看題號。
+   *
+   * 每一局都從第 0 題開始，所以「上一局的第 1 題」與「這一局的第 1 題」題號相同，
+   * 只比對題號會讓新題目撿到上一局的暫存：空格一載入就被填好使用者沒放過的詞，
+   * 兩局空格數不同時 allFilled 還會拿舊陣列算出 true，提交鍵在畫面還有空格時就變成可按。
+   * 一併比對 sourceId 與空格數，任何一項不同就重建。
+   */
   function draftFor(q, index) {
-    if (!draft || draft.index !== index) {
-      draft = { index, assign: q.blanks.map(() => null), word: null, blank: null };
+    const stale =
+      !draft ||
+      draft.index !== index ||
+      draft.sourceId !== q.sourceId ||
+      draft.assign.length !== q.blanks.length;
+
+    if (stale) {
+      draft = {
+        index,
+        sourceId: q.sourceId,
+        assign: q.blanks.map(() => null),
+        order: [],
+        word: null,
+        blank: null,
+      };
     }
     return draft;
+  }
+
+  /* 換局時把畫面暫存丟掉：填空的作答暫存、閱讀短文的展開狀態 */
+  function resetPlayState() {
+    draft = null;
+    passageOpen = {};
+  }
+
+  /* 清空一格，同時把它從放置順序裡拿掉 */
+  function clearBlank(state, blankIndex) {
+    if (state.assign[blankIndex] === null) return;
+    state.assign[blankIndex] = null;
+    const at = state.order.lastIndexOf(blankIndex);
+    if (at !== -1) state.order.splice(at, 1);
   }
 
   /**
@@ -405,13 +479,15 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    */
   function place(state, blankIndex, wordIndex) {
     const previous = state.assign.indexOf(wordIndex);
-    if (previous !== -1) state.assign[previous] = null;
+    if (previous !== -1) clearBlank(state, previous);
+    clearBlank(state, blankIndex);
     state.assign[blankIndex] = wordIndex;
+    state.order.push(blankIndex);
     state.word = null;
     state.blank = null;
   }
 
-  function renderClozeQuestion() {
+  function renderClozeQuestion(errorMessage) {
     const index = session.cursor;
     const q = session.questions[index];
     const total = session.questions.length;
@@ -438,14 +514,22 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         >${esc(filledText)}</button>`;
     };
 
-    /* 詞間隔由 core 決定（英文有空白、日文沒有），這裡不再自己判斷語言 */
+    /**
+     * 詞間隔由 core 決定（英文有空白、日文沒有），這裡不再自己判斷語言。
+     *
+     * 但間隔必須包成實體元素才畫得出來：.cz-line 是 flex 容器，
+     * 而 flex 會把「只含空白的文字節點」整個丟棄——
+     * 直接 join(' ') 的結果是畫面上出現「study abroadin Japan」，
+     * core 特地為英文準備的空白被版面抵銷掉。
+     */
+    const gapHtml = q.gap ? `<span class="cz-gap">${esc(q.gap)}</span>` : '';
     const line = q.segments
       .map((seg) =>
         seg.type === 'text'
           ? `<span class="cz-text">${esc(seg.text)}</span>`
           : blankHtml(seg.blankIndex)
       )
-      .join(q.gap);
+      .join(gapHtml);
 
     const used = new Set(state.assign.filter((v) => v !== null));
     const bank = answered
@@ -494,6 +578,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
         <div class="cz-line" lang="${lang}">${line}</div>
         ${bank}
+        ${errorMessage ? `<div class="notice">${esc(errorMessage)}</div>` : ''}
         ${feedback}
 
         <div class="actions">
@@ -541,7 +626,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         /* 點已經用掉的候選詞＝把它從空格收回來 */
         const at = state.assign.indexOf(wordIndex);
         if (at !== -1) {
-          state.assign[at] = null;
+          clearBlank(state, at);
           state.word = null;
           state.blank = null;
         } else if (state.blank !== null) {
@@ -573,7 +658,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         if (state.word !== null) {
           place(state, blankIndex, state.word);
         } else if (state.assign[blankIndex] !== null) {
-          state.assign[blankIndex] = null;
+          clearBlank(state, blankIndex);
           state.blank = null;
         } else {
           state.blank = state.blank === blankIndex ? null : blankIndex;
@@ -604,7 +689,17 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const state = draftFor(q, session.cursor);
     if (state.assign.some((v) => v === null)) return;
 
-    answer(session, session.cursor, state.assign.map((i) => q.bank[i]));
+    /**
+     * answerCloze 的兩個錯誤訊息是寫給使用者看的（「還有空格沒填」「格式不符」），
+     * 不接住的話會變成 console 裡的未捕捉例外，畫面上完全沒有反應——
+     * 使用者只會看到按了提交什麼都沒發生。
+     */
+    try {
+      answer(session, session.cursor, state.assign.map((i) => q.bank[i]));
+    } catch (error) {
+      renderQuestion(error.message);
+      return;
+    }
     renderQuestion();
     mount.querySelector('[data-next]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -737,12 +832,18 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         if (answered) next();
         else submitCloze();
       } else if (event.key === 'Backspace') {
-        /* 退格清掉最後填的那一格，填錯了不必用滑鼠回頭改 */
+        /**
+         * 退格清掉「最後填的」那一格——照放置順序，不是照位置。
+         *
+         * 不能用「陣列裡索引最大的非空格」：先填第 3 格再填第 1 格時，
+         * 那樣會清掉第 3 格（最早填、而且可能是填對的那格），
+         * 使用者剛放好的第 1 格反而動不到。純鍵盤使用者沒有點空格可以繞過。
+         */
         const state = draftFor(q, session.cursor);
-        const last = state.assign.reduce((acc, v, i) => (v === null ? acc : i), -1);
+        const last = state.order.length ? state.order[state.order.length - 1] : -1;
         if (answered || last === -1) return;
         event.preventDefault();
-        state.assign[last] = null;
+        clearBlank(state, last);
         renderQuestion();
       }
       return;
