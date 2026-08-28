@@ -1159,3 +1159,24 @@ html.no-lines .gap-mid svg { display: none; }
 @media (max-width: 480px) {
   .word-tags { max-width: 84px; }
 }
+
+/**
+ * 鍵盤快捷鍵的線索：提示文字與選項左邊的數字徽章。
+ *
+ * 觸控裝置預設藏起來——手機沒有鍵盤，「可按鍵盤 1-4」與那排數字只是雜訊。
+ * 但不是永久藏掉：quiz-view.js 偵測到第一次按鍵就把 has-keyboard 掛上去，
+ * 接了藍芽鍵盤的平板一按就會看到（它在 CSS 眼裡仍然是 pointer: coarse，
+ * 光靠 media query 會把提示藏給真正用得到的人）。
+ *
+ * 拖放那句不在此列，它是無條件藏掉的——HTML5 拖放在觸控螢幕上不會觸發，
+ * 那句話在手機上不是「用不到」而是假的。
+ */
+@media (hover: none) and (pointer: coarse) {
+  .drag-hint { display: none; }
+  .kbd-hint { display: none; }
+  .opt .key,
+  .cz-word .key { display: none; }
+}
+html.has-keyboard .kbd-hint { display: inline; }
+html.has-keyboard .opt .key,
+html.has-keyboard .cz-word .key { display: inline-flex; }

@@ -81,6 +81,29 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
   let passageOpen = {};
 
+  /**
+   * 鍵盤提示與數字徽章的顯示。
+   *
+   * 觸控裝置預設藏起來——手機沒有鍵盤，「可按鍵盤 1-4」只是雜訊。
+   * 但不能只靠 media query 決定：接了藍芽鍵盤的平板在 CSS 眼裡仍然是
+   * pointer: coarse，那樣會把提示藏給真正用得到的人看不到。
+   *
+   * 所以不猜有沒有鍵盤，等它自己出現——按下任何一個鍵就把提示放出來並記住。
+   * 這一頁沒有任何文字輸入框，所以觸控裝置上的 keydown 只可能來自實體鍵盤。
+   */
+  const KEYBOARD_CLASS = 'has-keyboard';
+  let keyboardSeen = loadPrefs().keyboardSeen === true;
+  if (keyboardSeen) document.documentElement.classList.add(KEYBOARD_CLASS);
+
+  function noticeKeyboard(event) {
+    if (keyboardSeen) return;
+    /* 單獨的修飾鍵不算——它們可能來自輔具或系統，不代表有一整組鍵盤 */
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) return;
+    keyboardSeen = true;
+    document.documentElement.classList.add(KEYBOARD_CLASS);
+    setPref('keyboardSeen', true);
+  }
+
   /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
   const poolSize = (source) => poolOf(source, words, sentences, scenes, readings).length;
 
@@ -393,7 +416,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
         <div class="prompt-sub">${
           isReading ? '依短文內容作答' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
-        }　·　可按鍵盤 1-4</div>
+        }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>
 
         <div class="opts">${options}</div>
         ${feedback}
@@ -573,7 +596,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         <div class="prompt-sub">${
           answered
             ? '對照下方的正解，再看一次語序說明'
-            : '點候選詞再點空格，或直接把候選詞拖進空格　·　可按鍵盤數字選詞、Enter 提交'
+            : '點候選詞再點空格' +
+              /* 拖放在觸控裝置上根本不會觸發，講了就是假的，所以無條件藏掉 */
+              '<span class="drag-hint">，或直接把候選詞拖進空格</span>' +
+              '<span class="kbd-hint">　·　可按鍵盤數字選詞、Enter 提交</span>'
         }</div>
 
         <div class="cz-line" lang="${lang}">${line}</div>
@@ -816,6 +842,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   const INTERACTIVE = 'button, a[href], input, select, textarea, [contenteditable]';
 
   document.addEventListener('keydown', (event) => {
+    noticeKeyboard(event);
     if (phase !== 'playing' || !session) return;
     if (event.target.closest?.(INTERACTIVE)) return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
