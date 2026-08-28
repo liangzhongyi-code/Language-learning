@@ -89,11 +89,28 @@ test('分類代碼都在 CATEGORIES 之內', () => {
 });
 
 test('同一語言內不可有兩筆 target 或 zh 相同，否則選擇題會出現雙正解', () => {
-  for (const [name, list] of Object.entries({ enWords, jaWords })) {
+  for (const [name, list] of Object.entries({ enWords, jaWords, enSentences, jaSentences })) {
     for (const field of ['target', 'zh']) {
       const values = list.map((w) => w[field]);
       const dups = values.filter((v, i) => values.indexOf(v) !== i);
       assert.deepEqual([...new Set(dups)], [], `${name} 的 ${field} 有重複：${[...new Set(dups)]}`);
+    }
+  }
+});
+
+/**
+ * mixed 題源把單字與句子倒進同一個池子抽，
+ * 兩邊各自不重複還不夠——跨過去撞到一樣要出雙正解。
+ */
+test('mixed 題源：單字與句子之間也不可有 target 或 zh 相同', () => {
+  for (const [lang, words, sentences] of [
+    ['en', enWords, enSentences],
+    ['ja', jaWords, jaSentences],
+  ]) {
+    for (const field of ['target', 'zh']) {
+      const wordValues = new Set(words.map((w) => w[field]));
+      const clash = sentences.filter((s) => wordValues.has(s[field])).map((s) => `${s.id}「${s[field]}」`);
+      assert.deepEqual(clash, [], `${lang} 的句子 ${field} 與單字相撞：${clash.join('、')}`);
     }
   }
 });
