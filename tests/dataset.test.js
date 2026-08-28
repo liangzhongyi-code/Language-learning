@@ -13,6 +13,8 @@ import { words as jaWords } from '../assets/js/data/ja/words.js';
 import { sentences as jaSentences } from '../assets/js/data/ja/sentences.js';
 import { kana } from '../assets/js/data/ja/kana.js';
 import { scenes as jaScenes } from '../assets/js/data/ja/scenes.js';
+import { readings as jaReadings } from '../assets/js/data/ja/readings.js';
+import { readings as enReadings } from '../assets/js/data/en/readings.js';
 
 /**
  * 錯誤陣列轉成好讀的訊息，測試失敗時才看得出是哪一筆資料寫錯
@@ -33,7 +35,7 @@ function countBy(list, key) {
 
 test('英文題庫：validateDataset 零錯誤', () => {
   const errors = validateDataset(
-    { words: enWords, sentences: enSentences, letters },
+    { words: enWords, sentences: enSentences, readings: enReadings, letters },
     'en'
   );
   assert.equal(errors.length, 0, `\n${report(errors)}`);
@@ -41,7 +43,7 @@ test('英文題庫：validateDataset 零錯誤', () => {
 
 test('日文題庫：validateDataset 零錯誤', () => {
   const errors = validateDataset(
-    { words: jaWords, sentences: jaSentences, scenes: jaScenes, kana },
+    { words: jaWords, sentences: jaSentences, scenes: jaScenes, readings: jaReadings, kana },
     'ja'
   );
   assert.equal(errors.length, 0, `\n${report(errors)}`);
@@ -368,4 +370,95 @@ test('情境題：一局跑完會寫進 ja:scene 這個統計分組', () => {
   assert.equal(isComplete(session), true);
   assert.equal(summarize(session).accuracy, 100);
   assert.equal(session.source, 'scene');
+});
+
+/* ── 閱讀短文 ─────────────────────────────────────────────── */
+
+test('閱讀短文：每篇至少三題，每題四個不重複選項且含正解', () => {
+  for (const list of [jaReadings, enReadings]) {
+    for (const r of list) {
+      assert.ok(r.questions.length >= 3, `${r.id} 只有 ${r.questions.length} 題`);
+      for (const q of r.questions) {
+        assert.ok(q.options.length >= 4, `${q.id} 選項不足四個`);
+        assert.equal(new Set(q.options).size, q.options.length, `${q.id} 選項有重複`);
+        assert.ok(q.options.includes(q.answer), `${q.id} 的選項不含正解`);
+        assert.ok(q.note && q.note.trim(), `${q.id} 缺解說`);
+      }
+    }
+  }
+});
+
+/**
+ * 短文太短就沒有「讀完再回答」的價值，太長則一屏放不下。
+ * 這個下限抓得很寬鬆，只是防止有人塞一句話進來當短文。
+ */
+test('閱讀短文：文章長度足夠，而且一定附中文翻譯', () => {
+  for (const [name, list, min] of [
+    ['日文', jaReadings, 80],
+    ['英文', enReadings, 150],
+  ]) {
+    for (const r of list) {
+      assert.ok(r.passage.length >= min, `${name} ${r.id} 只有 ${r.passage.length} 字，太短`);
+      assert.ok(r.translation.trim(), `${name} ${r.id} 缺中文翻譯`);
+      assert.ok(r.title.trim(), `${name} ${r.id} 缺標題`);
+    }
+  }
+});
+
+test('閱讀短文：題目 id 全域不重複', () => {
+  for (const [name, list] of [
+    ['ja', jaReadings],
+    ['en', enReadings],
+  ]) {
+    const ids = list.flatMap((r) => r.questions.map((q) => q.id));
+    const dups = ids.filter((v, i) => ids.indexOf(v) !== i);
+    assert.deepEqual([...new Set(dups)], [], `${name} 的閱讀題 id 重複：${[...new Set(dups)]}`);
+  }
+});
+
+/**
+ * 閱讀題按篇抽而不是逐題抽。
+ * 逐題抽的話十題會來自十篇不同的短文，每一題都要重讀一篇新文章，
+ * 一局下來等於讀了十篇——那不是閱讀練習，是折磨。
+ */
+test('閱讀題：同一篇的題目排在一起，不會跳來跳去', () => {
+  for (const [lang, readings] of [
+    ['ja', jaReadings],
+    ['en', enReadings],
+  ]) {
+    const session = buildSession({ lang, words: [], sentences: [], readings, source: 'reading', count: 10 });
+    assert.equal(session.questions.length, 10);
+
+    const order = session.questions.map((q) => q.passageId);
+    const firstSeen = new Map();
+    order.forEach((pid, i) => {
+      if (!firstSeen.has(pid)) firstSeen.set(pid, i);
+    });
+    for (const [pid, start] of firstSeen) {
+      const positions = order.map((p, i) => (p === pid ? i : -1)).filter((i) => i >= 0);
+      const expected = positions.map((_, k) => start + k);
+      assert.deepEqual(positions, expected, `${lang} 的 ${pid} 題目被打散了：${positions.join(',')}`);
+    }
+  }
+});
+
+test('閱讀題：每一題都帶著自己的短文與翻譯，且不掛朗讀鍵', () => {
+  const session = buildSession({
+    lang: 'ja',
+    words: [],
+    sentences: [],
+    readings: jaReadings,
+    source: 'reading',
+    count: 8,
+  });
+
+  for (const q of session.questions) {
+    assert.equal(q.kind, 'choice');
+    assert.ok(q.context && q.context.length > 50, `${q.sourceId} 沒帶到短文`);
+    assert.ok(q.translation && q.translation.trim(), `${q.sourceId} 沒帶到翻譯`);
+    assert.ok(q.title && q.title.trim(), `${q.sourceId} 沒帶到標題`);
+    assert.equal(q.optionLang, 'zh', '選項是中文，這樣考的才是讀懂沒有');
+    assert.equal(q.speakText, null, '整篇短文不提供朗讀，漢字餵給語音引擎會唸錯');
+    assert.equal(q.options.filter((o) => o.isCorrect).length, 1);
+  }
 });

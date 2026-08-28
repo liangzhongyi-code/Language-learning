@@ -386,13 +386,83 @@ export function validateScene(entry, lang) {
 }
 
 /**
+ * 一篇短文至少要有幾道題。
+ * 只出一題的話，讀完整篇的成本與收穫不成比例。
+ */
+const MIN_READING_QUESTIONS = 3;
+
+/**
+ * 驗證一篇閱讀短文。
+ *
+ * 短文與題目是一對多，所以驗證分兩層：外層檢查文章本身，
+ * 內層逐題檢查。題目的 id 必須以短文 id 開頭，
+ * 這樣錯題檢討只看 id 就知道是哪一篇的第幾題。
+ */
+export function validateReading(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!new RegExp(`^${lang}-r-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-r-NNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
+  }
+  if (!isFilledString(entry.title)) c.add('title', 'title 不可為空');
+  if (!isFilledString(entry.passage)) c.add('passage', 'passage 不可為空');
+  if (!isFilledString(entry.translation)) {
+    c.add('translation', 'translation 不可為空，作答後要讓人對照著看');
+  }
+  if (!CATEGORY_KEYS.includes(entry.category)) {
+    c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
+  }
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
+  }
+
+  const questions = entry.questions;
+  if (!Array.isArray(questions) || questions.length < MIN_READING_QUESTIONS) {
+    c.add('questions', `每篇至少 ${MIN_READING_QUESTIONS} 題，實際 ${questions?.length ?? 0} 題`);
+    return c.result();
+  }
+
+  for (const [i, q] of questions.entries()) {
+    const at = `questions[${i}]`;
+    if (!new RegExp(`^${entry.id}-q\\d+$`).test(q?.id || '')) {
+      c.add(`${at}.id`, `題目 id 必須是「${entry.id}-qN」，實際為 ${JSON.stringify(q?.id)}`);
+    }
+    if (!isFilledString(q?.ask)) c.add(`${at}.ask`, 'ask 不可為空');
+    if (!isFilledString(q?.answer)) c.add(`${at}.answer`, 'answer 不可為空');
+    if (!isFilledString(q?.note)) c.add(`${at}.note`, 'note 不可為空，要指出答案在文中的哪裡');
+
+    const options = q?.options;
+    if (!Array.isArray(options) || options.length < SCENE_OPTIONS) {
+      c.add(`${at}.options`, `options 至少要 ${SCENE_OPTIONS} 個`);
+      continue;
+    }
+    if (options.some((o) => !isFilledString(o))) c.add(`${at}.options`, 'options 不可有空字串');
+    if (new Set(options).size !== options.length) c.add(`${at}.options`, 'options 有重複');
+    if (!options.includes(q.answer)) {
+      c.add(`${at}.options`, `options 必須包含正解「${q.answer}」，否則這題無解`);
+    }
+  }
+
+  const ids = questions.map((q) => q?.id);
+  const dups = ids.filter((v, i) => ids.indexOf(v) !== i);
+  if (dups.length) c.add('questions', `題目 id 重複：${[...new Set(dups)].join('、')}`);
+
+  return c.result();
+}
+
+/**
  * 每個資料區塊對應的驗證函式。
- * words、sentences 與 scenes 需要語言參數，kana 與 letters 不需要。
+ * words、sentences、scenes 與 readings 需要語言參數，kana 與 letters 不需要。
  */
 const SECTION_VALIDATORS = {
   words: (entry, lang) => validateWord(entry, lang),
   sentences: (entry, lang) => validateSentence(entry, lang),
   scenes: (entry, lang) => validateScene(entry, lang),
+  readings: (entry, lang) => validateReading(entry, lang),
   kana: (entry) => validateKana(entry),
   letters: (entry) => validateLetter(entry),
 };

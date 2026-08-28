@@ -18,7 +18,7 @@ const DIRECTION_LABEL = {
   mixed: { en: '混合', ja: '混合' },
 };
 
-const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境' };
+const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀' };
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -34,14 +34,16 @@ function storage() {
   }
 }
 
-export function initQuizPage({ lang, words, sentences, scenes = [], mount, noticeHost }) {
+export function initQuizPage({ lang, words, sentences, scenes = [], readings = [], mount, noticeHost }) {
   /**
    * 設定值。題源可由網址參數預選，供單字頁與文法頁的捷徑使用。
    */
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('source');
   const config = {
-    source: ['words', 'sentences', 'mixed', 'cloze', 'scene'].includes(requested) ? requested : 'words',
+    source: ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading'].includes(requested)
+      ? requested
+      : 'words',
     direction: 'zh2target',
     count: 10,
     /**
@@ -61,7 +63,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], mount, notic
   let phase = 'setup';
 
   /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
-  const poolSize = (source) => poolOf(source, words, sentences, scenes).length;
+  const poolSize = (source) => poolOf(source, words, sentences, scenes, readings).length;
 
   /* ── 設定畫面 ─────────────────────────────────────────── */
 
@@ -93,6 +95,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], mount, notic
              * 而不是出現一顆按了會說「題庫不足」的死按鈕。
              */
             ...(scenes.length ? [['scene', `情境（${scenes.length}）`]] : []),
+            /* 閱讀題顯示的是題數不是篇數——使用者選的是這一局要作答幾題 */
+            ...(readings.length ? [['reading', `閱讀（${poolSize('reading')}）`]] : []),
           ], config.source)}</div>
         </div>
 
@@ -167,6 +171,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], mount, notic
         words,
         sentences,
         scenes,
+        readings,
         source: config.source,
         direction: config.direction,
         count,
@@ -216,9 +221,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], mount, notic
     const answered = q.answeredIndex !== null;
     const isLast = index === total - 1;
 
-    /* 題面是目標語言時才提供朗讀；中翻外的題面是中文，沒有朗讀的意義 */
+    /**
+     * 題面是目標語言時才提供朗讀；中翻外的題面是中文，沒有朗讀的意義。
+     * 閱讀題的 speakText 是 null（整篇短文不提供朗讀），也要一起擋掉，
+     * 否則會畫出一顆按了唸不出東西的按鈕。
+     */
     const promptSpeak =
-      q.direction === 'target2zh'
+      q.direction === 'target2zh' && q.speakText
         ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
              data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">🔊</button>`
         : '';
@@ -259,22 +268,56 @@ export function initQuizPage({ lang, words, sentences, scenes = [], mount, notic
           }</div>`;
 
     /**
-     * 情境題的場合描述放在題面之上。
+     * 情境題的場合描述與閱讀題的短文都放在題面之上。
      * 不能併進題面：這一題問的是「該怎麼自稱」，而場合是判斷的依據，
      * 兩者混成一段長句之後，使用者會分不清哪一句才是問題。
+     *
+     * 閱讀題多一個標題與作答後才出現的中文翻譯——
+     * 先給翻譯就沒得考了，所以要等他選完才顯示。
      */
-    const context = q.context ? `<div class="context">${esc(q.context)}</div>` : '';
+    const isReading = Boolean(q.passageId);
+
+    /**
+     * 同一篇短文的第二題以後預設收合。
+     *
+     * 一篇會連出三到四題，每一題都把整篇攤開的話，讀過的人每次都要捲過
+     * 三百多個像素才看得到選項。第一題攤開讓他讀，之後收起來但隨時能點開回頭查。
+     */
+    const previous = index > 0 ? session.questions[index - 1] : null;
+    const sameAsPrevious = isReading && previous?.passageId === q.passageId;
+
+    const context = !q.context
+      ? ''
+      : isReading
+        ? `<details class="context passage" lang="${lang}" ${sameAsPrevious ? '' : 'open'}>
+             <summary class="passage-title">${esc(q.title)}</summary>${esc(q.context)}
+           </details>`
+        : `<div class="context">${esc(q.context)}</div>`;
+    const translation =
+      isReading && answered
+        ? `<details class="translation"><summary>對照中文翻譯</summary><p>${esc(q.translation)}</p></details>`
+        : '';
+
+    /* 題型標籤：閱讀與情境有自己的名字，其餘顯示出題方向 */
+    const topLabel = isReading
+      ? SOURCE_LABEL.reading
+      : q.context
+        ? SOURCE_LABEL.scene
+        : DIRECTION_LABEL[q.direction][lang];
 
     mount.innerHTML = `
       <div class="card">
-        ${quizTop(index, total, q.context ? SOURCE_LABEL.scene : DIRECTION_LABEL[q.direction][lang])}
+        ${quizTop(index, total, topLabel)}
 
         ${context}
         <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
-        <div class="prompt-sub">選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}　·　可按鍵盤 1-4</div>
+        <div class="prompt-sub">${
+          isReading ? '依短文內容作答' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
+        }　·　可按鍵盤 1-4</div>
 
         <div class="opts">${options}</div>
         ${feedback}
+        ${translation}
 
         <div class="actions">
           <button class="btn" type="button" data-next ${answered ? '' : 'disabled'}>${

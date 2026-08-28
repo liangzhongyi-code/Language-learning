@@ -713,6 +713,69 @@ html.no-lines .gap-mid svg { display: none; }
   line-height: 1.7;
 }
 
+/**
+ * 閱讀題的短文比情境描述長得多，要當一段正文來排而不是引文：
+ * 字大一點、行距寬一點、顏色提到正文的亮度，不然一整段讀起來很吃力。
+ */
+.context.passage {
+  color: var(--text);
+  font-size: 16.5px;
+  line-height: 2;
+  padding: var(--size-4);
+  border-left-width: 4px;
+}
+/**
+ * 短文標題同時是展開／收合的把手。
+ * 同一篇會連出三四題，第二題以後預設收起來，讀過的人不必每次捲過整篇。
+ */
+.passage-title {
+  display: block;
+  margin-bottom: var(--size-2);
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  min-height: 24px;
+}
+.passage-title::-webkit-details-marker { display: none; }
+.passage-title::before { content: '▸ '; color: var(--mute); font-weight: 400; }
+.context.passage[open] > .passage-title::before { content: '▾ '; }
+/* 收合時整塊只剩標題，內距要跟著縮，否則會留下一大片空白 */
+.context.passage:not([open]) { padding: 11px var(--size-4); }
+.context.passage:not([open]) > .passage-title { margin-bottom: 0; }
+
+/**
+ * 中文翻譯預設收起來。
+ * 攤開放在正解旁邊的話，下一題還沒開始就先看到中文，
+ * 等於把後面那幾題的答案先講了——同一篇短文會連出三四題。
+ */
+.translation {
+  margin-top: var(--size-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.translation > summary {
+  padding: 11px 15px;
+  cursor: pointer;
+  color: var(--dim);
+  font-size: 14px;
+  list-style: none;
+}
+.translation > summary::-webkit-details-marker { display: none; }
+.translation > summary::before { content: '▸ '; color: var(--mute); }
+.translation[open] > summary::before { content: '▾ '; }
+.translation > summary:hover { color: var(--text); }
+.translation > p {
+  margin: 0;
+  padding: 0 15px 14px;
+  color: var(--dim);
+  font-size: 14.5px;
+  line-height: 1.85;
+}
+
 .opts { display: grid; gap: var(--size-3); margin-top: var(--size-4); }
 .opt-row { display: flex; gap: var(--size-2); align-items: stretch; }
 .opt-row .opt { flex: 1; min-width: 0; }
@@ -993,6 +1056,14 @@ html.no-lines .gap-mid svg { display: none; }
    * 句子降一級字體才塞得下，空格縮窄一點讓一行能多放幾塊，
    * 但高度維持 44px 不動——那是手指點得準的下限。
    */
+  /**
+   * 閱讀短文在手機上排緊一點。
+   * 桌機的 16.5px 加 2.0 行距在 375 寬的螢幕會佔掉 474px（視窗才 812），
+   * 選項整組被推到螢幕外。閱讀題本來就要捲，但捲兩下才看得到第一個選項太多了。
+   */
+  .context.passage { font-size: 15.5px; line-height: 1.85; padding: var(--size-3); }
+  .passage-title { font-size: 14px; }
+
   .cz-line { font-size: 19px; padding: var(--size-3); line-height: 2; margin: var(--size-3) 0; }
   .cz-blank { min-width: 74px; padding: 4px 9px; }
   .cz-fix { font-size: 14px; }

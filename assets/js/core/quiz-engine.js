@@ -37,6 +37,7 @@ const SOURCE_KIND = {
   mixed: 'choice',
   cloze: 'cloze',
   scene: 'choice',
+  reading: 'choice',
 };
 
 /**
@@ -146,10 +147,28 @@ export function pickDistractors(pool, correct, optionField, rng = Math.random) {
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences, scenes) {
+export function poolOf(source, words, sentences, scenes, readings) {
   if (source === 'words') return [...(words || [])];
   if (source === 'sentences') return [...(sentences || [])];
   if (source === 'scene') return [...(scenes || [])];
+  /**
+   * 閱讀題是「一篇短文對多道題」，但題庫必須是一維的才抽得動，
+   * 所以在這裡攤平成一題一筆，每一筆都帶著自己那篇短文。
+   * 設定畫面顯示的數字因此是題數而不是篇數——使用者選的是要作答幾題。
+   */
+  if (source === 'reading') {
+    return (readings || []).flatMap((r) =>
+      (r.questions || []).map((q) => ({
+        ...q,
+        passageId: r.id,
+        title: r.title,
+        passage: r.passage,
+        translation: r.translation,
+        category: r.category,
+        level: r.level,
+      }))
+    );
+  }
   /**
    * 填空題挖的是句子裡的區塊，單字沒有可挖的結構，題源只能是句子；
    * 而且挖掉一塊之後還要留下線索，所以只有一塊的句子在這裡就先剔除。
@@ -241,6 +260,65 @@ function buildSceneQuestion(scene, { lang, rng }) {
     note: scene.note ?? null,
     answeredIndex: null,
   };
+}
+
+/**
+ * 產生一題閱讀題。
+ *
+ * 結構與情境題幾乎一樣，差別在 context 是整篇短文而不是一句場合描述，
+ * 而且多帶一份中文翻譯——作答後才顯示，先給翻譯就沒得考了。
+ *
+ * 沒有 speakText：整篇短文的假名轉寫工程量太大，而且日文漢字直接餵給
+ * 語音引擎會唸錯讀音，寧可不提供也不要唸錯。閱讀練習的重點本來就不在發音。
+ */
+function buildReadingQuestion(item, { lang, rng }) {
+  const options = shuffle(
+    item.options.map((text) => ({ text, isCorrect: text === item.answer })),
+    rng
+  );
+
+  return {
+    kind: 'choice',
+    sourceId: item.id,
+    passageId: item.passageId,
+    direction: 'target2zh',
+    title: item.title,
+    context: item.passage,
+    /* 作答後才顯示，讓人對照著看自己讀懂了多少 */
+    translation: item.translation,
+    contextLang: lang,
+    prompt: item.ask,
+    promptLang: 'zh',
+    /* 選項是中文，所以不掛朗讀鍵——那會唸出一串中文 */
+    optionLang: 'zh',
+    options,
+    correctIndex: options.findIndex((o) => o.isCorrect),
+    speakText: null,
+    note: item.note ?? null,
+    answeredIndex: null,
+  };
+}
+
+/**
+ * 閱讀題的抽題：先抽短文，再把整篇的題目一起放進來。
+ *
+ * 不能像其他題型那樣直接從題目池隨機抽——那樣十題會來自十篇不同的短文，
+ * 每一題都要重讀一篇新文章，一局下來等於讀了十篇。
+ * 按篇抽才會形成「讀一篇、答完它的三四題、再換下一篇」的節奏。
+ */
+function sampleReadingQuestions(pool, count, rng) {
+  const byPassage = new Map();
+  for (const item of pool) {
+    if (!byPassage.has(item.passageId)) byPassage.set(item.passageId, []);
+    byPassage.get(item.passageId).push(item);
+  }
+
+  const picked = [];
+  for (const passageId of shuffle([...byPassage.keys()], rng)) {
+    if (picked.length >= count) break;
+    picked.push(...byPassage.get(passageId));
+  }
+  return picked.slice(0, count);
 }
 
 /**
@@ -389,12 +467,13 @@ export function buildSession({
   words,
   sentences,
   scenes,
+  readings,
   source = 'words',
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
 }) {
-  const pool = poolOf(source, words, sentences, scenes);
+  const pool = poolOf(source, words, sentences, scenes, readings);
 
   if (pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(
@@ -403,10 +482,14 @@ export function buildSession({
   }
 
   const kind = kindOf(source);
-  const picked = sample(pool, count, rng);
+  /* 閱讀題按篇抽，其餘題型逐題抽 */
+  const picked =
+    source === 'reading' ? sampleReadingQuestions(pool, count, rng) : sample(pool, count, rng);
+
   const questions = picked.map((item) => {
     if (kind === 'cloze') return buildClozeQuestion(item, pool, { lang, rng });
     if (source === 'scene') return buildSceneQuestion(item, { lang, rng });
+    if (source === 'reading') return buildReadingQuestion(item, { lang, rng });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng });
   });

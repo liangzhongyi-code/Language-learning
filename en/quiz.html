@@ -26,12 +26,14 @@
   import { initQuizPage } from '../assets/js/ui/quiz-view.js';
   import { words } from '../assets/js/data/en/words.js';
   import { sentences } from '../assets/js/data/en/sentences.js';
+  import { readings } from '../assets/js/data/en/readings.js';
 
   renderNav();
   initQuizPage({
     lang: 'en',
     words,
     sentences,
+    readings,
     mount: document.getElementById('app'),
     noticeHost: document.getElementById('notice'),
   });
