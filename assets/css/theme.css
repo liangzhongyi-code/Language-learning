@@ -750,6 +750,115 @@ html.no-lines .gap-mid svg { display: none; }
 }
 .feedback.good { background: var(--ok-soft); border-color: var(--ok); }
 
+/* 填空題 */
+
+/**
+ * 挖空的句子。
+ * 用 inline-flex 而不是純文字流，是因為空格是按鈕、必須能設定固定高度；
+ * 混在文字流裡時基線會亂跳，一行裡的空格高高低低。
+ */
+.cz-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-1) 0;
+  margin: var(--size-4) 0;
+  padding: var(--size-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--font-size-4);
+  line-height: 1.9;
+  word-break: break-word;
+}
+.cz-text { white-space: pre-wrap; }
+
+.cz-blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-2);
+  min-width: 96px;
+  min-height: 44px;
+  margin: 0 4px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+}
+
+/* 還沒提交、可以互動的空格 */
+.cz-blank.is-open {
+  background: var(--surface-3);
+  /* 虛線代表「這裡還缺東西」，填進去之後才換成實線 */
+  border: 2px dashed var(--border-strong);
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.cz-blank.is-open:hover { border-color: var(--accent); }
+.cz-blank.is-open.is-filled { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+.cz-blank.is-open.is-active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cz-blank.is-over { border-color: var(--accent); background: var(--accent-soft); }
+
+/* 提交之後的空格改成唯讀的對錯標記 */
+.cz-blank.is-correct { background: var(--ok-soft); border: 2px solid var(--ok); color: var(--ok); }
+.cz-blank.is-wrong { background: var(--bad-soft); border: 2px solid var(--bad); color: var(--bad); }
+/* 填錯時把正解貼在旁邊，不必回頭對照下方的檢討區 */
+.cz-fix {
+  font-style: normal;
+  font-size: 15px;
+  color: var(--ok);
+  padding-left: var(--size-2);
+  border-left: 1px solid var(--bad);
+}
+
+/* 候選詞 */
+.cz-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2);
+  margin-top: var(--size-3);
+}
+.cz-word {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2);
+  min-height: 46px;
+  padding: 8px 15px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 17px;
+  cursor: grab;
+  box-shadow: var(--lift);
+  transition: all var(--t-fast);
+}
+.cz-word:hover { border-color: var(--accent); background: var(--surface-3); }
+.cz-word.is-active { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+/**
+ * 用掉的候選詞留在原位變灰，而不是從候選區移除。
+ * 移除會讓整排重新排列，使用者每填一個字就要重新找一次剩下的詞在哪。
+ * 留著也順便讓「再點一下把它收回來」有地方點。
+ */
+.cz-word.is-used { opacity: 0.34; cursor: pointer; box-shadow: none; }
+.cz-word.is-used:hover { opacity: 0.55; border-color: var(--border-strong); background: var(--surface-2); }
+.cz-word .key {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--mute);
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 設定畫面 */
 .setting { margin-bottom: var(--size-4); }
 .setting > label { display: block; font-size: 13px; color: var(--dim); margin-bottom: var(--size-2); }
@@ -862,6 +971,16 @@ html.no-lines .gap-mid svg { display: none; }
 
   .page-head h1 { font-size: var(--font-size-5); }
   .prompt { font-size: var(--font-size-5); }
+
+  /**
+   * 填空題在手機上是主要使用情境（拖放在觸控裝置根本不會觸發，只能用點的）。
+   * 句子降一級字體才塞得下，空格縮窄一點讓一行能多放幾塊，
+   * 但高度維持 44px 不動——那是手指點得準的下限。
+   */
+  .cz-line { font-size: 19px; padding: var(--size-3); line-height: 2; margin: var(--size-3) 0; }
+  .cz-blank { min-width: 74px; padding: 4px 9px; }
+  .cz-fix { font-size: 14px; }
+  .cz-word { min-height: 44px; font-size: 16px; padding: 8px 13px; }
   .score b { font-size: 36px; }
   .grid-cards { grid-template-columns: 1fr; }
   .card { padding: var(--size-4); }

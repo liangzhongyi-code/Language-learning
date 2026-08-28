@@ -8,7 +8,7 @@
  * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
  */
 
-import { buildSession, answer, poolOf, progressPercent } from '../core/quiz-engine.js';
+import { buildSession, answer, poolOf, progressPercent, isAnswered, kindOf } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 
@@ -18,7 +18,7 @@ const DIRECTION_LABEL = {
   mixed: { en: '混合', ja: '混合' },
 };
 
-const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型' };
+const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空' };
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -41,7 +41,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('source');
   const config = {
-    source: ['words', 'sentences', 'mixed'].includes(requested) ? requested : 'words',
+    source: ['words', 'sentences', 'mixed', 'cloze'].includes(requested) ? requested : 'words',
     direction: 'zh2target',
     count: 10,
     /**
@@ -81,22 +81,35 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     mount.innerHTML = `
       <div class="card">
         <div class="setting">
-          <label>題源</label>
+          <label>題型</label>
           <div class="chips">${chips('source', [
             ['words', `單字（${words.length}）`],
             ['sentences', `句型（${sentences.length}）`],
             ['mixed', `混合（${words.length + sentences.length}）`],
+            ['cloze', `填空（${poolSize('cloze')}）`],
           ], config.source)}</div>
         </div>
 
-        <div class="setting">
+        ${
+          /**
+           * 填空題一律看中文填目標語言，沒有反向的意義，所以整組設定收起來。
+           * 留著但停用會讓人以為「這裡可以選，只是我還沒找到方法」。
+           */
+          kindOf(config.source) === 'cloze'
+            ? ''
+            : `<div class="setting">
           <label>出題方向</label>
-          <div class="chips">${chips('direction', [
-            ['zh2target', DIRECTION_LABEL.zh2target[lang]],
-            ['target2zh', DIRECTION_LABEL.target2zh[lang]],
-            ['mixed', '混合'],
-          ], config.direction)}</div>
-        </div>
+          <div class="chips">${chips(
+            'direction',
+            [
+              ['zh2target', DIRECTION_LABEL.zh2target[lang]],
+              ['target2zh', DIRECTION_LABEL.target2zh[lang]],
+              ['mixed', '混合'],
+            ],
+            config.direction
+          )}</div>
+        </div>`
+        }
 
         <div class="setting">
           <label>題數</label>
@@ -173,6 +186,23 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
   /* ── 作答畫面 ─────────────────────────────────────────── */
 
   function renderQuestion() {
+    const q = session.questions[session.cursor];
+    if (q.kind === 'cloze') renderClozeQuestion();
+    else renderChoiceQuestion();
+  }
+
+  /**
+   * 題號與進度條，兩種題型共用
+   */
+  function quizTop(index, total, label) {
+    return `
+        <div class="quiz-top">
+          <span class="progress-text">第 ${index + 1} / ${total} 題 · ${esc(label)}</span>
+          <span class="bar"><i style="width:${progressPercent(session)}%"></i></span>
+        </div>`;
+  }
+
+  function renderChoiceQuestion() {
     const index = session.cursor;
     const q = session.questions[index];
     const total = session.questions.length;
@@ -223,12 +253,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
 
     mount.innerHTML = `
       <div class="card">
-        <div class="quiz-top">
-          <span class="progress-text">第 ${index + 1} / ${total} 題 · ${esc(
-            DIRECTION_LABEL[q.direction][lang]
-          )}</span>
-          <span class="bar"><i style="width:${progressPercent(session)}%"></i></span>
-        </div>
+        ${quizTop(index, total, DIRECTION_LABEL[q.direction][lang])}
 
         <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
         <div class="prompt-sub">選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}　·　可按鍵盤 1-4</div>
@@ -252,6 +277,235 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
   }
 
+  /* ── 填空題 ───────────────────────────────────────────── */
+
+  /**
+   * 填空題作答中的暫存。
+   *
+   * 記的是「哪一格放了候選區的第幾張」而不是文字：同一句要填兩個「を」時，
+   * 只記文字就分不出使用者用掉的是哪一張，候選區會少扣一張。
+   * 換題就整組重來——這一頁本來就不支援回上一題。
+   */
+  let draft = null;
+
+  function draftFor(q, index) {
+    if (!draft || draft.index !== index) {
+      draft = { index, assign: q.blanks.map(() => null), word: null, blank: null };
+    }
+    return draft;
+  }
+
+  /**
+   * 把候選詞放進空格。
+   * 那一格原本有東西就先退回候選區，不做交換——
+   * 交換在只有兩格時很方便，格數一多就變成猜不到的行為。
+   */
+  function place(state, blankIndex, wordIndex) {
+    const previous = state.assign.indexOf(wordIndex);
+    if (previous !== -1) state.assign[previous] = null;
+    state.assign[blankIndex] = wordIndex;
+    state.word = null;
+    state.blank = null;
+  }
+
+  function renderClozeQuestion() {
+    const index = session.cursor;
+    const q = session.questions[index];
+    const total = session.questions.length;
+    const answered = isAnswered(q);
+    const isLast = index === total - 1;
+    const state = draftFor(q, index);
+
+    /* 已提交的題目改看 q.filled，逐格標出對錯；未提交則看作答中的暫存 */
+    const blankHtml = (blankIndex) => {
+      if (answered) {
+        const chosen = q.filled[blankIndex];
+        const right = q.blanks[blankIndex].answer;
+        const ok = chosen === right;
+        return `<span class="cz-blank ${ok ? 'is-correct' : 'is-wrong'}">${esc(chosen)}${
+          ok ? '' : `<i class="cz-fix">${esc(right)}</i>`
+        }</span>`;
+      }
+      const wordIndex = state.assign[blankIndex];
+      const filledText = wordIndex === null ? '' : q.bank[wordIndex];
+      const active = state.blank === blankIndex ? ' is-active' : '';
+      return `<button class="cz-blank is-open${filledText ? ' is-filled' : ''}${active}"
+          type="button" data-blank="${blankIndex}"
+          aria-label="第 ${blankIndex + 1} 個空格${filledText ? `，目前是 ${esc(filledText)}` : '，尚未填入'}"
+        >${esc(filledText)}</button>`;
+    };
+
+    /* 詞間隔由 core 決定（英文有空白、日文沒有），這裡不再自己判斷語言 */
+    const line = q.segments
+      .map((seg) =>
+        seg.type === 'text'
+          ? `<span class="cz-text">${esc(seg.text)}</span>`
+          : blankHtml(seg.blankIndex)
+      )
+      .join(q.gap);
+
+    const used = new Set(state.assign.filter((v) => v !== null));
+    const bank = answered
+      ? ''
+      : `<div class="cz-bank" aria-label="候選詞">${q.bank
+          .map((text, i) => {
+            const isUsed = used.has(i);
+            const active = state.word === i ? ' is-active' : '';
+            return `<button class="cz-word${isUsed ? ' is-used' : ''}${active}" type="button"
+                data-word="${i}" draggable="${!isUsed}"
+                aria-pressed="${state.word === i}"
+              ><span class="key">${i + 1}</span>${esc(text)}</button>`;
+          })
+          .join('')}</div>`;
+
+    const allFilled = state.assign.every((v) => v !== null);
+    const rightCount = answered
+      ? q.blanks.filter((b, i) => q.filled[i] === b.answer).length
+      : 0;
+
+    const feedback = !answered
+      ? ''
+      : rightCount === q.blanks.length
+        ? `<div class="feedback good">全部填對。${q.note ? esc(q.note) : ''}</div>`
+        : `<div class="feedback">
+             ${q.blanks.length} 格對了 ${rightCount} 格，紅色格子右邊是正解。
+             ${q.note ? `<br>${esc(q.note)}` : ''}
+           </div>`;
+
+    /* 提交後補一顆朗讀鍵，讓使用者聽完整正確的句子 */
+    const answerSpeak = answered
+      ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
+           data-speak-lang="${lang}" title="朗讀整句" aria-label="朗讀整句">🔊</button>`
+      : '';
+
+    mount.innerHTML = `
+      <div class="card">
+        ${quizTop(index, total, '填空')}
+
+        <div class="prompt">${esc(q.prompt)}${answerSpeak}</div>
+        <div class="prompt-sub">${
+          answered
+            ? '對照下方的正解，再看一次語序說明'
+            : '點候選詞再點空格，或直接把候選詞拖進空格　·　可按鍵盤數字選詞、Enter 提交'
+        }</div>
+
+        <div class="cz-line" lang="${lang}">${line}</div>
+        ${bank}
+        ${feedback}
+
+        <div class="actions">
+          ${
+            answered
+              ? `<button class="btn" type="button" data-next>${isLast ? '看結果' : '下一題 →'}</button>`
+              : `<button class="btn" type="button" data-submit ${allFilled ? '' : 'disabled'}>${
+                  allFilled ? '提交' : `還有 ${state.assign.filter((v) => v === null).length} 格沒填`
+                }</button>`
+          }
+          <button class="btn ghost" type="button" data-quit>結束這局</button>
+        </div>
+      </div>`;
+
+    if (!answered) bindClozeInteractions(q, state);
+    mount.querySelector('[data-submit]')?.addEventListener('click', submitCloze);
+    mount.querySelector('[data-next]')?.addEventListener('click', next);
+    mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
+
+    /**
+     * 剛好填滿最後一格時把提交鍵帶進視野。
+     *
+     * 實測 375×812 的手機：句子加候選詞排完，提交鍵底部落在 818px——
+     * 差六個像素，但使用者看到的是「填完了，然後呢」。
+     * 只在「這一次填滿」時捲，每填一格都捲會很暈。
+     */
+    if (!answered && allFilled && !state.scrolled) {
+      state.scrolled = true;
+      mount.querySelector('[data-submit]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    if (!allFilled) state.scrolled = false;
+  }
+
+  /**
+   * 填空題的點擊與拖放。
+   *
+   * 兩種操作都要能用：桌機習慣拖，手機根本拖不動（HTML5 拖放在觸控裝置上不觸發），
+   * 所以點選才是主要路徑，拖放只是加分。
+   */
+  function bindClozeInteractions(q, state) {
+    mount.querySelectorAll('[data-word]').forEach((chip) => {
+      const wordIndex = Number(chip.dataset.word);
+
+      chip.addEventListener('click', () => {
+        /* 點已經用掉的候選詞＝把它從空格收回來 */
+        const at = state.assign.indexOf(wordIndex);
+        if (at !== -1) {
+          state.assign[at] = null;
+          state.word = null;
+          state.blank = null;
+        } else if (state.blank !== null) {
+          place(state, state.blank, wordIndex);
+        } else {
+          state.word = state.word === wordIndex ? null : wordIndex;
+          state.blank = null;
+        }
+        renderQuestion();
+      });
+
+      chip.addEventListener('dragstart', (event) => {
+        if (state.assign.includes(wordIndex)) return event.preventDefault();
+        event.dataTransfer.setData('text/plain', String(wordIndex));
+        event.dataTransfer.effectAllowed = 'move';
+      });
+    });
+
+    mount.querySelectorAll('[data-blank]').forEach((slot) => {
+      const blankIndex = Number(slot.dataset.blank);
+
+      slot.addEventListener('click', () => {
+        /**
+         * 手上已經選好詞的話，一律照做——就算那一格已經有東西也直接換掉。
+         * 反過來（清空並忽略選取）會讓「我選了這個字、點了這一格」變成沒反應，
+         * 使用者只會再點一次，結果又把剛換上去的清掉。
+         * 被換下來的詞會自動回到候選區，因為 assign 裡不再有它的索引。
+         */
+        if (state.word !== null) {
+          place(state, blankIndex, state.word);
+        } else if (state.assign[blankIndex] !== null) {
+          state.assign[blankIndex] = null;
+          state.blank = null;
+        } else {
+          state.blank = state.blank === blankIndex ? null : blankIndex;
+        }
+        renderQuestion();
+      });
+
+      /* dragover 一定要擋掉預設行為，否則瀏覽器不會觸發 drop */
+      slot.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        slot.classList.add('is-over');
+      });
+      slot.addEventListener('dragleave', () => slot.classList.remove('is-over'));
+      slot.addEventListener('drop', (event) => {
+        event.preventDefault();
+        const wordIndex = Number(event.dataTransfer.getData('text/plain'));
+        if (!Number.isInteger(wordIndex) || !q.bank[wordIndex]) return;
+        place(state, blankIndex, wordIndex);
+        renderQuestion();
+      });
+    });
+  }
+
+  function submitCloze() {
+    const q = session.questions[session.cursor];
+    if (isAnswered(q)) return;
+    const state = draftFor(q, session.cursor);
+    if (state.assign.some((v) => v === null)) return;
+
+    answer(session, session.cursor, state.assign.map((i) => q.bank[i]));
+    renderQuestion();
+    mount.querySelector('[data-next]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
   function choose(optionIndex) {
     const q = session.questions[session.cursor];
     if (q.answeredIndex !== null) return;
@@ -271,7 +525,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
 
   function next() {
     const q = session.questions[session.cursor];
-    if (q.answeredIndex === null) return;
+    if (!isAnswered(q)) return;
     if (session.cursor < session.questions.length - 1) {
       session.cursor += 1;
       renderQuestion();
@@ -359,14 +613,43 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
     const q = session.questions[session.cursor];
     if (!q) return;
 
-    if (event.key >= '1' && event.key <= '4') {
-      const index = Number(event.key) - 1;
-      if (index < q.options.length) {
+    const answered = isAnswered(q);
+    const digit = event.key >= '1' && event.key <= '9' ? Number(event.key) - 1 : -1;
+
+    if (q.kind === 'cloze') {
+      /**
+       * 數字選候選詞，選完自動落進第一個空格——
+       * 鍵盤使用者沒有「點空格」這個動作，要求他先選格子等於卡死。
+       */
+      if (!answered && digit >= 0 && digit < q.bank.length) {
+        const state = draftFor(q, session.cursor);
+        if (state.assign.includes(digit)) return;
+        const target = state.blank !== null ? state.blank : state.assign.indexOf(null);
+        if (target === -1) return;
         event.preventDefault();
-        choose(index);
+        place(state, target, digit);
+        renderQuestion();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (answered) next();
+        else submitCloze();
+      } else if (event.key === 'Backspace') {
+        /* 退格清掉最後填的那一格，填錯了不必用滑鼠回頭改 */
+        const state = draftFor(q, session.cursor);
+        const last = state.assign.reduce((acc, v, i) => (v === null ? acc : i), -1);
+        if (answered || last === -1) return;
+        event.preventDefault();
+        state.assign[last] = null;
+        renderQuestion();
       }
+      return;
+    }
+
+    if (digit >= 0 && digit < 4 && digit < q.options.length) {
+      event.preventDefault();
+      choose(digit);
     } else if (event.key === 'Enter' || event.key === ' ') {
-      if (q.answeredIndex !== null) {
+      if (answered) {
         event.preventDefault();
         next();
       }

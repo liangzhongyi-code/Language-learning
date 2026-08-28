@@ -47,6 +47,25 @@ const DIRECTION_FIELDS = {
 };
 
 /**
+ * 目標語言把詞拼成句子時的間隔。
+ * 英文的詞之間有空白、日文沒有；填空題要把區塊拼回整句，這個差別不能忽略，
+ * 否則英文會黏成 Shestudiesatthelibrary。
+ */
+const WORD_GAP = { en: ' ', ja: '' };
+
+/**
+ * 把填空題還原成完整句子。
+ *
+ * fill 決定每一格放什麼——傳正解就得到標準答案，傳使用者填的就得到他寫出來的句子。
+ * 錯題檢討只列出空格內容（「私を」）看不懂，一定要放回句子裡才知道錯在哪。
+ */
+export function clozeSentence(question, fill) {
+  return (question?.segments || [])
+    .map((seg) => (seg.type === 'text' ? seg.text : fill(seg.blankIndex)))
+    .join(question?.gap ?? '');
+}
+
+/**
  * 某一題是否已經作答完畢。
  *
  * 兩種題型的「作答完畢」定義不同：選擇題按下選項就算，
@@ -296,6 +315,8 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
     optionLang: lang,
     segments,
     blanks,
+    /* 把區塊拼回整句時要用的間隔，畫面與錯題檢討都靠它 */
+    gap: WORD_GAP[lang] ?? '',
     bank: buildBank(blanks.map((b) => b.answer), blankRoles, otherChunks, rng),
     filled: blanks.map(() => null),
     submitted: false,
@@ -388,8 +409,8 @@ function answerCloze(q, filled) {
   return {
     correct: perBlank.every((b) => b.correct),
     perBlank,
-    correctText: q.blanks.map((b) => b.answer).join(''),
-    chosenText: q.filled.join(''),
+    correctText: clozeSentence(q, (i) => q.blanks[i].answer),
+    chosenText: clozeSentence(q, (i) => q.filled[i]),
     alreadyAnswered,
   };
 }

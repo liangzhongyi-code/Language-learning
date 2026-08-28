@@ -16,6 +16,7 @@ import {
   isAnswered,
   isCorrect,
   kindOf,
+  clozeSentence,
 } from '../assets/js/core/quiz-engine.js';
 import { summarize, isComplete } from '../assets/js/core/stats.js';
 
@@ -326,9 +327,10 @@ test('isComplete：填空題全部提交後才算完成一局', () => {
   assert.equal(isComplete(s), true);
 });
 
-test('summarize：填空題答錯時把整句串起來給錯題檢討', () => {
+test('summarize：填空題答錯時還原成完整句子，不是只列空格', () => {
   const s = cloze({ count: 1 });
   const q = s.questions[0];
+  const source = CHUNKED.find((x) => x.id === q.sourceId);
   const filled = rightAnswers(q);
   filled[0] = aWrongWord(q);
   answer(s, 0, filled);
@@ -336,8 +338,46 @@ test('summarize：填空題答錯時把整句串起來給錯題檢討', () => {
   const sum = summarize(s);
   assert.equal(sum.correct, 0);
   assert.equal(sum.wrongList.length, 1);
-  assert.equal(sum.wrongList[0].correctText, rightAnswers(q).join(''));
-  assert.equal(sum.wrongList[0].chosenText, filled.join(''));
+
+  /* 正解要等於原句本身，不是「私を」那種脫離句子的片段 */
+  assert.equal(sum.wrongList[0].correctText, source.target);
+
+  /* 使用者填的那句要包含沒挖到的固定文字，才看得出他錯在哪一個位置 */
+  const chosen = sum.wrongList[0].chosenText;
+  assert.ok(chosen.includes(filled[0]), '要看得到使用者填錯的字');
+  for (const seg of q.segments) {
+    if (seg.type === 'text') assert.ok(chosen.includes(seg.text), `少了固定文字「${seg.text}」`);
+  }
+});
+
+test('clozeSentence：英文用空白把詞接起來，日文不留空白', () => {
+  const enSentence = {
+    id: 'en-s-001',
+    zh: '我喝咖啡',
+    target: 'I drink coffee',
+    reading: null,
+    patternId: 'en-p-svo',
+    chunks: [
+      { role: 'subject', zh: '我', target: 'I', zhIndex: 0 },
+      { role: 'verb', zh: '喝', target: 'drink', zhIndex: 1 },
+      { role: 'object', zh: '咖啡', target: 'coffee', zhIndex: 2 },
+    ],
+    note: null,
+    category: 'drink',
+    level: 1,
+  };
+  const en = buildSession({
+    lang: 'en',
+    words: [],
+    sentences: Array.from({ length: 4 }, (_, i) => ({ ...enSentence, id: `en-s-00${i + 1}` })),
+    source: 'cloze',
+    count: 1,
+  }).questions[0];
+  assert.equal(clozeSentence(en, (i) => en.blanks[i].answer), 'I drink coffee');
+
+  const ja = cloze({ count: 1 }).questions[0];
+  const jaSource = CHUNKED.find((x) => x.id === ja.sourceId);
+  assert.equal(clozeSentence(ja, (i) => ja.blanks[i].answer), jaSource.target);
 });
 
 test('summarize：填空題全對就不進錯題清單', () => {

@@ -9,7 +9,7 @@
  * 選擇題看選項索引、填空題看提交狀態，規則寫兩份遲早會分家。
  */
 
-import { isAnswered, isCorrect } from './quiz-engine.js';
+import { isAnswered, isCorrect, clozeSentence } from './quiz-engine.js';
 
 /**
  * localStorage 的 key。版本號寫在 key 與內容裡，日後改格式只要換版本號即可安全丟棄舊資料
@@ -60,16 +60,18 @@ export function isComplete(session) {
  */
 function chosenTextOf(q) {
   if (!isAnswered(q)) return null;
-  if (q.kind === 'cloze') return q.filled.join('');
+  if (q.kind === 'cloze') return clozeSentence(q, (i) => q.filled[i]);
   return q.options?.[q.answeredIndex]?.text ?? null;
 }
 
 /**
  * 錯題檢討要顯示的正解文字。
- * 填空題把每一格的答案串起來，串出來就是完整的目標語言句子。
+ *
+ * 填空題還原成完整句子，不是只把空格的答案串起來——
+ * 「私を」這種脫離句子的片段看不出錯在哪，「私はお酒を飲みません」才看得懂。
  */
 function correctTextOf(q) {
-  if (q.kind === 'cloze') return q.blanks.map((b) => b.answer).join('');
+  if (q.kind === 'cloze') return clozeSentence(q, (i) => q.blanks[i].answer);
   return q.options?.[q.correctIndex]?.text ?? null;
 }
 
