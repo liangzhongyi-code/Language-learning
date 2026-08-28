@@ -1128,7 +1128,7 @@ export const sentences = [
       { role: 'particle', zh: '', target: 'を', zhIndex: 4 },
       { role: 'negation', zh: '不化', target: 'しません', zhIndex: 1 },
     ],
-    note: '「化粧」是名詞，化妝這個動作要說「化粧をします」，中間的「を」不能省。',
+    note: '「化粧」是名詞，加「をします」把它當受詞；直接說「化粧しません」也對，跟「運動をします／運動します」是同一個道理。',
     category: 'daily',
     level: 3,
   },

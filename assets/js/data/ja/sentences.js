@@ -8,7 +8,9 @@
  * 每塊的 zhIndex＝該塊在中文句中的位置（0 起算、連號不重複），
  * 依 zhIndex 排序後串接 zh 會等於整句 zh。
  * 助詞（は／を／に／で／が…）獨立成塊，role 用 particle、zh 留空字串，
- * 但仍然佔一個 zhIndex 號碼，中文排才會畫出對齊用的佔位色塊。
+ * 但仍然佔一個 zhIndex 號碼——zhIndex 必須是連號的排列，跳號會被 schema 擋下。
+ * 助詞在文法頁的中文排完全不顯示（grammar-layout.js 依 role 直接濾掉），
+ * 不要為了「讓它在中文排佔一格」去填非空的 zh，那樣反而會讓串接檢查對不起來。
  */
 
 import { sentences as core } from './sentences/core.js';
