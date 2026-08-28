@@ -12,6 +12,7 @@ import { letters } from '../assets/js/data/en/alphabet.js';
 import { words as jaWords } from '../assets/js/data/ja/words.js';
 import { sentences as jaSentences } from '../assets/js/data/ja/sentences.js';
 import { kana } from '../assets/js/data/ja/kana.js';
+import { scenes as jaScenes } from '../assets/js/data/ja/scenes.js';
 
 /**
  * 錯誤陣列轉成好讀的訊息，測試失敗時才看得出是哪一筆資料寫錯
@@ -40,7 +41,7 @@ test('英文題庫：validateDataset 零錯誤', () => {
 
 test('日文題庫：validateDataset 零錯誤', () => {
   const errors = validateDataset(
-    { words: jaWords, sentences: jaSentences, kana },
+    { words: jaWords, sentences: jaSentences, scenes: jaScenes, kana },
     'ja'
   );
   assert.equal(errors.length, 0, `\n${report(errors)}`);
@@ -299,4 +300,72 @@ test('真實題庫：答錯的題目會帶出正解，句子題另帶語序說�
     assert.ok(w.chosenText, '錯題必須帶出使用者選的答案');
     assert.ok(w.note && w.note.trim(), '句子題的錯題必須附上語序說明');
   }
+});
+
+/* ── 情境題 ───────────────────────────────────────────────── */
+
+test('情境題：每一題的四個選項都不重複，而且一定包含正解', () => {
+  for (const s of jaScenes) {
+    assert.ok(s.options.length >= 4, `${s.id} 選項不足四個`);
+    assert.equal(new Set(s.options).size, s.options.length, `${s.id} 選項有重複`);
+    assert.ok(s.options.includes(s.answer), `${s.id} 的選項不含正解「${s.answer}」`);
+  }
+});
+
+test('情境題：id 不重複，場合描述也不重複', () => {
+  assert.deepEqual(findDuplicateIds(jaScenes), []);
+  const scenesText = jaScenes.map((s) => `${s.scene}｜${s.ask}`);
+  const dups = scenesText.filter((v, i) => scenesText.indexOf(v) !== i);
+  assert.deepEqual([...new Set(dups)], [], `有兩題的場合與問法完全一樣：${[...new Set(dups)]}`);
+});
+
+/**
+ * 情境題考的是「同樣的意思、不同的場合該用哪個字」，
+ * 所以四個軸都要有題目——只練自稱不練敬語，等於只做了四分之一。
+ */
+test('情境題：四個考點軸都有題目', () => {
+  const byAxis = countBy(jaScenes, 'axis');
+  for (const axis of ['self', 'address', 'honorific', 'inout']) {
+    assert.ok(byAxis[axis] >= 3, `${axis} 只有 ${byAxis[axis] || 0} 題，太少`);
+  }
+});
+
+test('情境題：真的能出出一局，而且選項恰有一個正解', () => {
+  const session = buildSession({
+    lang: 'ja',
+    words: jaWords,
+    sentences: jaSentences,
+    scenes: jaScenes,
+    source: 'scene',
+    count: 20,
+  });
+
+  assert.equal(session.questions.length, 20);
+  assert.equal(new Set(session.questions.map((q) => q.sourceId)).size, 20, '有重複題目');
+
+  for (const q of session.questions) {
+    assert.equal(q.kind, 'choice');
+    assert.ok(q.context && q.context.trim(), `${q.sourceId} 缺場合描述，這題無從判斷`);
+    assert.ok(q.prompt && q.prompt.trim(), `${q.sourceId} 缺問題`);
+    assert.equal(q.options.filter((o) => o.isCorrect).length, 1, `${q.sourceId} 正解不是恰好一個`);
+    assert.equal(new Set(q.options.map((o) => o.text)).size, q.options.length, `${q.sourceId} 選項重複`);
+    assert.ok(q.note && q.note.trim(), `${q.sourceId} 缺解說`);
+    assert.ok(q.speakText && q.speakText.trim(), `${q.sourceId} 缺朗讀文字`);
+  }
+});
+
+test('情境題：一局跑完會寫進 ja:scene 這個統計分組', () => {
+  const session = buildSession({
+    lang: 'ja',
+    words: jaWords,
+    sentences: jaSentences,
+    scenes: jaScenes,
+    source: 'scene',
+    count: 5,
+  });
+  for (let i = 0; i < session.questions.length; i++) answer(session, i, session.questions[i].correctIndex);
+
+  assert.equal(isComplete(session), true);
+  assert.equal(summarize(session).accuracy, 100);
+  assert.equal(session.source, 'scene');
 });

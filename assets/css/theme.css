@@ -697,6 +697,22 @@ html.no-lines .gap-mid svg { display: none; }
 }
 .prompt-sub { color: var(--mute); font-size: 13px; }
 
+/**
+ * 情境題的場合描述。
+ * 刻意用引文的樣子（左側粗線）而不是另一段內文——
+ * 它是判斷的依據而不是題目本身，視覺上要一眼分得出來。
+ */
+.context {
+  margin: var(--size-3) 0 0;
+  padding: 12px 16px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
 .opts { display: grid; gap: var(--size-3); margin-top: var(--size-4); }
 .opt-row { display: flex; gap: var(--size-2); align-items: stretch; }
 .opt-row .opt { flex: 1; min-width: 0; }

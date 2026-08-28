@@ -36,6 +36,7 @@ const SOURCE_KIND = {
   sentences: 'choice',
   mixed: 'choice',
   cloze: 'cloze',
+  scene: 'choice',
 };
 
 /**
@@ -145,9 +146,10 @@ export function pickDistractors(pool, correct, optionField, rng = Math.random) {
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences) {
+export function poolOf(source, words, sentences, scenes) {
   if (source === 'words') return [...(words || [])];
   if (source === 'sentences') return [...(sentences || [])];
+  if (source === 'scene') return [...(scenes || [])];
   /**
    * 填空題挖的是句子裡的區塊，單字沒有可挖的結構，題源只能是句子；
    * 而且挖掉一塊之後還要留下線索，所以只有一塊的句子在這裡就先剔除。
@@ -203,6 +205,40 @@ function buildChoiceQuestion(item, pool, { lang, direction, rng }) {
     speakText: speakTextOf(item, lang),
     /* 句子題才有語序說明，錯題檢討會顯示 */
     note: item.note ?? null,
+    answeredIndex: null,
+  };
+}
+
+/**
+ * 產生一題情境題。
+ *
+ * 與單字題最大的差別是選項不自動抽，直接用資料裡寫死的那四個。
+ * 「向社長報告時怎麼自稱」的干擾選項必須是「おれ」「ぼく」這種
+ * 同樣是自稱、只是場合不對的字；從題庫隨機抽出來的名詞完全構不成干擾，
+ * 一眼就能刷掉，那題等於沒考。
+ *
+ * 題面因此分成兩層：context 是場合描述、prompt 是問題本身。
+ * 兩者都要顯示，缺了場合這題就無從判斷。
+ */
+function buildSceneQuestion(scene, { lang, rng }) {
+  const options = shuffle(
+    scene.options.map((text) => ({ text, isCorrect: text === scene.answer })),
+    rng
+  );
+
+  return {
+    kind: 'choice',
+    sourceId: scene.id,
+    direction: 'zh2target',
+    /* 場合描述，畫面上要放在問題之上 */
+    context: scene.scene,
+    prompt: scene.ask,
+    promptLang: 'zh',
+    optionLang: lang,
+    options,
+    correctIndex: options.findIndex((o) => o.isCorrect),
+    speakText: speakTextOf({ reading: scene.reading, target: scene.answer }, lang),
+    note: scene.note ?? null,
     answeredIndex: null,
   };
 }
@@ -352,12 +388,13 @@ export function buildSession({
   lang,
   words,
   sentences,
+  scenes,
   source = 'words',
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
 }) {
-  const pool = poolOf(source, words, sentences);
+  const pool = poolOf(source, words, sentences, scenes);
 
   if (pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(
@@ -369,6 +406,7 @@ export function buildSession({
   const picked = sample(pool, count, rng);
   const questions = picked.map((item) => {
     if (kind === 'cloze') return buildClozeQuestion(item, pool, { lang, rng });
+    if (source === 'scene') return buildSceneQuestion(item, { lang, rng });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng });
   });

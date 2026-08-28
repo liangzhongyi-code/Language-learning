@@ -11,6 +11,7 @@ import { CATEGORY_KEYS } from '../data/shared/categories.js';
 import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
 import { LEVELS } from '../data/shared/levels.js';
+import { SCENE_AXIS_KEYS } from '../data/shared/scene-axes.js';
 
 /**
  * 允許的詞性
@@ -330,12 +331,68 @@ export function findDuplicateIds(list) {
 }
 
 /**
+ * 情境題的選項數。與選擇題一致，四選一。
+ */
+const SCENE_OPTIONS = 4;
+
+/**
+ * 驗證一筆情境題。
+ *
+ * 情境題的干擾選項不能像單字題那樣從題庫自動抽——
+ * 「向社長報告時怎麼自稱」的錯誤選項必須是「おれ」「ぼく」這種
+ * 同樣是自稱、但場合不對的字，隨機抽出來的名詞完全構不成干擾。
+ * 所以選項寫死在資料裡，驗證的責任也就落在這裡：
+ * 選項數要夠、彼此不重複、而且一定要包含正解。
+ */
+export function validateScene(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (!new RegExp(`^${lang}-sc-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-sc-NNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
+  }
+  if (!SCENE_AXIS_KEYS.includes(entry.axis)) {
+    c.add('axis', `axis 不在允許值內：${JSON.stringify(entry.axis)}`);
+  }
+  if (!isFilledString(entry.scene)) c.add('scene', 'scene 不可為空，要描述說話的場合與對象');
+  if (!isFilledString(entry.ask)) c.add('ask', 'ask 不可為空，要問出這一題在考什麼');
+  if (!isFilledString(entry.answer)) c.add('answer', 'answer 不可為空');
+  if (!isFilledString(entry.note)) c.add('note', 'note 不可為空，要說明為什麼是這個而不是別的');
+  checkReading(c, entry, lang, ['reading']);
+  if (!CATEGORY_KEYS.includes(entry.category)) {
+    c.add('category', `category 不在允許值內：${JSON.stringify(entry.category)}`);
+  }
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
+  }
+
+  const options = entry.options;
+  if (!Array.isArray(options) || options.length < SCENE_OPTIONS) {
+    c.add('options', `options 至少要 ${SCENE_OPTIONS} 個，實際為 ${JSON.stringify(options)}`);
+    return c.result();
+  }
+  if (options.some((o) => !isFilledString(o))) c.add('options', 'options 不可有空字串');
+  if (new Set(options).size !== options.length) {
+    c.add('options', `options 有重複：${options.filter((o, i) => options.indexOf(o) !== i).join('、')}`);
+  }
+  if (!options.includes(entry.answer)) {
+    c.add('options', `options 必須包含正解「${entry.answer}」，否則這題無解`);
+  }
+
+  return c.result();
+}
+
+/**
  * 每個資料區塊對應的驗證函式。
- * words 與 sentences 需要語言參數，kana 與 letters 不需要。
+ * words、sentences 與 scenes 需要語言參數，kana 與 letters 不需要。
  */
 const SECTION_VALIDATORS = {
   words: (entry, lang) => validateWord(entry, lang),
   sentences: (entry, lang) => validateSentence(entry, lang),
+  scenes: (entry, lang) => validateScene(entry, lang),
   kana: (entry) => validateKana(entry),
   letters: (entry) => validateLetter(entry),
 };

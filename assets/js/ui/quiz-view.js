@@ -18,7 +18,7 @@ const DIRECTION_LABEL = {
   mixed: { en: '混合', ja: '混合' },
 };
 
-const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空' };
+const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境' };
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -34,14 +34,14 @@ function storage() {
   }
 }
 
-export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
+export function initQuizPage({ lang, words, sentences, scenes = [], mount, noticeHost }) {
   /**
    * 設定值。題源可由網址參數預選，供單字頁與文法頁的捷徑使用。
    */
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('source');
   const config = {
-    source: ['words', 'sentences', 'mixed', 'cloze'].includes(requested) ? requested : 'words',
+    source: ['words', 'sentences', 'mixed', 'cloze', 'scene'].includes(requested) ? requested : 'words',
     direction: 'zh2target',
     count: 10,
     /**
@@ -61,7 +61,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
   let phase = 'setup';
 
   /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
-  const poolSize = (source) => poolOf(source, words, sentences).length;
+  const poolSize = (source) => poolOf(source, words, sentences, scenes).length;
 
   /* ── 設定畫面 ─────────────────────────────────────────── */
 
@@ -87,6 +87,12 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
             ['sentences', `句型（${sentences.length}）`],
             ['mixed', `混合（${words.length + sentences.length}）`],
             ['cloze', `填空（${poolSize('cloze')}）`],
+            /**
+             * 情境題只有日文有資料——自稱與敬語體系是日文特有的，
+             * 英文沒有對應的東西可考。沒有資料時整顆膠囊不出現，
+             * 而不是出現一顆按了會說「題庫不足」的死按鈕。
+             */
+            ...(scenes.length ? [['scene', `情境（${scenes.length}）`]] : []),
           ], config.source)}</div>
         </div>
 
@@ -160,6 +166,7 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
         lang,
         words,
         sentences,
+        scenes,
         source: config.source,
         direction: config.direction,
         count,
@@ -251,10 +258,18 @@ export function initQuizPage({ lang, words, sentences, mount, noticeHost }) {
             q.note ? `<br>${esc(q.note)}` : ''
           }</div>`;
 
+    /**
+     * 情境題的場合描述放在題面之上。
+     * 不能併進題面：這一題問的是「該怎麼自稱」，而場合是判斷的依據，
+     * 兩者混成一段長句之後，使用者會分不清哪一句才是問題。
+     */
+    const context = q.context ? `<div class="context">${esc(q.context)}</div>` : '';
+
     mount.innerHTML = `
       <div class="card">
-        ${quizTop(index, total, DIRECTION_LABEL[q.direction][lang])}
+        ${quizTop(index, total, q.context ? SOURCE_LABEL.scene : DIRECTION_LABEL[q.direction][lang])}
 
+        ${context}
         <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
         <div class="prompt-sub">選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}　·　可按鍵盤 1-4</div>
 
