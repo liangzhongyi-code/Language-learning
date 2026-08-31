@@ -57,16 +57,25 @@ const DIRECTION_FIELDS = {
 };
 
 /**
- * 支援「隱藏漢字」的題源。
+ * 日文漢字的三種顯示方式。
+ *   show 照日文平常的寫法；
+ *   ruby 讀的是假名、漢字小字標在上面（振り仮名反過來）；
+ *   kana 只有假名，漢字完全不出現。
+ * 匯出給 ui 用，兩邊各寫一份字串遲早會分家。
+ */
+export const KANJI_MODES = ['show', 'ruby', 'kana'];
+
+/**
+ * 有假名版、換得掉漢字的題源。
  *
  * 單字、句子與句子的每一塊都有 reading 可以換；
  * 情境題的四個選項與閱讀題的短文都沒有假名版，換不了——
- * 沒列在這裡的題源就算開了開關也照常出漢字。
- * 匯出給 ui 用，設定畫面才知道那顆開關該不該出現。
+ * 沒列在這裡的題源就算選了別的模式也照常出漢字。
+ * 匯出給 ui 用，設定畫面才知道那排按鈕該不該出現。
  */
 const KANA_SOURCES = ['words', 'sentences', 'mixed', 'cloze'];
 
-export function supportsHideKanji(source) {
+export function hasKanaVersion(source) {
   return KANA_SOURCES.includes(source);
 }
 
@@ -265,10 +274,16 @@ function buildChoiceQuestion(item, pool, { lang, direction, rng, byCategory = nu
   const fields = DIRECTION_FIELDS[direction];
   const distractors = pickDistractors(pool, item, fields.option, rng, byCategory, fields.prompt);
 
+  /**
+   * 漢字對照只掛在目標語言那一側。
+   * 中文的選項沒有假名可標，硬掛上去畫面會多出一排空的標註格。
+   */
+  const rubyOf = (x) => (fields.option === 'target' ? x.ruby ?? null : null);
+
   const options = shuffle(
     [
-      { text: item[fields.option], isCorrect: true },
-      ...distractors.map((d) => ({ text: d[fields.option], isCorrect: false })),
+      { text: item[fields.option], isCorrect: true, ruby: rubyOf(item) },
+      ...distractors.map((d) => ({ text: d[fields.option], isCorrect: false, ruby: rubyOf(d) })),
     ],
     rng
   );
@@ -278,6 +293,7 @@ function buildChoiceQuestion(item, pool, { lang, direction, rng, byCategory = nu
     sourceId: item.id,
     direction,
     prompt: item[fields.prompt],
+    promptRuby: fields.prompt === 'target' ? item.ruby ?? null : null,
     promptLang: direction === 'zh2target' ? 'zh' : lang,
     optionLang: direction === 'zh2target' ? lang : 'zh',
     options,
@@ -460,8 +476,9 @@ function pickBlankIndices(chunkCount, count, rng) {
  * 候選詞比空格多就還能考，沒必要為此讓整局出不來。
  */
 function buildBank(blanks, otherChunks, rng) {
-  const answers = blanks.map((b) => b.answer);
-  const taken = new Set(answers);
+  /* 每一張都帶著自己的漢字對照，洗牌之後才不會標到別人頭上 */
+  const answers = blanks.map((b) => ({ text: b.answer, ruby: b.ruby ?? null }));
+  const taken = new Set(answers.map((a) => a.text));
   const roles = [...new Set(blanks.map((b) => b.role))];
   const picked = [];
 
@@ -473,7 +490,7 @@ function buildBank(blanks, otherChunks, rng) {
       const chunk = list.shift();
       if (taken.has(chunk.target)) continue;
       taken.add(chunk.target);
-      picked.push(chunk.target);
+      picked.push({ text: chunk.target, ruby: chunk.ruby ?? null });
       return true;
     }
     return false;
@@ -517,15 +534,22 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
   for (const [i, chunk] of chunks.entries()) {
     if (blankAt.has(i)) {
       segments.push({ type: 'blank', blankIndex: blanks.length });
-      blanks.push({ answer: chunk.target, role: chunk.role, zh: chunk.zh });
+      blanks.push({ answer: chunk.target, role: chunk.role, zh: chunk.zh, ruby: chunk.ruby ?? null });
     } else {
-      segments.push({ type: 'text', text: chunk.target });
+      segments.push({ type: 'text', text: chunk.target, ruby: chunk.ruby ?? null });
     }
   }
 
   const otherChunks = pool
     .filter((s) => s.id !== sentence.id)
     .flatMap((s) => s.chunks || []);
+
+  /**
+   * 候選詞的文字與漢字對照拆成兩個平行陣列。
+   * bank 保持字串陣列不動——判定、統計、錯題檢討全都比對它，
+   * 為了畫面上的標註把它換成物件，會讓那三處各自跟著改一次。
+   */
+  const bankPairs = buildBank(blanks, otherChunks, rng);
 
   return {
     kind: 'cloze',
@@ -539,7 +563,8 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
     blanks,
     /* 把區塊拼回整句時要用的間隔，畫面與錯題檢討都靠它 */
     gap: WORD_GAP[lang] ?? '',
-    bank: buildBank(blanks, otherChunks, rng),
+    bank: bankPairs.map((p) => p.text),
+    bankRuby: bankPairs.some((p) => p.ruby) ? bankPairs.map((p) => p.ruby) : null,
     filled: blanks.map(() => null),
     submitted: false,
     speakText: speakTextOf(sentence, lang),
@@ -562,17 +587,19 @@ export function buildSession({
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
   /**
-   * 把題目裡的漢字換成假名。
+   * 漢字怎麼顯示：show / ruby / kana。
    * 在整局的最上游換掉，下游的干擾選項去重、正解比對、填空候選詞
    * 就全部落在假名上，不必每一處各自判斷一次。
    */
-  hideKanji = false,
+  kanjiMode = 'show',
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
 }) {
   const base = poolOf(source, words, sentences, scenes, readings);
-  const pool = hideKanji && supportsHideKanji(source) ? kanaPool(base) : base;
+  /* ruby 與 kana 讀的都是假名，差別只在要不要把漢字一起帶著標上去 */
+  const swap = kanjiMode !== 'show' && hasKanaVersion(source);
+  const pool = swap ? kanaPool(base, kanjiMode === 'ruby') : base;
 
   if (pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(

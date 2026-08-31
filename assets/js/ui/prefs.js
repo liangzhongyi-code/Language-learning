@@ -20,12 +20,16 @@ const DEFAULTS = {
    */
   readingAskIn: 'zh',
   /**
-   * 測驗時把日文漢字換成假名。
+   * 測驗時日文漢字怎麼顯示：show / ruby / kana。
    *
    * 對母語是中文的人來說漢字會直接洩題——看到「寿司」不必會唸日文就知道答案。
+   * ruby 是折衷：讀的是假名、漢字用小字標在上面，想不起來抬頭就看得到。
    * 跟出題方向一樣是「我要用哪種方式練」的長期選擇，所以記在偏好裡。
+   *
+   * 舊版存的是布林的 hideKanji，那個鍵會留在使用者的 localStorage 裡，
+   * 由 quiz-view 的 storedKanjiMode() 讀成對應的模式。
    */
-  hideKanji: false,
+  kanjiMode: 'show',
   /**
    * 這台裝置上出現過實體鍵盤的按鍵。
    *
@@ -38,6 +42,21 @@ const DEFAULTS = {
 };
 
 /**
+ * 把舊版存下來的形狀轉成現在的。
+ *
+ * 這件事一定要在合併預設值「之前」做。合併之後每一個鍵都有值了，
+ * 分不出「使用者沒設定過」與「使用者選的剛好等於預設」——
+ * 於是 kanjiMode 永遠讀到預設的 show，遷移那一行永遠不會執行。
+ */
+function migrate(stored) {
+  /* 漢字顯示最早是布林的 hideKanji，加了「標在假名上」之後改成三選一 */
+  if (stored.kanjiMode === undefined && stored.hideKanji !== undefined) {
+    return { ...stored, kanjiMode: stored.hideKanji === true ? 'kana' : 'show' };
+  }
+  return stored;
+}
+
+/**
  * 讀取全部偏好。任何異常一律回到預設值。
  */
 export function loadPrefs() {
@@ -46,7 +65,7 @@ export function loadPrefs() {
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULTS };
-    return { ...DEFAULTS, ...parsed };
+    return { ...DEFAULTS, ...migrate(parsed) };
   } catch {
     return { ...DEFAULTS };
   }

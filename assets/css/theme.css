@@ -1180,3 +1180,59 @@ html.no-lines .gap-mid svg { display: none; }
 html.has-keyboard .kbd-hint { display: inline; }
 html.has-keyboard .opt .key,
 html.has-keyboard .cz-word .key { display: inline-flex; }
+
+/**
+ * 「漢字標在假名上」的振り仮名——只是方向反過來，上面放的是漢字。
+ *
+ * .rb 把整串包成一個元素。.opt、.prompt、.cz-line 都是帶 gap 的 flex 容器，
+ * 沒有這一層的話每個 <ruby> 都會變成獨立的 flex item 被 gap 推開。
+ *
+ * ruby-position 要明寫。瀏覽器對日文的預設值不一致（有的會擺到底下去），
+ * 而這裡標的是漢字不是假名，擺錯位置就完全看不懂誰在標誰。
+ */
+.rb {
+  display: inline;
+  min-width: 0;
+}
+.rb ruby {
+  ruby-position: over;
+  ruby-align: center;
+  /**
+   * 一個 ruby＝一個詞，不准從中間斷開。
+   * 放任它斷的話會出現「べんきょうしま／す」，而上面的標註跟著被切成
+   * 「勉強しま」加半行空白——標註與它標的字對不起來就白標了。
+   * 詞與詞之間仍然可以換行，斷點落在助詞那些沒有標註的字上。
+   */
+  white-space: nowrap;
+}
+.rb rt {
+  /**
+   * 一般的振り仮名可以縮到 0.5em，因為上面放的是筆畫簡單的假名。
+   * 這裡反過來，上面放的是漢字——同樣的比例會糊成一團看不出是哪個字。
+   */
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--mute);
+  /**
+   * 標註那一行不撐開行高。
+   * 不壓的話選項按鈕會忽高忽低——有漢字的那幾個變高、純假名的維持原高度，
+   * 四個選項排出來像階梯。
+   */
+  line-height: 1.1;
+}
+/* 正解／答錯的顏色會蓋掉 .rb rt 的灰，標註要跟著同一個色系才不會像沒生效 */
+.opt.is-correct .rb rt,
+.opt.is-wrong .rb rt,
+.cz-blank.is-correct .rb rt,
+.cz-blank.is-wrong .rb rt { color: inherit; opacity: 0.75; }
+
+/**
+ * 標註佔的是行內的上方空間，行距不夠就會被上一行切掉。
+ * 只在真的有標註時才加，沒有標註的題目維持原本的行距。
+ *
+ * 選項是整組一起加，不是逐顆判斷。同一題裡「寿司」有漢字可標、
+ * 「コーヒー」沒有，逐顆加的話四個選項會變成 62／94／94／62 的階梯。
+ */
+.prompt:has(.rb),
+.cz-line:has(.rb) { line-height: 2; }
+.opts.has-ruby .opt { line-height: 2; }

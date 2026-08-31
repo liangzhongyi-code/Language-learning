@@ -14,7 +14,8 @@ import {
   poolOf,
   progressPercent,
   isAnswered,
-  supportsHideKanji,
+  hasKanaVersion,
+  KANJI_MODES,
   MIN_POOL,
 } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
@@ -37,15 +38,57 @@ const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
 
 /**
  * 換不成假名的題源，各自的原因。
- * 開關收起來之後還是要交代一句，否則使用者只會看到「我明明開了卻還是漢字」。
+ * 那排按鈕收起來之後還是要交代一句，否則使用者只會看到「我明明選了卻還是漢字」。
  */
 const NO_KANA_REASON = {
   scene: '四個選項是連場合一起寫死的，沒有假名版',
   reading: '整篇短文沒有假名版',
 };
 
+const KANJI_MODE_LABEL = {
+  show: '照常顯示',
+  ruby: '標在假名上',
+  kana: '只顯示假名',
+};
+
+const KANJI_MODE_NOTE = {
+  show: '日文平常的寫法。漢字看得懂的話，這一局其實是在考漢字而不是日文。',
+  ruby: '讀的是下面那行假名，漢字用小字標在上面——想不起來怎麼唸時抬頭就看得到。要真的考自己就用「只顯示假名」。',
+  kana: '題目與選項一律用假名，考的是「這個詞怎麼唸」。本來就沒有漢字的詞（コーヒー）維持原樣。',
+};
+
+/**
+ * 讀出存起來的漢字模式。舊版布林值的轉換在 prefs.js 就做掉了，
+ * 這裡只擋「存進去的字串根本不是三種之一」。
+ */
+function storedKanjiMode() {
+  const mode = loadPrefs().kanjiMode;
+  return KANJI_MODES.includes(mode) ? mode : 'show';
+}
+
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * 把「讀假名、漢字標在上面」畫出來。
+ *
+ * pairs 是 core 給的 [{ text, ruby }]，沒有這份資料就退回純文字，
+ * 所以三種漢字模式共用同一條繪製路徑，畫面層不必各自判斷模式。
+ * ruby 為空的段落一律不套 <ruby>——助詞與片假名沒有漢字可標，
+ * 全部包起來只會讓每一段都多撐出一行標註的高度。
+ *
+ * 整串一定要包在單一元素裡。.opt 與 .prompt 都是帶 gap 的 flex 容器，
+ * 直接吐出好幾個 <ruby> 的話，每一塊都會變成獨立的 flex item 被 gap 推開，
+ * 一句話會散成「わたし　は　のみます」。
+ */
+function rubyHtml(pairs, fallback) {
+  if (!Array.isArray(pairs) || !pairs.length) return esc(fallback);
+  if (!pairs.some((p) => p.ruby)) return esc(pairs.map((p) => p.text).join(''));
+  const inner = pairs
+    .map((p) => (p.ruby ? `<ruby>${esc(p.text)}<rt>${esc(p.ruby)}</rt></ruby>` : esc(p.text)))
+    .join('');
+  return `<span class="rb">${inner}</span>`;
+}
 
 /**
  * localStorage 取用一律包起來，被停用時回傳 undefined
@@ -81,10 +124,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      */
     readingAskIn: loadPrefs().readingAskIn === 'target' ? 'target' : 'zh',
     /**
-     * 把漢字換成假名。只有日文有意義——英文沒有漢字可藏，
-     * 所以這顆開關在英文的測驗頁不出現，值也永遠是 false。
+     * 漢字怎麼顯示。只有日文有意義——英文沒有漢字可藏，
+     * 所以這排按鈕在英文的測驗頁不出現，值也永遠是 show。
      */
-    hideKanji: lang === 'ja' && loadPrefs().hideKanji === true,
+    kanjiMode: lang === 'ja' ? storedKanjiMode() : 'show',
     /**
      * 使用者是不是選了「全部」。
      * 只記數字不行——換題源之後舊的總數會變成一個沒有任何膠囊對應的幽靈值，
@@ -207,27 +250,20 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
            */
           lang !== 'ja'
             ? ''
-            : supportsHideKanji(config.source)
+            : hasKanaVersion(config.source)
               ? `<div class="setting">
           <label>漢字</label>
           <div class="chips">${chips(
-            'hideKanji',
-            [
-              ['off', '照常顯示'],
-              ['on', '換成假名'],
-            ],
-            config.hideKanji ? 'on' : 'off'
+            'kanjiMode',
+            KANJI_MODES.map((mode) => [mode, KANJI_MODE_LABEL[mode]]),
+            config.kanjiMode
           )}</div>
-          <p class="setting-note">${
-            config.hideKanji
-              ? '題目與選項一律用假名，考的是「這個詞怎麼唸」。本來就沒有漢字的詞（コーヒー）維持原樣。'
-              : '日文平常的寫法。漢字看得懂的話，這一局其實是在考漢字而不是日文。'
-          }</p>
+          <p class="setting-note">${KANJI_MODE_NOTE[config.kanjiMode]}</p>
         </div>`
-              : config.hideKanji
-                ? `<p class="setting-note">「換成假名」對${esc(SOURCE_LABEL[config.source])}題無效——${
-                    NO_KANA_REASON[config.source]
-                  }，這一局仍然會出現漢字。</p>`
+              : config.kanjiMode !== 'show'
+                ? `<p class="setting-note">「${esc(KANJI_MODE_LABEL[config.kanjiMode])}」對${esc(
+                    SOURCE_LABEL[config.source]
+                  )}題無效——${NO_KANA_REASON[config.source]}，這一局仍然會出現漢字。</p>`
                 : ''
         }
 
@@ -280,10 +316,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         if (set === 'count') {
           config.useAll = value === 'all';
           if (!config.useAll) config.count = Number(value);
-        } else if (set === 'hideKanji') {
-          /* 膠囊帶回來的是字串，這一項在別處是布林，只在這裡轉一次 */
-          config.hideKanji = value === 'on';
-          setPref('hideKanji', config.hideKanji);
+        } else if (set === 'kanjiMode') {
+          config.kanjiMode = value;
+          setPref('kanjiMode', value);
         } else {
           config[set] = value;
           /* 這一項是長期偏好，切了就記住 */
@@ -318,7 +353,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         source: config.source,
         direction: config.direction,
         readingAskIn: config.readingAskIn,
-        hideKanji: config.hideKanji,
+        kanjiMode: config.kanjiMode,
         count,
       });
       recorded = false;
@@ -392,7 +427,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           }
         }
         const button = `<button class="${cls}" type="button" data-opt="${i}" ${answered ? 'disabled' : ''}>
-            <span class="key">${i + 1}</span>${esc(option.text)}${mark}
+            <span class="key">${i + 1}</span>${rubyHtml(option.ruby, option.text)}${mark}
           </button>`;
 
         /**
@@ -414,7 +449,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       ? ''
       : q.answeredIndex === q.correctIndex
         ? `<div class="feedback good">答對了。${q.note ? esc(q.note) : ''}</div>`
-        : `<div class="feedback">正解是 <b>${esc(q.options[q.correctIndex].text)}</b>。${
+        : `<div class="feedback">正解是 <b>${rubyHtml(
+            q.options[q.correctIndex].ruby,
+            q.options[q.correctIndex].text
+          )}</b>。${
             q.note ? `<br>${esc(q.note)}` : ''
           }</div>`;
 
@@ -474,12 +512,15 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         ${quizTop(index, total, topLabel)}
 
         ${context}
-        <div class="prompt">${esc(q.prompt)}${promptSpeak}</div>
+        <div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>
         <div class="prompt-sub">${
           isReading ? '依短文內容作答' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
         }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>
 
-        <div class="opts">${options}</div>
+        <div class="opts${
+          /* 有一顆標了漢字，四顆就一起加行距——否則會排成高低不一的階梯 */
+          q.options.some((o) => o.ruby?.some((p) => p.ruby)) ? ' has-ruby' : ''
+        }">${options}</div>
         ${feedback}
         ${translation}
 
@@ -581,12 +622,22 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
     /* 已提交的題目改看 q.filled，逐格標出對錯；未提交則看作答中的暫存 */
     const blankHtml = (blankIndex) => {
+      /* 填進去的字要標哪個漢字，看的是「這張候選詞是誰」，不是這一格該填誰 */
+      const rubyFor = (text) => {
+        const at = q.bank.indexOf(text);
+        return at === -1 ? null : q.bankRuby?.[at] || null;
+      };
+      const withRuby = (text) => {
+        const ruby = rubyFor(text);
+        return ruby ? rubyHtml([{ text, ruby }], text) : esc(text);
+      };
+
       if (answered) {
         const chosen = q.filled[blankIndex];
         const right = q.blanks[blankIndex].answer;
         const ok = chosen === right;
-        return `<span class="cz-blank ${ok ? 'is-correct' : 'is-wrong'}">${esc(chosen)}${
-          ok ? '' : `<i class="cz-fix">${esc(right)}</i>`
+        return `<span class="cz-blank ${ok ? 'is-correct' : 'is-wrong'}">${withRuby(chosen)}${
+          ok ? '' : `<i class="cz-fix">${withRuby(right)}</i>`
         }</span>`;
       }
       const wordIndex = state.assign[blankIndex];
@@ -595,7 +646,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       return `<button class="cz-blank is-open${filledText ? ' is-filled' : ''}${active}"
           type="button" data-blank="${blankIndex}"
           aria-label="第 ${blankIndex + 1} 個空格${filledText ? `，目前是 ${esc(filledText)}` : '，尚未填入'}"
-        >${esc(filledText)}</button>`;
+        >${withRuby(filledText)}</button>`;
     };
 
     /**
@@ -610,7 +661,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const line = q.segments
       .map((seg) =>
         seg.type === 'text'
-          ? `<span class="cz-text">${esc(seg.text)}</span>`
+          ? `<span class="cz-text">${rubyHtml(seg.ruby ? [seg] : null, seg.text)}</span>`
           : blankHtml(seg.blankIndex)
       )
       .join(gapHtml);
@@ -622,10 +673,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           .map((text, i) => {
             const isUsed = used.has(i);
             const active = state.word === i ? ' is-active' : '';
+            const ruby = q.bankRuby?.[i];
             return `<button class="cz-word${isUsed ? ' is-used' : ''}${active}" type="button"
                 data-word="${i}" draggable="${!isUsed}"
                 aria-pressed="${state.word === i}"
-              ><span class="key">${i + 1}</span>${esc(text)}</button>`;
+              ><span class="key">${i + 1}</span>${
+                ruby ? rubyHtml([{ text, ruby }], text) : esc(text)
+              }</button>`;
           })
           .join('')}</div>`;
 
