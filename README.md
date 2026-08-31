@@ -157,11 +157,13 @@ npm test
 上面那句英文的語序是「我 → 去打 → 羽毛球 → 今天」，所以陣列就照這個順序排；
 而中文是「我 → 今天 → 去打 → 羽毛球」，所以 `zhIndex` 依序是 0、2、3、1。
 
-寫完會被三條規則檢查（`npm test` 會抓）：
+寫完會被四條規則檢查（`npm test` 會抓）：
 
 1. 依**陣列順序**串接 `target`，忽略空白後要等於整句 `target`
 2. 依 **`zhIndex` 排序**串接 `zh`，要等於整句 `zh`
 3. `zhIndex` 必須是 0 起算、不跳號、不重複的連續整數
+4. **日文限定**：含漢字的塊要寫 `reading`，依**陣列順序**串接（沒有漢字的塊用 `target`）
+   要等於整句 `reading`
 
 #### 日文的助詞怎麼填
 
@@ -175,14 +177,18 @@ npm test
 
 ```js
 chunks: [
-  { role: 'subject',  zh: '我',     target: '私',           zhIndex: 0 },
-  { role: 'particle', zh: '',       target: 'は',           zhIndex: 4 },  // ← 尾端號碼
-  { role: 'time',     zh: '今天',   target: '今日',         zhIndex: 1 },
-  { role: 'object',   zh: '羽毛球', target: 'バドミントン', zhIndex: 3 },
-  { role: 'particle', zh: '',       target: 'を',           zhIndex: 5 },  // ← 尾端號碼
-  { role: 'verb',     zh: '去打',   target: 'します',       zhIndex: 2 },
+  { role: 'subject',  zh: '我',     target: '私',           reading: 'わたし', zhIndex: 0 },
+  { role: 'particle', zh: '',       target: 'は',                              zhIndex: 4 },  // ← 尾端號碼
+  { role: 'time',     zh: '今天',   target: '今日',         reading: 'きょう', zhIndex: 1 },
+  { role: 'object',   zh: '羽毛球', target: 'バドミントン',                    zhIndex: 3 },
+  { role: 'particle', zh: '',       target: 'を',                              zhIndex: 5 },  // ← 尾端號碼
+  { role: 'verb',     zh: '去打',   target: 'します',                          zhIndex: 2 },
 ],
 ```
+
+`reading` 只有含漢字的塊要填。`は` 本來就是假名、`バドミントン` 是片假名，
+兩者都不必填——片假名硬轉成平假名反而變成沒人這樣寫的日文。
+這個欄位餵給測驗的「隱藏漢字」模式，填空題在那個模式下顯示的就是它。
 
 日文的**動詞（或否定）一律放在 `chunks` 陣列的最後一個位置**，這是日文的核心特徵，
 測試會檢查。

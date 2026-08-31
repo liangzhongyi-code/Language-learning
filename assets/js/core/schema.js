@@ -12,6 +12,7 @@ import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
 import { LEVELS } from '../data/shared/levels.js';
 import { SCENE_AXIS_KEYS } from '../data/shared/scene-axes.js';
+import { hasKanji } from './kana.js';
 
 /**
  * 允許的詞性
@@ -203,6 +204,29 @@ export function validateSentence(entry, lang) {
     .join('');
   if (joinedZh !== (entry.zh ?? '')) {
     c.add('chunks.zh', `依 zhIndex 排序串接的 zh 組不回整句：串接為「${joinedZh}」，整句為「${entry.zh}」`);
+  }
+
+  /**
+   * 規則 4：含漢字的塊要有 reading，且依序串接後等於整句 reading。
+   *
+   * 填空題在「隱藏漢字」模式下顯示的是每一塊的 reading，
+   * 逐塊手填很容易漏字或多字，而且錯了畫面上只是多一個假名，看不出來。
+   * 用整句 reading 對答案，一個字都錯不了。
+   * 沒有漢字的塊不必填——它本來就是假名，串接時用 target。
+   */
+  if (READING_REQUIRED.includes(lang)) {
+    for (const [i, ch] of chunks.entries()) {
+      if (hasKanji(ch?.target) && !isFilledString(ch?.reading)) {
+        c.add('chunks.reading', `第 ${i} 塊「${ch?.target}」含漢字，reading 不可為空`);
+      }
+    }
+    const joinedReading = chunks.map((ch) => ch?.reading ?? ch?.target ?? '').join('');
+    if (joinedReading !== (entry.reading ?? '')) {
+      c.add(
+        'chunks.reading',
+        `依陣列順序串接的 reading 組不回整句：串接為「${joinedReading}」，整句為「${entry.reading}」`
+      );
+    }
   }
 
   return c.result();

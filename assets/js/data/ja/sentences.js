@@ -11,6 +11,9 @@
  * 但仍然佔一個 zhIndex 號碼——zhIndex 必須是連號的排列，跳號會被 schema 擋下。
  * 助詞在文法頁的中文排完全不顯示（grammar-layout.js 依 role 直接濾掉），
  * 不要為了「讓它在中文排佔一格」去填非空的 zh，那樣反而會讓串接檢查對不起來。
+ *
+ * 含漢字的塊另外要寫 reading，串接起來（沒有漢字的塊用 target）等於整句 reading。
+ * 測驗的「隱藏漢字」模式顯示的就是它——本來就是假名的塊不必填。
  */
 
 import { sentences as core } from './sentences/core.js';

@@ -14,6 +14,7 @@
 
 import { shuffle, sample } from './shuffle.js';
 import { speakTextOf } from './speech-text.js';
+import { kanaPool } from './kana.js';
 
 /**
  * 一題需要一個正解加三個干擾選項
@@ -54,6 +55,20 @@ const DIRECTION_FIELDS = {
   zh2target: { prompt: 'zh', option: 'target' },
   target2zh: { prompt: 'target', option: 'zh' },
 };
+
+/**
+ * 支援「隱藏漢字」的題源。
+ *
+ * 單字、句子與句子的每一塊都有 reading 可以換；
+ * 情境題的四個選項與閱讀題的短文都沒有假名版，換不了——
+ * 沒列在這裡的題源就算開了開關也照常出漢字。
+ * 匯出給 ui 用，設定畫面才知道那顆開關該不該出現。
+ */
+const KANA_SOURCES = ['words', 'sentences', 'mixed', 'cloze'];
+
+export function supportsHideKanji(source) {
+  return KANA_SOURCES.includes(source);
+}
 
 /**
  * 目標語言把詞拼成句子時的間隔。
@@ -120,10 +135,25 @@ function indexByCategory(pool) {
  * 寧可拋錯也不回傳選項不足的瑕疵題。
  *
  * 顯示文字與正解相同的項目一律排除，否則會出現兩個都對的選項。
+ *
+ * promptField 是題面那一側的欄位，撞到了同樣要排除。
+ * 題面相同代表這一題問的是同一件事，那個干擾選項就跟正解一樣對。
+ * 平常很少發生，但隱藏漢字模式下題面變成假名，「橋」與「箸」都成了はし，
+ * 日文的同音詞又特別多——不擋的話會固定出現一批無解的題目。
  */
-export function pickDistractors(pool, correct, optionField, rng = Math.random, byCategory = null) {
+export function pickDistractors(
+  pool,
+  correct,
+  optionField,
+  rng = Math.random,
+  byCategory = null,
+  promptField = null
+) {
   const list = pool || [];
-  const usable = (item) => item.id !== correct.id && item[optionField] !== correct[optionField];
+  const clashes = promptField && promptField !== optionField
+    ? (item) => item[optionField] === correct[optionField] || item[promptField] === correct[promptField]
+    : (item) => item[optionField] === correct[optionField];
+  const usable = (item) => item.id !== correct.id && !clashes(item);
   /* 有索引就從同 category 的桶子裡挑，沒有就退回掃全表（單獨呼叫時的路徑） */
   const sameCategory = byCategory ? byCategory.get(correct.category ?? '') ?? [] : null;
 
@@ -233,7 +263,7 @@ export function progressPercent(session) {
  */
 function buildChoiceQuestion(item, pool, { lang, direction, rng, byCategory = null }) {
   const fields = DIRECTION_FIELDS[direction];
-  const distractors = pickDistractors(pool, item, fields.option, rng, byCategory);
+  const distractors = pickDistractors(pool, item, fields.option, rng, byCategory, fields.prompt);
 
   const options = shuffle(
     [
@@ -531,11 +561,18 @@ export function buildSession({
   source = 'words',
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
+  /**
+   * 把題目裡的漢字換成假名。
+   * 在整局的最上游換掉，下游的干擾選項去重、正解比對、填空候選詞
+   * 就全部落在假名上，不必每一處各自判斷一次。
+   */
+  hideKanji = false,
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
 }) {
-  const pool = poolOf(source, words, sentences, scenes, readings);
+  const base = poolOf(source, words, sentences, scenes, readings);
+  const pool = hideKanji && supportsHideKanji(source) ? kanaPool(base) : base;
 
   if (pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(

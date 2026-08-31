@@ -179,9 +179,9 @@ const JA_SENT = {
   reading: 'わたしはきょうバドミントンをします',
   patternId: 'ja-p-sotv',
   chunks: [
-    { role: 'subject', zh: '我', target: '私', zhIndex: 0 },
+    { role: 'subject', zh: '我', target: '私', reading: 'わたし', zhIndex: 0 },
     { role: 'particle', zh: '', target: 'は', zhIndex: 4 },
-    { role: 'time', zh: '今天', target: '今日', zhIndex: 1 },
+    { role: 'time', zh: '今天', target: '今日', reading: 'きょう', zhIndex: 1 },
     { role: 'object', zh: '羽毛球', target: 'バドミントン', zhIndex: 3 },
     { role: 'particle', zh: '', target: 'を', zhIndex: 5 },
     { role: 'verb', zh: '去打', target: 'します', zhIndex: 2 },

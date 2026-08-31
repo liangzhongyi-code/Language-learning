@@ -8,7 +8,15 @@
  * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
  */
 
-import { buildSession, answer, poolOf, progressPercent, isAnswered, MIN_POOL } from '../core/quiz-engine.js';
+import {
+  buildSession,
+  answer,
+  poolOf,
+  progressPercent,
+  isAnswered,
+  supportsHideKanji,
+  MIN_POOL,
+} from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
@@ -26,6 +34,15 @@ const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + �
  * 其餘題型的題面與選項語言是固定的，選了方向也不會有任何變化。
  */
 const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
+
+/**
+ * 換不成假名的題源，各自的原因。
+ * 開關收起來之後還是要交代一句，否則使用者只會看到「我明明開了卻還是漢字」。
+ */
+const NO_KANA_REASON = {
+  scene: '四個選項是連場合一起寫死的，沒有假名版',
+  reading: '整篇短文沒有假名版',
+};
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -63,6 +80,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      * 每次重開都回到預設會很煩。
      */
     readingAskIn: loadPrefs().readingAskIn === 'target' ? 'target' : 'zh',
+    /**
+     * 把漢字換成假名。只有日文有意義——英文沒有漢字可藏，
+     * 所以這顆開關在英文的測驗頁不出現，值也永遠是 false。
+     */
+    hideKanji: lang === 'ja' && loadPrefs().hideKanji === true,
     /**
      * 使用者是不是選了「全部」。
      * 只記數字不行——換題源之後舊的總數會變成一個沒有任何膠囊對應的幽靈值，
@@ -177,6 +199,40 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
         ${
           /**
+           * 隱藏漢字：日文限定，而且只有換得掉的題源才給開關。
+           *
+           * 情境題的四個選項與閱讀題的短文都沒有假名版，
+           * 開了也不會有任何變化——與其擺一顆按了沒反應的按鈕，
+           * 不如收起來，另外用一行字說明為什麼這一局仍然是漢字。
+           */
+          lang !== 'ja'
+            ? ''
+            : supportsHideKanji(config.source)
+              ? `<div class="setting">
+          <label>漢字</label>
+          <div class="chips">${chips(
+            'hideKanji',
+            [
+              ['off', '照常顯示'],
+              ['on', '換成假名'],
+            ],
+            config.hideKanji ? 'on' : 'off'
+          )}</div>
+          <p class="setting-note">${
+            config.hideKanji
+              ? '題目與選項一律用假名，考的是「這個詞怎麼唸」。本來就沒有漢字的詞（コーヒー）維持原樣。'
+              : '日文平常的寫法。漢字看得懂的話，這一局其實是在考漢字而不是日文。'
+          }</p>
+        </div>`
+              : config.hideKanji
+                ? `<p class="setting-note">「換成假名」對${esc(SOURCE_LABEL[config.source])}題無效——${
+                    NO_KANA_REASON[config.source]
+                  }，這一局仍然會出現漢字。</p>`
+                : ''
+        }
+
+        ${
+          /**
            * 閱讀題專屬的開關，只在選了閱讀題時出現。
            * 兩種模式差很多：中文版純粹測「讀懂了沒」，
            * 目標語言版連題目都要先讀懂，接近 JLPT 讀解的實戰形式。
@@ -224,6 +280,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         if (set === 'count') {
           config.useAll = value === 'all';
           if (!config.useAll) config.count = Number(value);
+        } else if (set === 'hideKanji') {
+          /* 膠囊帶回來的是字串，這一項在別處是布林，只在這裡轉一次 */
+          config.hideKanji = value === 'on';
+          setPref('hideKanji', config.hideKanji);
         } else {
           config[set] = value;
           /* 這一項是長期偏好，切了就記住 */
@@ -258,6 +318,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         source: config.source,
         direction: config.direction,
         readingAskIn: config.readingAskIn,
+        hideKanji: config.hideKanji,
         count,
       });
       recorded = false;
