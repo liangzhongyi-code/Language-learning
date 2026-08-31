@@ -35,12 +35,13 @@ const cssFiles = collect(ROOT, '.css');
 
 /* ── 頁面齊全 ─────────────────────────────────────────────── */
 
-test('12 個頁面都存在', () => {
+test('13 個頁面都存在', () => {
   const expected = [
     'index.html',
     'help.html',
     'en/index.html', 'en/alphabet.html', 'en/vocabulary.html', 'en/grammar.html', 'en/quiz.html',
-    'ja/index.html', 'ja/kana.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/quiz.html',
+    /* guide 只有日文有——英文對中文使用者沒有「三套文字混著寫」這種要先解釋的門檻 */
+    'ja/index.html', 'ja/guide.html', 'ja/kana.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/quiz.html',
   ];
   for (const page of expected) {
     assert.ok(existsSync(join(ROOT, page)), `缺少頁面：${page}`);

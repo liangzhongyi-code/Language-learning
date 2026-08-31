@@ -82,7 +82,7 @@ npm test
 ├── index.html              語言選擇
 ├── help.html               使用教學
 ├── en/                     英文區（index / alphabet / vocabulary / grammar / quiz）
-├── ja/                     日文區（index / kana / vocabulary / grammar / quiz）
+├── ja/                     日文區（index / guide / kana / vocabulary / grammar / quiz）
 ├── assets/
 │   ├── css/
 │   │   └── theme.css       尺度與語意 token + 全站元件樣式 ← 改配色只要動這裡

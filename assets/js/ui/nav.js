@@ -1,7 +1,7 @@
 /**
  * 共用導覽列。
  *
- * 12 個 HTML 不重複手抄導覽結構，一律由這裡在執行期注入。
+ * 每個 HTML 不重複手抄導覽結構，一律由這裡在執行期注入。
  * 頁面只要在 <body> 上標好 data-lang 與 data-page 即可。
  *
  * 切換語言時會停在「相同功能」的頁面而不是跳回首頁——
@@ -21,6 +21,13 @@ const PAGES = {
   ],
   ja: [
     { key: 'home', file: 'index.html', label: '首頁' },
+    /**
+     * 入門手冊只有日文有。
+     * 英文對中文使用者沒有「三套文字混著寫」這種需要先解釋的門檻——
+     * 為了對稱硬生一頁英文版出來，內容會空得很明顯。
+     * 切語言時 key 找不到對應會退回對方的首頁，這條路 renderNav 已經處理了。
+     */
+    { key: 'guide', file: 'guide.html', label: '入門' },
     { key: 'pron', file: 'kana.html', label: '五十音' },
     { key: 'vocab', file: 'vocabulary.html', label: '單字' },
     { key: 'grammar', file: 'grammar.html', label: '文法' },

@@ -229,6 +229,48 @@ main { padding-bottom: var(--size-10); }
   margin-top: var(--size-4);
 }
 
+/**
+ * 「某個漢字草寫成某個假名」的字源對照，入門手冊用。
+ *
+ * 每一組是不可拆的一個單位（安 → あ），所以整組不換行，
+ * 換行只發生在組與組之間——拆開之後箭頭會孤零零地留在行尾。
+ */
+.derive-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2) var(--size-4);
+  margin: var(--size-3) 0;
+}
+.derive {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2);
+  white-space: nowrap;
+  padding: var(--size-1) var(--size-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.derive .from { font-size: 19px; color: var(--mute); }
+.derive .to { font-size: 21px; color: var(--text); }
+.derive .arrow { font-size: 12px; color: var(--mute); }
+
+/* 一句話裡三套文字各自負責什麼，用底色標出來 */
+.mix { font-size: 21px; line-height: 2.1; margin: var(--size-3) 0; word-break: break-word; }
+.mix span,
+.mix-key i { padding: 2px 5px; border-radius: 4px; font-style: normal; color: var(--text); }
+.k-kanji { background: var(--accent-soft); }
+.k-hira { background: var(--ok-soft); }
+.k-kata { background: var(--warn-soft); }
+.mix-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2) var(--size-4);
+  font-size: 13px;
+  color: var(--mute);
+}
+
 /* 首頁的功能入口卡 */
 .entry {
   display: block;
