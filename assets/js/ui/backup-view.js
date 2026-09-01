@@ -97,6 +97,23 @@ export function initBackupPanel(mount) {
     return parts.length ? parts.join('　·　') : '（空的）';
   }
 
+  /**
+   * 重繪之後把焦點放回該去的地方。
+   *
+   * 這一整塊是 innerHTML 重建的，重繪會把當下聚焦的元素直接銷毀，
+   * 焦點掉回 <body>。純鍵盤使用者選完檔案之後，剛冒出來的
+   * 「確認匯入」按鈕不會被聚焦，他得從頁面最上方重新 Tab 過整條導覽列
+   * 才回得到面板底部——匯入流程等於走不完。
+   *
+   * 只在焦點原本就在這個面板裡時才搶，否則使用者在別處打字會被拉走。
+   */
+  function refocus(selector, wasInside) {
+    if (!wasInside) return;
+    mount.querySelector(selector)?.focus();
+  }
+
+  const focusInside = () => mount.contains(document.activeElement);
+
   function draw(known) {
     /* 呼叫端剛讀過就不要再讀一次——collect() 要解析最大近 900KB 的紀錄 */
     const current = known ?? collect();
@@ -123,7 +140,7 @@ export function initBackupPanel(mount) {
             hidden 等同 display:none，而 display:none 的元素不可聚焦——
             label 自己也不在 tab 順序裡，於是整個「選擇備份檔」按鍵盤完全按不到，
             換裝置時最關鍵的那個動作變成只有滑鼠能做（WCAG 2.1.1）。
-            改成視覺上看不見但仍留在焦點順序裡，外層 label 用 :focus-within 畫焦點框。
+            改成視覺上看不見但仍留在焦點順序裡，外層 label 只在鍵盤聚焦時畫焦點框。
           -->
           <label class="btn ghost sm file-btn">
             選擇備份檔
@@ -158,9 +175,11 @@ export function initBackupPanel(mount) {
     mount.querySelector('[data-file]')?.addEventListener('change', pickFile);
     mount.querySelector('[data-confirm]')?.addEventListener('click', doImport);
     mount.querySelector('[data-cancel]')?.addEventListener('click', () => {
+      const wasInside = focusInside();
       pending = null;
       message = '';
       draw();
+      refocus('[data-file]', wasInside);
     });
   }
 
@@ -193,26 +212,35 @@ export function initBackupPanel(mount) {
     event.currentTarget.value = '';
     if (!file) return;
 
+    /* 焦點現在就在那顆選檔按鈕上（是它觸發了這個事件），重繪會把它銷毀 */
+    const wasInside = focusInside();
+
+    const fail = (why) => {
+      pending = null;
+      message = why;
+      draw();
+      /* 失敗時焦點回到選檔鍵，使用者可以直接再選一次 */
+      refocus('[data-file]', wasInside);
+    };
+
     let text;
     try {
       text = await file.text();
     } catch {
-      pending = null;
-      message = '讀不到這個檔案。';
-      draw();
+      fail('讀不到這個檔案。');
       return;
     }
 
     const result = parseBackup(text);
     if (!result.ok) {
-      pending = null;
-      message = result.errors.join(' ');
-      draw();
+      fail(result.errors.join(' '));
       return;
     }
     pending = result;
     message = '';
     draw();
+    /* 成功時焦點推進到剛冒出來的確認鍵，這是流程的下一步 */
+    refocus('[data-confirm]', wasInside);
   }
 
   function doImport() {
@@ -244,6 +272,7 @@ export function initBackupPanel(mount) {
       }
     }
 
+    const wasInside = focusInside();
     pending = null;
     message = !failed.length
       ? `已還原：${done.join('、')}。`
@@ -251,6 +280,8 @@ export function initBackupPanel(mount) {
         ? `已還原：${done.join('、') || '無'}。${failed.join('、')}寫入失敗，可能是儲存空間已滿。`
         : '這個瀏覽器不允許本站儲存資料（可能停用了 Cookie，或正在無痕模式），一筆都沒有還原。備份檔請先留著。';
     draw();
+    /* 匯入完了，焦點回到匯出鍵——那是這個面板剩下唯一還有意義的動作 */
+    refocus('[data-export]', wasInside);
   }
 
   draw();

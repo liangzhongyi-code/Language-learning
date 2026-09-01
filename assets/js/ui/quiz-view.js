@@ -57,9 +57,32 @@ const SCOPE_LABEL = { all: '全部', weak: '只練易錯', due: '今天該複習
 /* 膠囊上的標籤是動作（「只練易錯」），寫進句子裡要換成名詞 */
 const SCOPE_NOUN = { weak: '還沒練熟的題目', due: '今天該複習的題目' };
 
+/**
+ * 某個範圍在這個題源湊不滿一局時的說明。
+ *
+ * 兩種原因要分開講，給的建議完全相反：
+ *   題目確實在這個題源裡、只是還不夠多 → 再練幾局，換題型只會更少；
+ *   題目在別的題源裡 → 換題型才找得到。
+ * 分不清楚的話會叫一個「只錯過 3 個單字」的人去換題型，換過去是 0。
+ *
+ * 每個範圍各報自己的交集數，不能用一個數字描述兩個——
+ * 易錯有 3 題、到期有 0 題時，共用一個數字會把 3 安在到期頭上。
+ */
+function strandedNote(stranded, idsByScope, scopeSizes, sourceLabel) {
+  const lines = stranded.map((s) => {
+    const total = idsByScope[s].length;
+    const here = scopeSizes[s];
+    const noun = esc(SCOPE_NOUN[s]);
+    return here === total
+      ? `你有 ${total} 個${noun}，還不夠出一局（至少要 ${MIN_POOL} 題），再練幾局就會出現。`
+      : `你有 ${total} 個${noun}，但只有 ${here} 個在${esc(sourceLabel)}裡，不夠出一局（至少要 ${MIN_POOL} 題）。換個題型看看。`;
+  });
+  return `<p class="setting-note">${lines.join('<br>')}</p>`;
+}
+
 const SCOPE_NOTE = {
   all: '',
-  weak: '只出你錯過的題目，錯得最兇的優先。干擾選項仍然從完整題庫抽，不會因為範圍變小就變好猜。',
+  weak: '只出你錯過、而且還沒練熟的題目，錯得最兇的優先。連續答對三次就會離開這份清單，再錯又會回來。干擾選項仍然從完整題庫抽，不會因為範圍變小就變好猜。',
   due: '照間隔重複排程，只出今天（含之前）到期的題目。答對會拉長下次出現的間隔，答錯則打回隔天。',
 };
 
@@ -297,15 +320,18 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const total = scopeSizes[config.scope];
 
     /**
-     * 這個語言有易錯／到期的題目，但都不在目前這個題源裡。
+     * 這個語言有、但目前這個題源出不了一局的範圍。
      *
-     * 語言首頁是跨題源加總的（3 個單字 + 2 個句型 = 5），這裡卻是
-     * 單一題源交集且要湊滿一局。少了這一行，使用者照著首頁那句
-     * 「到測驗頁的『範圍』挑一個練」進來，會發現根本沒有那一排。
+     * 語言首頁的數字是跨題源加總的（3 個單字 + 2 個句型 = 5），這裡卻是
+     * 單一題源交集而且要湊滿一局。少了這行說明，使用者看到首頁寫著
+     * 「測驗頁的『範圍』可以只練這些」，進來卻找不到那一排。
+     *
+     * 逐個範圍判斷，不是「兩個都出不了題才說」——只要有一個被卡住就該解釋，
+     * 否則另一個湊得滿的時候，被卡住的那個仍然沒有交代。
      */
-    const strandedScopes = !scopeChoices.length
-      ? ['weak', 'due'].filter((s) => idsByScope[s]?.length)
-      : [];
+    const stranded = ['weak', 'due'].filter(
+      (s) => idsByScope[s]?.length && scopeSizes[s] < MIN_POOL
+    );
 
     mount.innerHTML = `
       <div class="card">
@@ -421,14 +447,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             config.scope
           )}</div>
           ${SCOPE_NOTE[config.scope] ? `<p class="setting-note">${SCOPE_NOTE[config.scope]}</p>` : ''}
+          ${stranded.length ? strandedNote(stranded, idsByScope, scopeSizes, SOURCE_LABEL[config.source]) : ''}
         </div>`
-            : strandedScopes.length
-              ? `<p class="setting-note">你有 ${strandedScopes
-                  .map((s) => `${idsByScope[s].length} 個${esc(SCOPE_NOUN[s])}`)
-                  .join('、')}，但落在別的題型裡——${esc(SOURCE_LABEL[config.source])}只湊得出 ${Math.max(
-                  scopeSizes.weak,
-                  scopeSizes.due
-                )} 題，不夠出一局（至少要 ${MIN_POOL} 題）。換個題型看看。</p>`
+            : stranded.length
+              ? strandedNote(stranded, idsByScope, scopeSizes, SOURCE_LABEL[config.source])
               : ''
         }
 

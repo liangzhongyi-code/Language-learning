@@ -257,7 +257,13 @@ main { padding-bottom: var(--size-10); }
   opacity: 0;
   pointer-events: none;
 }
-.file-btn:focus-within {
+/**
+ * 焦點框只給鍵盤，與全站其餘元件一致（其他地方都是 :focus-visible）。
+ *
+ * 用 :focus-within 的話滑鼠點下去也會畫，而且在系統檔案對話框被取消時
+ * change 不會觸發、畫面不重繪，那圈框就一直掛著像卡住。
+ */
+.file-btn:has(.file-input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

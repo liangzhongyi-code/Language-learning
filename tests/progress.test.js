@@ -38,26 +38,27 @@ const DAY = 86400000;
 const T0 = 1756700000000;
 
 /**
- * 驗證一個到期時間落在「from 那天的 N 天後、當地時間 00:00」。
+ * 驗證一個到期時間落在「from 那天的 N 天後」那一天。
  *
  * 不寫成 `T0 + N × DAY`：到期時間對齊日界之後，那個算式只有在
  * T0 剛好是午夜時才成立。也不用原始毫秒相加去推——那在有日光節約
  * 的時區會偏一小時，測試會在某幾週莫名其妙變紅。
  *
- * 所以分兩段驗：先驗「確實落在午夜」這個不變式（與實作的算法無關），
- * 再驗日期差是 N 天。
+ * 只驗「落在哪一天」，不驗「幾點幾分」：深夜作答時最短間隔那道地板
+ * 會把時刻往後推離午夜（見 srs.js 的 MIN_GAP_MS），而排程真正在意的
+ * 本來就是日期。時刻的下限由另一條測試單獨顧。
  */
 function assertDueOn(due, from, days, label) {
-  const at = new Date(due);
-  assert.equal(
-    `${at.getHours()}:${at.getMinutes()}:${at.getSeconds()}.${at.getMilliseconds()}`,
-    '0:0:0.0',
-    `${label}：到期時間必須落在當地日界`
-  );
   const expected = new Date(from);
   expected.setHours(0, 0, 0, 0);
   expected.setDate(expected.getDate() + days);
-  assert.equal(due, expected.getTime(), `${label}：應該是 ${days} 天後的那一天`);
+  const at = new Date(due);
+  assert.equal(
+    at.toDateString(),
+    new Date(expected.getTime()).toDateString(),
+    `${label}：應該排在 ${days} 天後的那一天，實際 ${at.toLocaleString()}`
+  );
+  assert.ok(due >= expected.getTime(), `${label}：不可以早於那一天的開始`);
 }
 
 /**
@@ -135,7 +136,37 @@ test('同一天的不同時刻答完，排到的是同一天', () => {
   /* 排程的單位是「天」，早上答完與晚上答完不該落在不同的到期日 */
   const morning = dueAfter(3, new Date(2026, 8, 1, 8, 30, 0).getTime());
   const evening = dueAfter(3, new Date(2026, 8, 1, 23, 15, 0).getTime());
-  assert.equal(morning, evening);
+  assert.equal(new Date(morning).toDateString(), new Date(evening).toDateString());
+});
+
+test('深夜答錯的題目不會在同一個晚上又出現', () => {
+  /**
+   * 對齊日界會讓 23:50 答錯的題目排到「隔天 00:00」＝十分鐘後，
+   * 使用者按一下「再玩一局」就又看到它——srs.js 檔頭那條
+   * 「不是同一局立刻再考一次」被自己違反。這一條把那道地板釘住。
+   */
+  const HOUR = 3600000;
+  for (const hour of [19, 20, 22, 23]) {
+    const at = new Date(2026, 8, 1, hour, 50, 0).getTime();
+    const gap = dueAfter(1, at) - at;
+    assert.ok(gap >= 6 * HOUR, `${hour}:50 答錯只隔了 ${(gap / HOUR).toFixed(1)} 小時`);
+  }
+});
+
+test('地板不會拖累早上練習的人，也不影響第二盒之後', () => {
+  const morning = new Date(2026, 8, 1, 8, 50, 0).getTime();
+  assertDueOn(dueAfter(1, morning), morning, 1, '早上答錯');
+
+  /* 第二盒起間隔至少三天，永遠比六小時的地板遠，時刻應該仍在日界上 */
+  const night = new Date(2026, 8, 1, 23, 50, 0).getTime();
+  for (let box = 2; box <= MAX_BOX; box++) {
+    const at = new Date(dueAfter(box, night));
+    assert.equal(
+      `${at.getHours()}:${at.getMinutes()}`,
+      '0:0',
+      `第 ${box} 盒不該被最短間隔那道地板推離日界`
+    );
+  }
 });
 
 test('isGraduated：到第 4 盒算學會，壞資料不算', () => {
