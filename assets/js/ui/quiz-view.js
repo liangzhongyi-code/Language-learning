@@ -19,6 +19,7 @@ import {
   MIN_POOL,
 } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
+import { loadProgress, saveProgress, recordSession, weakest, dueIds } from '../core/progress.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 
@@ -43,6 +44,20 @@ const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
 const NO_KANA_REASON = {
   scene: '四個選項是連場合一起寫死的，沒有假名版',
   reading: '整篇短文沒有假名版',
+};
+
+/**
+ * 出題範圍。
+ *
+ * 這一排不是新題型，而是套在題型上的篩子——「易錯的填空題」是成立的組合。
+ * 做成獨立的一排而不是多兩顆題型膠囊，就是為了讓它跟題型自由組合。
+ */
+const SCOPE_LABEL = { all: '全部', weak: '只練易錯', due: '今天該複習' };
+
+const SCOPE_NOTE = {
+  all: '',
+  weak: '只出你錯過的題目，錯得最兇的優先。干擾選項仍然從完整題庫抽，不會因為範圍變小就變好猜。',
+  due: '照間隔重複排程，只出今天（含之前）到期的題目。答對會拉長下次出現的間隔，答錯則打回隔天。',
 };
 
 const KANJI_MODE_LABEL = {
@@ -129,6 +144,12 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      */
     kanjiMode: lang === 'ja' ? storedKanjiMode() : 'show',
     /**
+     * 出題範圍：all / weak / due。
+     * 不記進偏好——「今天該複習」是當下的狀態不是長期選擇，
+     * 記住它會讓人下次打開時莫名其妙只剩三題可出。
+     */
+    scope: 'all',
+    /**
      * 使用者是不是選了「全部」。
      * 只記數字不行——換題源之後舊的總數會變成一個沒有任何膠囊對應的幽靈值，
      * 畫面上看不出這局到底會出幾題。記住「他要的是全部」才能跟著新題源走。
@@ -173,6 +194,27 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   const poolSize = (source) => poolOf(source, words, sentences, scenes, readings).length;
 
   /**
+   * 某個範圍涵蓋哪些題目 id，全部則是 null。
+   *
+   * 每次都重讀學習紀錄而不是快取——上一局剛答完的結果要立刻反映在
+   * 「今天該複習（N）」上面，快取住的話使用者會看到一個過期的數字。
+   */
+  function scopeIds(scope) {
+    if (scope === 'all') return null;
+    const progress = loadProgress(storage());
+    return scope === 'weak' ? weakest(progress, { lang }) : dueIds(progress, lang, Date.now());
+  }
+
+  /* 目前題源 ∩ 目前範圍有幾題，「全部」那顆膠囊與開始測驗都用這個數字 */
+  function scopedPoolSize() {
+    const ids = scopeIds(config.scope);
+    if (!ids) return poolSize(config.source);
+    const set = new Set(ids);
+    return poolOf(config.source, words, sentences, scenes, readings).filter((item) => set.has(item.id))
+      .length;
+  }
+
+  /**
    * 網址指定的題源，要這個語言真的出得出題才採用。
    * 問 poolSize 而不是查白名單，同時解決「名稱有沒有效」與
    * 「這個語言有沒有這份題庫」兩件事——後者是白名單永遠答不了的。
@@ -194,7 +236,31 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         )
         .join('');
 
-    const total = poolSize(config.source);
+    /**
+     * 三個範圍各自涵蓋目前這個題源的幾題。
+     * 題庫只取一次——poolSize 每呼叫一次就複製一份陣列，
+     * 而單字的題庫有七千多筆。
+     */
+    const pool = poolOf(config.source, words, sentences, scenes, readings);
+    const idsByScope = { all: null, weak: scopeIds('weak'), due: scopeIds('due') };
+    const sizeOf = (scope) => {
+      const ids = idsByScope[scope];
+      if (!ids) return pool.length;
+      const set = new Set(ids);
+      return pool.filter((item) => set.has(item.id)).length;
+    };
+    const scopeSizes = { all: pool.length, weak: sizeOf('weak'), due: sizeOf('due') };
+
+    /**
+     * 只顯示出得出題的範圍，與題型那一排同一個原則：
+     * 沒有資料時整顆膠囊不出現，而不是出現一顆按了會說「題庫不足」的死按鈕。
+     */
+    const scopeChoices = ['weak', 'due'].filter((s) => scopeSizes[s] >= MIN_POOL);
+
+    /* 選著的範圍變得出不了題（換了題源、或剛好複習完）就退回全部 */
+    if (config.scope !== 'all' && !scopeChoices.includes(config.scope)) config.scope = 'all';
+
+    const total = scopeSizes[config.scope];
 
     mount.innerHTML = `
       <div class="card">
@@ -293,6 +359,27 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             : ''
         }
 
+        ${
+          /**
+           * 出題範圍。沒有任何範圍出得出題就整排收起來——
+           * 第一次來的人還沒有學習紀錄，給他兩顆永遠按不下去的按鈕沒有意義。
+           * 練過幾局之後它自己會出現。
+           */
+          scopeChoices.length
+            ? `<div class="setting">
+          <label>範圍</label>
+          <div class="chips">${chips(
+            'scope',
+            [['all', `${SCOPE_LABEL.all}（${scopeSizes.all}）`]].concat(
+              scopeChoices.map((s) => [s, `${SCOPE_LABEL[s]}（${scopeSizes[s]}）`])
+            ),
+            config.scope
+          )}</div>
+          ${SCOPE_NOTE[config.scope] ? `<p class="setting-note">${SCOPE_NOTE[config.scope]}</p>` : ''}
+        </div>`
+            : ''
+        }
+
         <div class="setting">
           <label>題數</label>
           <div class="chips">${chips('count', [
@@ -326,11 +413,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         }
 
         /**
-         * 換題源之後題數上限會變。選了「全部」就跟著新題源走；
+         * 換題源或換範圍之後題數上限會變。選了「全部」就跟著新的上限走；
          * 選了固定題數則收斂到新上限，且一定要落在某顆膠囊上，
          * 否則畫面會出現三顆都沒選取、使用者不知道會出幾題的狀態。
          */
-        const limit = poolSize(config.source);
+        const limit = scopedPoolSize();
         if (!config.useAll && config.count > limit) config.useAll = true;
 
         renderSetup();
@@ -343,7 +430,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   function start() {
     try {
       resetPlayState();
-      const count = config.useAll ? poolSize(config.source) : config.count;
+      const count = config.useAll ? scopedPoolSize() : config.count;
       session = buildSession({
         lang,
         words,
@@ -354,6 +441,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         direction: config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
+        onlyIds: scopeIds(config.scope),
         count,
       });
       recorded = false;
@@ -879,11 +967,19 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     phase = 'result';
     const s = summarize(session);
 
-    /* 只有完整跑完的一局才計入統計，而且只寫一次 */
+    /**
+     * 只有完整跑完的一局才計入，而且只寫一次。
+     *
+     * 兩份資料一起寫：統計是「我練得怎麼樣」，逐題紀錄是「我該練哪些」。
+     * 紀錄的時間戳只取一次並共用，同一局的每一題排程才不會差幾毫秒——
+     * 那個差距會讓同一天答完的題目落在不同的「今天」邊界上。
+     */
     if (!recorded && isComplete(session)) {
       recorded = true;
       const store = storage();
-      saveFailed = !saveStats(store, applySession(loadStats(store), lang, session.source, s));
+      const statsOk = saveStats(store, applySession(loadStats(store), lang, session.source, s));
+      const progressOk = saveProgress(store, recordSession(loadProgress(store), session, Date.now()));
+      saveFailed = !statsOk || !progressOk;
     }
 
     /**

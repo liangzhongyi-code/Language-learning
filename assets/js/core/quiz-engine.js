@@ -592,6 +592,13 @@ export function buildSession({
    * 就全部落在假名上，不必每一處各自判斷一次。
    */
   kanjiMode = 'show',
+  /**
+   * 只從這些 id 裡出題（易錯、今天到期…）。null 表示整個題庫。
+   *
+   * 收的是 id 而不是條件，因為條件要讀 localStorage 裡的學習紀錄，
+   * 而 core 不碰瀏覽器——由畫面層算好清單再傳進來，分層才守得住。
+   */
+  onlyIds = null,
   direction = 'zh2target',
   count = 10,
   rng = Math.random,
@@ -607,10 +614,23 @@ export function buildSession({
     );
   }
 
+  /**
+   * 縮小的是「出哪幾題」，不是「干擾選項從哪裡抽」。
+   *
+   * 兩者都縮的話，只錯過四個字的人會拿到一局四個選項永遠是那四個字的測驗——
+   * 第二題開始就能用刪去法。干擾選項一律從完整題庫抽，題目才有鑑別度。
+   */
+  const idSet = onlyIds ? new Set(onlyIds) : null;
+  const scoped = idSet ? pool.filter((item) => idSet.has(item.id)) : pool;
+
+  if (!scoped.length) {
+    throw new Error('這個範圍裡沒有題目——先練幾局，累積一些紀錄之後再回來。');
+  }
+
   const kind = kindOf(source);
   /* 閱讀題按篇抽，其餘題型逐題抽 */
   const picked =
-    source === 'reading' ? sampleReadingQuestions(pool, count, rng) : sample(pool, count, rng);
+    source === 'reading' ? sampleReadingQuestions(scoped, count, rng) : sample(scoped, count, rng);
 
   /**
    * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。

@@ -56,6 +56,11 @@
     </div>
   </div>
 
+  <div class="sec-head">
+    <h2>備份與還原</h2>
+  </div>
+  <div id="backup"></div>
+
   <div class="actions" style="margin-top:28px">
     <a class="btn ghost" href="./help.html">第一次來？看使用教學 →</a>
   </div>
@@ -70,7 +75,9 @@
 
 <script type="module">
   import { renderRootNav } from './assets/js/ui/nav.js';
+  import { initBackupPanel } from './assets/js/ui/backup-view.js';
   renderRootNav('home');
+  initBackupPanel(document.getElementById('backup'));
 </script>
 </body>
 </html>

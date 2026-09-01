@@ -161,8 +161,15 @@ export function loadStats(storage) {
  * 但測驗流程本身不受影響。
  */
 export function saveStats(storage, stats) {
+  /**
+   * 先確認真的有東西可以寫。
+   * `storage?.setItem?.()` 在 storage 是 undefined 時會靜靜地什麼都不做然後回傳
+   * undefined——於是這個函式回報 true，而畫面上那句「這次的成績無法保存」
+   * 永遠不會出現。停用 localStorage 的瀏覽器正好走這條路。
+   */
+  if (typeof storage?.setItem !== 'function') return false;
   try {
-    storage?.setItem?.(STATS_KEY, JSON.stringify(stats));
+    storage.setItem(STATS_KEY, JSON.stringify(stats));
     return true;
   } catch {
     return false;

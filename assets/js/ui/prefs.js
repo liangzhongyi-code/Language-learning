@@ -6,7 +6,8 @@
  * 一樣要能承受 localStorage 被停用的情況。
  */
 
-const PREFS_KEY = 'lang-learn.prefs.v1';
+/* 匯出給備份面板用——它要知道偏好存在哪一格才倒得出來 */
+export const PREFS_KEY = 'lang-learn.prefs.v1';
 
 const DEFAULTS = {
   /* 文法頁的兩排連接線 */

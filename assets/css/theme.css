@@ -229,6 +229,26 @@ main { padding-bottom: var(--size-10); }
   margin-top: var(--size-4);
 }
 
+/* 首頁的備份面板 */
+.backup-title { font-size: 16px; margin: 0 0 var(--size-2); }
+.backup-note { color: var(--dim); font-size: 13.5px; margin: 0 0 var(--size-2); }
+.backup-now { color: var(--mute); font-size: 13px; margin: 0 0 var(--size-3); }
+.backup-actions { display: flex; flex-wrap: wrap; gap: var(--size-2); align-items: center; }
+.backup-preview {
+  margin-top: var(--size-4);
+  padding-top: var(--size-4);
+  border-top: 1px solid var(--border);
+}
+.backup-preview p { margin: 0 0 var(--size-2); font-size: 13.5px; }
+.backup-warn { color: var(--warn); font-size: 13px; }
+.backup-msg { margin: var(--size-3) 0 0; font-size: 13.5px; color: var(--dim); }
+/* 檔案輸入本身藏起來，靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式 */
+.file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+
+/* 語言首頁：今天該複習幾題 */
+.stats-due { margin: var(--size-3) 0 0; font-size: 13.5px; color: var(--dim); }
+.stats-due b { color: var(--accent); }
+
 /**
  * 「某個漢字草寫成某個假名」的字源對照，入門手冊用。
  *
