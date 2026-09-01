@@ -242,8 +242,25 @@ main { padding-bottom: var(--size-10); }
 .backup-preview p { margin: 0 0 var(--size-2); font-size: 13.5px; }
 .backup-warn { color: var(--warn); font-size: 13px; }
 .backup-msg { margin: var(--size-3) 0 0; font-size: 13.5px; color: var(--dim); }
-/* 檔案輸入本身藏起來，靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式 */
-.file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+/**
+ * 檔案輸入靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式。
+ *
+ * 但不能用 display:none 或 hidden 把它藏起來：那樣它就不可聚焦，
+ * 而 label 本身也不在 tab 順序裡，整個控制項會從鍵盤上消失。
+ * 改成佔一個像素、看不見但仍可聚焦，焦點框畫在外層 label 上。
+ */
+.file-btn { cursor: pointer; display: inline-flex; align-items: center; position: relative; }
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.file-btn:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* 語言首頁：今天該複習幾題 */
 .stats-due { margin: var(--size-3) 0 0; font-size: 13.5px; color: var(--dim); }

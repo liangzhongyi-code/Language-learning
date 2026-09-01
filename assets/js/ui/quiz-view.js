@@ -54,6 +54,9 @@ const NO_KANA_REASON = {
  */
 const SCOPE_LABEL = { all: '全部', weak: '只練易錯', due: '今天該複習' };
 
+/* 膠囊上的標籤是動作（「只練易錯」），寫進句子裡要換成名詞 */
+const SCOPE_NOUN = { weak: '還沒練熟的題目', due: '今天該複習的題目' };
+
 const SCOPE_NOTE = {
   all: '',
   weak: '只出你錯過的題目，錯得最兇的優先。干擾選項仍然從完整題庫抽，不會因為範圍變小就變好猜。',
@@ -190,29 +193,56 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     setPref('keyboardSeen', true);
   }
 
-  /* 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家 */
-  const poolSize = (source) => poolOf(source, words, sentences, scenes, readings).length;
+  /**
+   * 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家。
+   *
+   * 題庫在這一頁的生命週期裡不會變，所以只算一次。
+   * poolOf 每次呼叫都複製一份陣列（單字 7608 筆、混合 7755 筆），
+   * 而設定畫面光是畫題型那一排就要問五次，每點一顆膠囊重畫一次。
+   */
+  const poolSizeCache = new Map();
+  function poolSize(source) {
+    if (!poolSizeCache.has(source)) {
+      poolSizeCache.set(source, poolOf(source, words, sentences, scenes, readings).length);
+    }
+    return poolSizeCache.get(source);
+  }
 
   /**
    * 某個範圍涵蓋哪些題目 id，全部則是 null。
    *
-   * 每次都重讀學習紀錄而不是快取——上一局剛答完的結果要立刻反映在
+   * progress 由呼叫端傳進來，讓一次重畫只讀一次學習紀錄——
+   * 那是一個最大近 900KB 的 JSON.parse，同一個 tick 內讀三次沒有意義。
+   * 但也不做跨 tick 的快取：上一局剛答完的結果要立刻反映在
    * 「今天該複習（N）」上面，快取住的話使用者會看到一個過期的數字。
    */
-  function scopeIds(scope) {
+  function scopeIdsFrom(progress, scope) {
     if (scope === 'all') return null;
-    const progress = loadProgress(storage());
     return scope === 'weak' ? weakest(progress, { lang }) : dueIds(progress, lang, Date.now());
   }
 
-  /* 目前題源 ∩ 目前範圍有幾題，「全部」那顆膠囊與開始測驗都用這個數字 */
-  function scopedPoolSize() {
-    const ids = scopeIds(config.scope);
-    if (!ids) return poolSize(config.source);
+  const scopeIds = (scope) =>
+    scope === 'all' ? null : scopeIdsFrom(loadProgress(storage()), scope);
+
+  /* 目前題源 ∩ 某個範圍有幾題 */
+  function sizeWithin(source, ids) {
+    if (!ids) return poolSize(source);
     const set = new Set(ids);
-    return poolOf(config.source, words, sentences, scenes, readings).filter((item) => set.has(item.id))
-      .length;
+    return poolOf(source, words, sentences, scenes, readings).filter((item) => set.has(item.id)).length;
   }
+
+  /**
+   * 這一局實際會出幾題。
+   *
+   * 刻意不去改寫 config.useAll。它代表的是「使用者按過『全部』」，
+   * 而上限是隨題源與範圍浮動的衍生值——把浮動值寫回使用者的選擇，
+   * 就再也分不出「他要全部」與「他要 10 題但當時只湊得出 6 題」，
+   * 於是切一次小範圍再切回來，10 題會變成 7608 題而他從沒按過全部。
+   */
+  const countWithin = (limit) => (config.useAll || config.count > limit ? limit : config.count);
+
+  /* 三顆題數膠囊裡該選取哪一顆，與 countWithin 用同一條判斷 */
+  const countChipOf = (limit) => (config.useAll || config.count > limit ? 'all' : config.count);
 
   /**
    * 網址指定的題源，要這個語言真的出得出題才採用。
@@ -238,11 +268,15 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
     /**
      * 三個範圍各自涵蓋目前這個題源的幾題。
-     * 題庫只取一次——poolSize 每呼叫一次就複製一份陣列，
-     * 而單字的題庫有七千多筆。
+     * 學習紀錄只讀一次、題庫只取一次——兩者都是這一頁最貴的操作。
      */
+    const progress = loadProgress(storage());
     const pool = poolOf(config.source, words, sentences, scenes, readings);
-    const idsByScope = { all: null, weak: scopeIds('weak'), due: scopeIds('due') };
+    const idsByScope = {
+      all: null,
+      weak: scopeIdsFrom(progress, 'weak'),
+      due: scopeIdsFrom(progress, 'due'),
+    };
     const sizeOf = (scope) => {
       const ids = idsByScope[scope];
       if (!ids) return pool.length;
@@ -261,6 +295,17 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     if (config.scope !== 'all' && !scopeChoices.includes(config.scope)) config.scope = 'all';
 
     const total = scopeSizes[config.scope];
+
+    /**
+     * 這個語言有易錯／到期的題目，但都不在目前這個題源裡。
+     *
+     * 語言首頁是跨題源加總的（3 個單字 + 2 個句型 = 5），這裡卻是
+     * 單一題源交集且要湊滿一局。少了這一行，使用者照著首頁那句
+     * 「到測驗頁的『範圍』挑一個練」進來，會發現根本沒有那一排。
+     */
+    const strandedScopes = !scopeChoices.length
+      ? ['weak', 'due'].filter((s) => idsByScope[s]?.length)
+      : [];
 
     mount.innerHTML = `
       <div class="card">
@@ -377,7 +422,14 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           )}</div>
           ${SCOPE_NOTE[config.scope] ? `<p class="setting-note">${SCOPE_NOTE[config.scope]}</p>` : ''}
         </div>`
-            : ''
+            : strandedScopes.length
+              ? `<p class="setting-note">你有 ${strandedScopes
+                  .map((s) => `${idsByScope[s].length} 個${esc(SCOPE_NOUN[s])}`)
+                  .join('、')}，但落在別的題型裡——${esc(SOURCE_LABEL[config.source])}只湊得出 ${Math.max(
+                  scopeSizes.weak,
+                  scopeSizes.due
+                )} 題，不夠出一局（至少要 ${MIN_POOL} 題）。換個題型看看。</p>`
+              : ''
         }
 
         <div class="setting">
@@ -386,7 +438,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             [10, '10 題'],
             [20, '20 題'],
             ['all', `全部（${total}）`],
-          ], config.useAll ? 'all' : config.count)}</div>
+          ], countChipOf(total))}</div>
         </div>
 
         ${errorMessage ? `<div class="notice"><b>無法開始：</b>${esc(errorMessage)}</div>` : ''}
@@ -413,13 +465,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         }
 
         /**
-         * 換題源或換範圍之後題數上限會變。選了「全部」就跟著新的上限走；
-         * 選了固定題數則收斂到新上限，且一定要落在某顆膠囊上，
-         * 否則畫面會出現三顆都沒選取、使用者不知道會出幾題的狀態。
+         * 這裡不再夾限題數。
+         * 上限是隨題源與範圍浮動的衍生值，交給 countWithin／countChipOf
+         * 在每次重畫時當場算——寫回 config 的話就會黏住，切一次小範圍
+         * 再切回來，使用者選的 10 題會變成整個題庫。
          */
-        const limit = scopedPoolSize();
-        if (!config.useAll && config.count > limit) config.useAll = true;
-
         renderSetup();
       });
     });
@@ -430,7 +480,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   function start() {
     try {
       resetPlayState();
-      const count = config.useAll ? scopedPoolSize() : config.count;
+      /* 範圍與上限一起算，兩者必須來自同一次讀取才不會互相打架 */
+      const onlyIds = scopeIds(config.scope);
+      const count = countWithin(sizeWithin(config.source, onlyIds));
       session = buildSession({
         lang,
         words,
@@ -441,7 +493,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         direction: config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
-        onlyIds: scopeIds(config.scope),
+        onlyIds,
         count,
       });
       recorded = false;

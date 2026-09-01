@@ -229,8 +229,16 @@ test('對比度計算本身正確（自我驗證）', () => {
 test('內文色在所有表面上都達到 WCAG AA 的 4.5:1', () => {
   const c = themeColors();
   const surfaces = ['--bg', '--surface', '--surface-2', '--surface-3'];
-  /* 這三個都用在實際內文上，不是純裝飾：頁面說明、卡片說明、統計引導文案 */
-  const foregrounds = ['--text', '--dim', '--mute'];
+  /**
+   * 全部用在實際內文上的色，不是純裝飾。
+   *
+   * 前三個是文字三階（頁面說明、卡片說明、統計引導文案）。
+   * 後四個是語意色，它們同樣會直接當文字顏色用——
+   * 例如備份面板的警告文字、答對／答錯的回饋、首頁的到期題數。
+   * 少了它們，README 承諾的「文字顏色在任何表面上都達到 AA」就是空頭支票：
+   * 有人拿 --warn 加一段新文字並把色調暗，測試會全綠而實際跌破 4.5:1。
+   */
+  const foregrounds = ['--text', '--dim', '--mute', '--accent', '--ok', '--bad', '--warn'];
 
   const failures = [];
   for (const fg of foregrounds) {

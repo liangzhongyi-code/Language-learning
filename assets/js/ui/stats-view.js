@@ -23,14 +23,30 @@ function storage() {
 }
 
 /**
+ * 「今天該複習幾題」那一行。
+ *
+ * 措辭只說「可以只練這些」，不說「到測驗頁的範圍挑一個練」。
+ * 這裡的數字是跨題源加總的（3 個單字 + 2 個句型 = 5），
+ * 而測驗頁的那一排是單一題源交集、還要湊得滿一局才會出現——
+ * 承諾它一定在，使用者會照著去找一個不存在的按鈕。
+ */
+function dueLine(p) {
+  const parts = [
+    p.due ? `今天有 <b>${p.due}</b> 個題目該複習` : '',
+    p.weak ? `<b>${p.weak}</b> 個還沒練熟` : '',
+  ].filter(Boolean);
+  return `${parts.join('　·　')}。測驗頁的「範圍」可以只練這些。`;
+}
+
+/**
  * 畫出某個語言的累計統計，並掛上清除按鈕
  */
 export function renderLangStats(mount, lang) {
   if (!mount) return;
 
   const draw = () => {
-    const s = statsOfLang(loadStats(storage()), lang);
-    const p = progressOfLang(loadProgress(storage()), lang, Date.now());
+    const store = storage();
+    const s = statsOfLang(loadStats(store), lang);
 
     if (!s.hasData) {
       mount.innerHTML = `
@@ -39,6 +55,13 @@ export function renderLangStats(mount, lang) {
         </div>`;
       return;
     }
+
+    /**
+     * 逐題紀錄在確定有統計之後才讀。
+     * 它是一個最大近 900KB 的 JSON.parse，而沒練過的人根本用不到它——
+     * 早退在前面就把這個成本完全省掉。
+     */
+    const p = progressOfLang(loadProgress(store), lang, Date.now());
 
     mount.innerHTML = `
       <div class="stats">
@@ -55,21 +78,15 @@ export function renderLangStats(mount, lang) {
           <div class="lbl">答對 / 總題數</div>
         </div>
         <div class="spacer"></div>
-        <button class="btn ghost sm" data-clear>清除統計</button>
+        <!-- 這顆按鈕連逐題紀錄與複習排程一起清，標籤不能只寫「統計」 -->
+        <button class="btn ghost sm" data-clear>清除紀錄</button>
       </div>
       ${
         /**
          * 到期與易錯只在真的有東西時才出現。
          * 「今天有 0 個字到期」是一句沒有用的話，而且會讓人以為功能壞了。
          */
-        p.due || p.weak
-          ? `<p class="stats-due">${[
-              p.due ? `今天有 <b>${p.due}</b> 個題目該複習` : '',
-              p.weak ? `累計 <b>${p.weak}</b> 個曾經答錯` : '',
-            ]
-              .filter(Boolean)
-              .join('　·　')}——到測驗頁的「範圍」挑一個練。</p>`
-          : ''
+        p.due || p.weak ? `<p class="stats-due">${dueLine(p)}</p>` : ''
       }`;
 
     mount.querySelector('[data-clear]')?.addEventListener('click', () => {
@@ -77,8 +94,8 @@ export function renderLangStats(mount, lang) {
         `確定要清除全部的練習統計嗎？\n\n這會一併清掉英文與日文的統計與逐題學習紀錄（含複習排程），而且無法復原。`
       );
       if (!ok) return;
-      clearStats(storage());
-      clearProgress(storage());
+      clearStats(store);
+      clearProgress(store);
       draw();
     });
   };

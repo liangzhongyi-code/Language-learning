@@ -22,7 +22,22 @@ export const BOX_DAYS = [1, 3, 7, 16, 35];
  */
 export const MAX_BOX = BOX_DAYS.length;
 
-const DAY_MS = 86400000;
+/**
+ * 到這一盒就算學會了，不再列進「易錯」。
+ *
+ * 第 4 盒代表上次答錯之後又連續答對三次（1→2→3→4）。
+ * 沒有這條線的話「易錯」永遠不會縮小——錯誤次數只增不減，
+ * 一個字錯過一次就會跟著你一輩子，那份清單會失去它唯一的價值（很短）。
+ * 再錯一次就打回第一盒，它自己會回到清單裡。
+ */
+export const GRADUATED_BOX = 4;
+
+/**
+ * 這筆記錄算不算已經學會
+ */
+export function isGraduated(record) {
+  return Number(record?.box) >= GRADUATED_BOX;
+}
 
 /**
  * 盒號一律夾在 1..MAX_BOX。
@@ -43,10 +58,21 @@ export function nextBox(box, correct) {
 }
 
 /**
- * 在某一盒的話，下次該在什麼時候出現
+ * 在某一盒的話，下次該在什麼時候出現。
+ *
+ * 對齊到當地時間的日界，不是「從現在起算 N 個 24 小時」。
+ *
+ * 直接加毫秒的話，晚上 22:00 答錯的題目要到隔天 22:00 才算到期——
+ * 習慣早上練的人一整個上午都看不到它，等於被系統性推遲一天，
+ * 而且他每天練習的時間只要早一點點，這個延遲就會一直累積下去。
+ * 間隔重複的單位本來就是「天」而不是「小時」，落在哪一天才是重點。
  */
 export function dueAfter(box, now) {
-  return now + BOX_DAYS[clampBox(box) - 1] * DAY_MS;
+  const at = new Date(now);
+  /* 先退到今天的開始，再往前推 N 天，結果一定落在某一天的 00:00 */
+  at.setHours(0, 0, 0, 0);
+  at.setDate(at.getDate() + BOX_DAYS[clampBox(box) - 1]);
+  return at.getTime();
 }
 
 /**

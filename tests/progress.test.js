@@ -24,10 +24,41 @@ import {
   progressOfLang,
   PROGRESS_KEY,
 } from '../assets/js/core/progress.js';
-import { nextBox, dueAfter, isDue, BOX_DAYS, MAX_BOX } from '../assets/js/core/srs.js';
+import {
+  nextBox,
+  dueAfter,
+  isDue,
+  isGraduated,
+  BOX_DAYS,
+  MAX_BOX,
+  GRADUATED_BOX,
+} from '../assets/js/core/srs.js';
 
 const DAY = 86400000;
 const T0 = 1756700000000;
+
+/**
+ * 驗證一個到期時間落在「from 那天的 N 天後、當地時間 00:00」。
+ *
+ * 不寫成 `T0 + N × DAY`：到期時間對齊日界之後，那個算式只有在
+ * T0 剛好是午夜時才成立。也不用原始毫秒相加去推——那在有日光節約
+ * 的時區會偏一小時，測試會在某幾週莫名其妙變紅。
+ *
+ * 所以分兩段驗：先驗「確實落在午夜」這個不變式（與實作的算法無關），
+ * 再驗日期差是 N 天。
+ */
+function assertDueOn(due, from, days, label) {
+  const at = new Date(due);
+  assert.equal(
+    `${at.getHours()}:${at.getMinutes()}:${at.getSeconds()}.${at.getMilliseconds()}`,
+    '0:0:0.0',
+    `${label}：到期時間必須落在當地日界`
+  );
+  const expected = new Date(from);
+  expected.setHours(0, 0, 0, 0);
+  expected.setDate(expected.getDate() + days);
+  assert.equal(due, expected.getTime(), `${label}：應該是 ${days} 天後的那一天`);
+}
 
 /**
  * 造一局已作答完畢的選擇題。answers 是每一題答對與否
@@ -78,14 +109,42 @@ test('盒號到頂之後停住，不會無限往上加', () => {
 test('壞掉的盒號一律當成第一盒——這份資料是使用者可以匯入的', () => {
   for (const bad of [0, -3, 1.5, null, undefined, 'x', NaN]) {
     assert.equal(nextBox(bad, false), 1);
-    assert.equal(dueAfter(bad, T0), T0 + BOX_DAYS[0] * DAY, `盒號 ${bad} 應該按第一盒算間隔`);
+    assertDueOn(dueAfter(bad, T0), T0, BOX_DAYS[0], `盒號 ${bad} 應該按第一盒算間隔`);
   }
 });
 
 test('各盒的到期時間就是它的間隔天數', () => {
   BOX_DAYS.forEach((days, i) => {
-    assert.equal(dueAfter(i + 1, T0), T0 + days * DAY, `第 ${i + 1} 盒應該是 ${days} 天`);
+    assertDueOn(dueAfter(i + 1, T0), T0, days, `第 ${i + 1} 盒`);
   });
+});
+
+test('到期時間對齊日界：晚上答錯的題，隔天一早就該出現', () => {
+  /**
+   * 這一條是「加 N × 24 小時」與「排到 N 天後那一天」的分水嶺。
+   * 前者會讓 22:00 答錯的題目要等到隔天 22:00 才到期，
+   * 習慣早上練的人整個上午都看不到它，而且這個延遲每天都會再累積一次。
+   */
+  const night = new Date(2026, 8, 1, 22, 0, 0).getTime();
+  const due = dueAfter(1, night);
+  assert.equal(isDue({ due }, new Date(2026, 8, 2, 9, 0, 0).getTime()), true, '隔天早上就該到期');
+  assert.equal(isDue({ due }, new Date(2026, 8, 1, 23, 59, 0).getTime()), false, '當天深夜還不算');
+});
+
+test('同一天的不同時刻答完，排到的是同一天', () => {
+  /* 排程的單位是「天」，早上答完與晚上答完不該落在不同的到期日 */
+  const morning = dueAfter(3, new Date(2026, 8, 1, 8, 30, 0).getTime());
+  const evening = dueAfter(3, new Date(2026, 8, 1, 23, 15, 0).getTime());
+  assert.equal(morning, evening);
+});
+
+test('isGraduated：到第 4 盒算學會，壞資料不算', () => {
+  assert.equal(isGraduated({ box: GRADUATED_BOX }), true);
+  assert.equal(isGraduated({ box: GRADUATED_BOX - 1 }), false);
+  assert.equal(isGraduated({ box: MAX_BOX }), true);
+  for (const bad of [undefined, null, {}, { box: 'x' }, { box: NaN }, { box: null }]) {
+    assert.equal(isGraduated(bad), false, `${JSON.stringify(bad)} 不該算學會`);
+  }
 });
 
 test('isDue：到期當下算到期，沒有 due 的也算', () => {
@@ -159,18 +218,16 @@ test('存進去的鑰匙就是匯出的那一把', () => {
 
 test('第一次答對：次數 1、沒錯過、進第二盒', () => {
   const p = recordSession(emptyProgress(), sessionOf([['ja-w-001', true]]), T0);
-  assert.deepEqual(p.items['ja-w-001'], {
-    n: 1,
-    w: 0,
-    box: 2,
-    last: T0,
-    due: T0 + BOX_DAYS[1] * DAY,
-  });
+  const r = p.items['ja-w-001'];
+  assert.deepEqual({ n: r.n, w: r.w, box: r.box, last: r.last }, { n: 1, w: 0, box: 2, last: T0 });
+  assertDueOn(r.due, T0, BOX_DAYS[1], '第一次答對');
 });
 
 test('第一次答錯：留在第一盒，隔天再見', () => {
   const p = recordSession(emptyProgress(), sessionOf([['ja-w-001', false]]), T0);
-  assert.deepEqual(p.items['ja-w-001'], { n: 1, w: 1, box: 1, last: T0, due: T0 + DAY });
+  const r = p.items['ja-w-001'];
+  assert.deepEqual({ n: r.n, w: r.w, box: r.box, last: r.last }, { n: 1, w: 1, box: 1, last: T0 });
+  assertDueOn(r.due, T0, 1, '第一次答錯');
 });
 
 test('連續答對會一路往上，間隔跟著拉長', () => {
@@ -243,6 +300,60 @@ test('weakest：只收錯過的，錯得最兇的排前面', () => {
   };
   assert.deepEqual(weakest(p, { lang: 'ja' }), ['ja-w-004', 'ja-w-001', 'ja-w-002']);
   assert.deepEqual(weakest(p, { lang: 'ja', limit: 2 }), ['ja-w-004', 'ja-w-001']);
+});
+
+test('weakest：練熟了就離開清單，再錯一次又回來', () => {
+  /**
+   * 這份清單要有出口。錯誤次數只增不減，少了畢業門檻的話
+   * 一個字錯過一次就永遠留在裡面，練到全對數字也不會掉。
+   */
+  let p = recordSession(emptyProgress(), sessionOf([['ja-w-001', false]]), T0);
+  assert.deepEqual(weakest(p, { lang: 'ja' }), ['ja-w-001'], '剛答錯，在清單裡');
+
+  /* 連續答對三次爬到第 4 盒 */
+  for (let i = 1; i <= 3; i++) {
+    p = recordSession(p, sessionOf([['ja-w-001', true]]), T0 + i * DAY);
+  }
+  assert.equal(p.items['ja-w-001'].box, GRADUATED_BOX);
+  assert.equal(p.items['ja-w-001'].w, 1, '答錯次數本身不會被抹掉');
+  assert.deepEqual(weakest(p, { lang: 'ja' }), [], '練熟了就該離開清單');
+
+  p = recordSession(p, sessionOf([['ja-w-001', false]]), T0 + 9 * DAY);
+  assert.deepEqual(weakest(p, { lang: 'ja' }), ['ja-w-001'], '再錯一次就回來');
+});
+
+test('weakest：缺 n 的紀錄不會汙染排序', () => {
+  /**
+   * 匯入的備份不做逐筆驗證，這種紀錄真的進得來。
+   * 寫成 w / Math.max(n, 1) 的話，缺 n 會讓比較函式回傳 NaN，
+   * 排序既不判大於也不判小於，那一筆就默默停在插入順序上——
+   * 錯 1 次的會排到 100% 錯誤率的前面，而且完全沒有錯誤訊息。
+   */
+  const p = {
+    schemaVersion: 1,
+    items: {
+      'ja-w-001': { w: 1 },
+      'ja-w-002': { n: 10, w: 9 },
+      'ja-w-003': { n: 2, w: 2 },
+    },
+  };
+  const order = weakest(p, { lang: 'ja' });
+  assert.equal(order.length, 3);
+  assert.ok(
+    order.indexOf('ja-w-003') < order.indexOf('ja-w-002'),
+    `100% 錯誤率要排在 90% 前面，實際順序：${order.join(' → ')}`
+  );
+  assert.ok(order.every((id) => typeof id === 'string'));
+});
+
+test('progressOfLang 的易錯數與 weakest 用同一組條件', () => {
+  /* 兩邊分家的話，首頁顯示的數字會跟測驗頁那顆膠囊對不起來 */
+  let p = recordSession(emptyProgress(), sessionOf([['ja-w-001', false], ['ja-w-002', false]]), T0);
+  for (let i = 1; i <= 3; i++) {
+    p = recordSession(p, sessionOf([['ja-w-001', true]]), T0 + i * DAY);
+  }
+  assert.equal(progressOfLang(p, 'ja', T0).weak, weakest(p, { lang: 'ja' }).length);
+  assert.equal(progressOfLang(p, 'ja', T0).weak, 1);
 });
 
 test('weakest：錯誤率一樣時，錯得多的優先', () => {

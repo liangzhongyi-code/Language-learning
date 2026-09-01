@@ -97,8 +97,9 @@ export function initBackupPanel(mount) {
     return parts.length ? parts.join('　·　') : '（空的）';
   }
 
-  function draw() {
-    const current = collect();
+  function draw(known) {
+    /* 呼叫端剛讀過就不要再讀一次——collect() 要解析最大近 900KB 的紀錄 */
+    const current = known ?? collect();
     const counts = {};
     for (const section of SECTIONS) {
       if (current[section]) counts[section] = countOf(section, current[section]);
@@ -117,9 +118,16 @@ export function initBackupPanel(mount) {
 
         <div class="backup-actions">
           <button class="btn ghost sm" type="button" data-export ${hasAny ? '' : 'disabled'}>匯出檔案</button>
+          <!--
+            檔案輸入不能用 hidden 藏。
+            hidden 等同 display:none，而 display:none 的元素不可聚焦——
+            label 自己也不在 tab 順序裡，於是整個「選擇備份檔」按鍵盤完全按不到，
+            換裝置時最關鍵的那個動作變成只有滑鼠能做（WCAG 2.1.1）。
+            改成視覺上看不見但仍留在焦點順序裡，外層 label 用 :focus-within 畫焦點框。
+          -->
           <label class="btn ghost sm file-btn">
             選擇備份檔
-            <input type="file" accept="application/json,.json" data-file hidden>
+            <input type="file" accept="application/json,.json" data-file class="file-input">
           </label>
         </div>
 
@@ -158,17 +166,25 @@ export function initBackupPanel(mount) {
 
   function doExport() {
     const now = Date.now();
-    const json = JSON.stringify(exportPayload(collect(), now), null, 2);
+    const current = collect();
+    const json = JSON.stringify(exportPayload(current, now), null, 2);
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = fileNameFor(now);
     a.click();
-    /* 立刻釋放，否則這個 blob 會活到整頁關閉為止 */
-    URL.revokeObjectURL(url);
+    /**
+     * 延後一拍再釋放。
+     * 緊接著 click() 同步 revoke 是有名的坑：舊版 Firefox 會直接取消下載
+     * （bug 1282407，FF50 修掉），Chromium 至今仍有大 blob 被截斷的回報。
+     * 這裡的檔案最大約 1MB，機率低但不是零，而下載失敗時使用者只會看到
+     * 一句確定的「已匯出」。延後一個 tick 的成本是零，沒有理由賭。
+     */
+    setTimeout(() => URL.revokeObjectURL(url), 0);
     message = '已匯出。把這個檔案收好，之後在任何裝置上都能匯入回來。';
     pending = null;
-    draw();
+    /* 剛剛才讀過，不必為了重畫再解析一次最大近 900KB 的紀錄 */
+    draw(current);
   }
 
   async function pickFile(event) {
@@ -205,11 +221,23 @@ export function initBackupPanel(mount) {
     const done = [];
     const failed = [];
 
+    /**
+     * 先確認真的寫得進去。
+     * `store?.setItem?.()` 在 store 是 undefined 時會靜靜地什麼都不做然後回傳
+     * undefined——於是每個區塊都被當成還原成功，畫面顯示「已還原：…」，
+     * 而使用者可能就把備份檔刪了。停用 Cookie 的瀏覽器正好走這條路。
+     */
+    const writable = typeof store?.setItem === 'function';
+
     for (const section of SECTIONS) {
       const value = pending.data[section];
       if (value === undefined) continue;
+      if (!writable) {
+        failed.push(SECTION_LABEL[section]);
+        continue;
+      }
       try {
-        store?.setItem?.(SECTION_KEY[section], JSON.stringify(value));
+        store.setItem(SECTION_KEY[section], JSON.stringify(value));
         done.push(SECTION_LABEL[section]);
       } catch {
         failed.push(SECTION_LABEL[section]);
@@ -217,9 +245,11 @@ export function initBackupPanel(mount) {
     }
 
     pending = null;
-    message = failed.length
-      ? `已還原：${done.join('、') || '無'}。${failed.join('、')}寫入失敗，可能是儲存空間已滿。`
-      : `已還原：${done.join('、')}。`;
+    message = !failed.length
+      ? `已還原：${done.join('、')}。`
+      : writable
+        ? `已還原：${done.join('、') || '無'}。${failed.join('、')}寫入失敗，可能是儲存空間已滿。`
+        : '這個瀏覽器不允許本站儲存資料（可能停用了 Cookie，或正在無痕模式），一筆都沒有還原。備份檔請先留著。';
     draw();
   }
 

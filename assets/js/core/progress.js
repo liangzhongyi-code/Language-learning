@@ -17,7 +17,7 @@
  */
 
 import { isAnswered, isCorrect } from './quiz-engine.js';
-import { nextBox, dueAfter, isDue } from './srs.js';
+import { nextBox, dueAfter, isDue, isGraduated } from './srs.js';
 
 export const PROGRESS_KEY = 'lang-learn.progress.v1';
 
@@ -136,10 +136,31 @@ const ofLang = (progress, lang) =>
   Object.entries(progress?.items || {}).filter(([id]) => id.startsWith(`${lang}-`));
 
 /**
+ * 錯誤率。
+ *
+ * 不能寫成 `w / Math.max(n, 1)`：缺 n 的紀錄會讓 Math.max 回傳 NaN，
+ * 而 NaN 進到比較函式會讓它回傳 NaN——排序既不判大於也不判小於，
+ * 那一筆就默默停在原地，整份清單的順序失準卻不會有任何錯誤訊息。
+ * 匯入的備份不做逐筆驗證，這種紀錄真的進得來。
+ *
+ * 沒有 n 就當成 100%：我們知道它至少錯過一次，只是不知道看過幾次。
+ */
+function errorRate(record) {
+  const n = Number(record?.n);
+  const w = Number(record?.w) || 0;
+  return Number.isFinite(n) && n > 0 ? w / n : 1;
+}
+
+/**
  * 最容易錯的題目 id，錯得最兇的排前面。
  *
- * 只收「至少錯過一次」的。沒錯過的東西放進易錯清單只會稀釋它，
- * 而這份清單的價值就在於它很短。
+ * 兩道篩子：
+ *   至少錯過一次——沒錯過的放進來只會稀釋這份清單，而它的價值就在於很短；
+ *   還沒學會——上次錯之後連續答對三次就畢業（見 srs.js 的 GRADUATED_BOX）。
+ *
+ * 第二道是這份清單的出口。少了它，錯誤次數只增不減，
+ * 一個字錯過一次就永遠留在裡面，練到全對數字也不會掉，
+ * 使用者只會覺得複習系統壞了。再錯一次就打回第一盒，它自己會回來。
  *
  * 排序先看錯誤率再看絕對錯誤數：
  * 錯 1/1 與錯 8/10 的錯誤率一個是 100% 一個是 80%，
@@ -147,14 +168,16 @@ const ofLang = (progress, lang) =>
  */
 export function weakest(progress, { lang, limit } = {}) {
   return ofLang(progress, lang)
-    .filter(([, r]) => (r?.w || 0) > 0)
+    .filter(([, r]) => (Number(r?.w) || 0) > 0 && !isGraduated(r))
     .sort((a, b) => {
-      const rateA = a[1].w / Math.max(a[1].n, 1);
-      const rateB = b[1].w / Math.max(b[1].n, 1);
+      const rateA = errorRate(a[1]);
+      const rateB = errorRate(b[1]);
       if (rateB !== rateA) return rateB - rateA;
-      if (b[1].w !== a[1].w) return b[1].w - a[1].w;
+      const wA = Number(a[1]?.w) || 0;
+      const wB = Number(b[1]?.w) || 0;
+      if (wB !== wA) return wB - wA;
       /* 一樣錯的話先練久沒碰的 */
-      return (a[1].last || 0) - (b[1].last || 0);
+      return (Number(a[1]?.last) || 0) - (Number(b[1]?.last) || 0);
     })
     .slice(0, limit ?? Infinity)
     .map(([id]) => id);
@@ -177,7 +200,8 @@ export function progressOfLang(progress, lang, now) {
   const entries = ofLang(progress, lang);
   return {
     tracked: entries.length,
-    weak: entries.filter(([, r]) => (r?.w || 0) > 0).length,
+    /* 與 weakest 同一組條件，否則首頁的數字會跟測驗頁那顆膠囊對不起來 */
+    weak: entries.filter(([, r]) => (Number(r?.w) || 0) > 0 && !isGraduated(r)).length,
     due: entries.filter(([, r]) => isDue(r, now)).length,
   };
 }
