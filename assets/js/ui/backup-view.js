@@ -13,6 +13,7 @@ import { STATS_KEY } from '../core/stats.js';
 import { PROGRESS_KEY } from '../core/progress.js';
 import { PREFS_KEY } from './prefs.js';
 import { exportPayload, parseBackup, countOf, SECTIONS } from '../core/backup.js';
+import { encodeBackupCode, decodeBackupCode, codeSizeHint } from '../core/backup-code.js';
 
 /**
  * 區塊名稱對應的 localStorage 鑰匙。
@@ -90,6 +91,12 @@ export function initBackupPanel(mount) {
   /* 解析完、等使用者確認的那一份。確認之前絕不寫入 */
   let pending = null;
   let message = '';
+  /**
+   * 代碼框裡的文字。複製時是我們產出的代碼，匯入時是使用者貼進來的。
+   * 存在狀態裡而不是只留在 DOM——整塊是 innerHTML 重建的，
+   * 不存的話使用者貼好代碼、按了別的按鈕，貼的東西就消失了。
+   */
+  let codeText = '';
 
   function summaryOf(counts) {
     const parts = SECTIONS.filter((s) => counts[s] !== undefined).map(
@@ -138,6 +145,7 @@ export function initBackupPanel(mount) {
 
         <div class="backup-actions">
           <button class="btn ghost sm" type="button" data-export ${hasAny ? '' : 'disabled'}>下載檔案</button>
+          <button class="btn ghost sm" type="button" data-copy-code ${hasAny ? '' : 'disabled'}>複製代碼</button>
           ${
             /* 支援檔案分享才畫這顆——桌機多半沒有，畫出來只會是個死按鈕 */
             hasAny && shareable
@@ -156,6 +164,18 @@ export function initBackupPanel(mount) {
             <!-- 也收 .txt：分享出去的檔案是 .txt（Chromium 的 Web Share 不放行 .json），不收的話 iPhone 在「檔案」App 裡選不到它 -->
             <input type="file" accept="application/json,.json,text/plain,.txt" data-file class="file-input">
           </label>
+        </div>
+
+        <!--
+          代碼的輸入輸出共用同一個框。按「複製代碼」它顯示產出的代碼（複製失敗時
+          可以手動全選）；要匯入就把別台裝置的代碼貼進來再按「讀取代碼」。
+          一個框兩個用途，比兩個框各自空著一半直觀。
+        -->
+        <label class="backup-now" for="backup-code">代碼（複製到別台裝置貼上，或把別台的貼進來）</label>
+        <textarea id="backup-code" class="backup-code" data-code rows="3" spellcheck="false"
+          placeholder="langlearn1:…">${esc(codeText)}</textarea>
+        <div class="backup-actions">
+          <button class="btn ghost sm" type="button" data-read-code>讀取代碼</button>
         </div>
 
         ${
@@ -183,6 +203,12 @@ export function initBackupPanel(mount) {
 
     mount.querySelector('[data-export]')?.addEventListener('click', doExport);
     mount.querySelector('[data-share]')?.addEventListener('click', doShare);
+    mount.querySelector('[data-copy-code]')?.addEventListener('click', doCopyCode);
+    mount.querySelector('[data-read-code]')?.addEventListener('click', doReadCode);
+    /* 使用者邊貼邊存，重繪才不會把貼好的東西洗掉 */
+    mount.querySelector('[data-code]')?.addEventListener('input', (event) => {
+      codeText = event.currentTarget.value;
+    });
     mount.querySelector('[data-file]')?.addEventListener('change', pickFile);
     mount.querySelector('[data-confirm]')?.addEventListener('click', doImport);
     mount.querySelector('[data-cancel]')?.addEventListener('click', () => {
@@ -302,6 +328,87 @@ export function initBackupPanel(mount) {
      */
     draw(current);
     refocus('[data-share]', wasInside);
+  }
+
+  /**
+   * 把紀錄變成一串代碼放進剪貼簿，同時顯示在代碼框裡。
+   *
+   * 兩個動作都做：剪貼簿 API 要安全來源與使用者手勢，在某些內嵌瀏覽器會拒絕；
+   * 框裡有字的話，最差也只是要使用者自己全選複製。
+   * 字數提示放在訊息裡——這串放不放得進聊天訊息，貼之前就該知道。
+   */
+  async function doCopyCode() {
+    const wasInside = focusInside();
+    const current = collect();
+    let code;
+    try {
+      code = await encodeBackupCode(exportPayload(current, Date.now()));
+    } catch {
+      message = '這一份紀錄目前打包不出來。請回報。';
+      draw(current);
+      refocus('[data-copy-code]', wasInside);
+      return;
+    }
+
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    } catch {
+      /* 剪貼簿被拒絕就退回手動：框裡有字，下面會幫他選好 */
+    }
+
+    const { chars, chatFriendly } = codeSizeHint(code);
+    const size = `約 ${chars.toLocaleString('zh-TW')} 字`;
+    message = copied
+      ? chatFriendly
+        ? `已複製到剪貼簿（${size}），可以直接貼進訊息。`
+        : `已複製到剪貼簿（${size}）——太長，聊天軟體多半貼不進去；貼到備忘錄或郵件，或改用檔案。`
+      : `剪貼簿不給用，請在下面的框裡全選後複製（${size}）。`;
+    codeText = code;
+    pending = null;
+    draw(current);
+    /* 焦點放到代碼框並全選，手動複製只差一個 Ctrl+C */
+    if (wasInside) {
+      const box = mount.querySelector('[data-code]');
+      box?.focus();
+      box?.select();
+    }
+  }
+
+  /**
+   * 把框裡的代碼解回備份，走與檔案匯入完全相同的預覽與確認。
+   */
+  async function doReadCode() {
+    const wasInside = focusInside();
+    const box = mount.querySelector('[data-code]');
+    codeText = box ? box.value : codeText;
+
+    const fail = (why) => {
+      pending = null;
+      message = why;
+      draw();
+      refocus('[data-code]', wasInside);
+    };
+
+    let text;
+    try {
+      text = await decodeBackupCode(codeText);
+    } catch (error) {
+      /* decodeBackupCode 的訊息都是寫給使用者看的 */
+      fail(error?.message || '代碼讀不出來。');
+      return;
+    }
+
+    const result = parseBackup(text);
+    if (!result.ok) {
+      fail(result.errors.join(' '));
+      return;
+    }
+    pending = result;
+    message = '';
+    draw();
+    refocus('[data-confirm]', wasInside);
   }
 
   function doExport() {

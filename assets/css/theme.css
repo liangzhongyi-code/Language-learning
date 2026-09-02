@@ -272,6 +272,31 @@ main { padding-bottom: var(--size-10); }
 .backup-preview p { margin: 0 0 var(--size-2); font-size: 13.5px; }
 .backup-warn { color: var(--warn); font-size: 13px; }
 .backup-msg { margin: var(--size-3) 0 0; font-size: 13.5px; color: var(--dim); }
+
+/**
+ * 代碼的輸入輸出共用同一個框：複製時它顯示產出的代碼，匯入時把代碼貼進來。
+ * 等寬、可捲、不自動換行——base64 一長串換行了反而更難看出有沒有少一段。
+ */
+.backup-code {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  margin: var(--size-3) 0 var(--size-2);
+  padding: var(--size-2) var(--size-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.backup-code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.backup-code::placeholder { color: var(--mute); }
 /**
  * 檔案輸入靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式。
  *
