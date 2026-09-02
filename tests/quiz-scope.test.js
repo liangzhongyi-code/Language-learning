@@ -78,6 +78,17 @@ test('範圍是空的就拋出看得懂的錯誤，不是拋出內部代號', ()
   assert.throws(() => build({ onlyIds: ['不存在的-id'] }), /這個範圍裡沒有題目/);
 });
 
+test('題數為 0 或負數時拋出看得懂的錯誤，不回傳零題的 session', () => {
+  /**
+   * sample() 對 count <= 0 回空陣列、不拋錯。少了守衛就會回一個 questions 為
+   * 空的 session，畫面層讀 questions[0].kind 炸出一句英文的 TypeError 給使用者看。
+   */
+  for (const count of [0, -1, 1.5, NaN, '10']) {
+    assert.throws(() => build({ count }), /出不了題/, `count=${JSON.stringify(count)} 應該被擋下`);
+  }
+  assert.equal(build({ count: 1 }).questions.length, 1, '正整數照常出題');
+});
+
 test('接受陣列也接受 Set', () => {
   const ids = jaWords.slice(0, 8).map((w) => w.id);
   const fromArray = build({ onlyIds: ids, count: 8 }).questions.map((q) => q.sourceId);

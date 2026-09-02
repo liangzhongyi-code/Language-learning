@@ -627,6 +627,17 @@ export function buildSession({
     throw new Error('這個範圍裡沒有題目——先練幾局，累積一些紀錄之後再回來。');
   }
 
+  /**
+   * 題數必須是正整數。
+   * sample() 對 count <= 0 回空陣列、不拋錯，這裡就會回一個零題的 session；
+   * 畫面層接著讀 questions[0].kind 就是 undefined 的 TypeError，
+   * 使用者看到的是一句英文的內部錯誤。現行的呼叫端算不出 0 或負數，
+   * 但 count 是從設定畫面帶過來的快照值，任何一次放寬上限的改動都可能把它變成 0。
+   */
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new Error('這一局出不了題——換個範圍或題型試試。');
+  }
+
   const kind = kindOf(source);
   /* 閱讀題按篇抽，其餘題型逐題抽 */
   const picked =

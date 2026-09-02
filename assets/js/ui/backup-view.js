@@ -70,10 +70,11 @@ function collect() {
 /**
  * 檔名帶日期，一天備份好幾次時才分得出哪個是新的
  */
-function fileNameFor(now) {
+function fileNameFor(now, ext = '.json') {
   const d = new Date(now);
   const pad = (n) => String(n).padStart(2, '0');
-  return `lang-learn-備份-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+  /* 副檔名由呼叫端給——下載與分享的檔名要從同一個來源長出來，不靠事後 replace */
+  return `lang-learn-備份-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${ext}`;
 }
 
 function formatTime(ms) {
@@ -210,7 +211,7 @@ export function initBackupPanel(mount) {
    */
   function buildFile(now, current, { forShare = false } = {}) {
     const json = JSON.stringify(exportPayload(current, now), null, 2);
-    const name = forShare ? fileNameFor(now).replace(/\.json$/, SHARE_EXT) : fileNameFor(now);
+    const name = fileNameFor(now, forShare ? SHARE_EXT : '.json');
     return new File([json], name, { type: forShare ? SHARE_TYPE : 'application/json' });
   }
 
@@ -228,7 +229,8 @@ export function initBackupPanel(mount) {
    */
   function canShareFile() {
     try {
-      const probe = new File(['{}'], `x${SHARE_EXT}`, { type: SHARE_TYPE });
+      /* 探測檔的檔名與真正送出的走同一個 fileNameFor——兩邊錯開就會按鈕照畫、按下去必失敗 */
+      const probe = new File(['{}'], fileNameFor(0, SHARE_EXT), { type: SHARE_TYPE });
       return typeof navigator?.canShare === 'function' && navigator.canShare({ files: [probe] });
     } catch {
       return false;
@@ -238,35 +240,61 @@ export function initBackupPanel(mount) {
   /* 分享面板開著的時候擋掉第二次點擊——並發呼叫 share 會被瀏覽器拒絕，還會誤報成裝置不支援 */
   let sharing = false;
 
+  /**
+   * navigator.share 的 Promise 在某些 Android 廠商瀏覽器裡，使用者用返回手勢
+   * 關掉面板時既不 resolve 也不 reject。沒有這條的話 sharing 永遠是 true，
+   * 之後每一次點擊都被上面那道守衛靜靜吞掉，按鈕看起來正常卻完全沒反應。
+   * 逾時之後把旗標放掉；面板真的還開著的話，再點一次也只是再開一次面板。
+   */
+  const SHARE_TIMEOUT_MS = 30000;
+  const withTimeout = (promise) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), SHARE_TIMEOUT_MS)),
+    ]);
+
   async function doShare() {
-    if (sharing) return;
+    if (sharing) {
+      /* 被擋下也要有回饋，不然使用者只會覺得按鈕壞了 */
+      message = '分享面板已經開著，先把它關掉。';
+      draw();
+      return;
+    }
     sharing = true;
     /* 焦點要在 await 之前取——分享面板打開後 activeElement 就不可信了 */
     const wasInside = focusInside();
     const now = Date.now();
     const current = collect();
 
-    let file;
+    /**
+     * 旗標只在 finally 重設，不散在各個分支手動寫。
+     * 分支多的時候每一條都得記得重設，日後有人在中間加一個提早 return
+     * 就會漏掉，分享鍵從此永久失效而且沒有任何錯誤訊息——那種 bug 在
+     * review 裡幾乎看不出來，因為每一條既有路徑都是對的。
+     */
+    /* 記下走到哪一步才失敗——buildFile 拋的是 TypeError 之類的原生錯誤，沒有可辨識的名字 */
+    let stage = 'build';
     try {
-      file = buildFile(now, current, { forShare: true });
-    } catch {
-      sharing = false;
-      message = '紀錄打包失敗，這是資料的問題不是裝置的問題——先試「下載檔案」，若一樣失敗請回報。';
-      draw(current);
-      refocus('[data-share]', wasInside);
-      return;
-    }
-
-    try {
-      await navigator.share({ files: [file], title: '語言學習的學習紀錄' });
+      const file = buildFile(now, current, { forShare: true });
+      stage = 'share';
+      await withTimeout(navigator.share({ files: [file], title: '語言學習的學習紀錄' }));
       message = '已送出。對方收到的檔案可以直接從這一頁匯入。';
     } catch (error) {
-      sharing = false;
       /* 使用者自己按取消不是錯誤，不要嚇他也不要重繪——狀態沒變 */
       if (error?.name === 'AbortError') return;
-      message = '這台裝置沒辦法用分享送出，改用「下載檔案」試試。';
+      /* 逾時也不重繪：面板可能還開著，使用者正在裡面選要送去哪 */
+      if (error?.message === 'timeout') return;
+      /**
+       * 打包失敗與送出失敗要分開講。前者是資料的問題，「改用下載」沒有意義——
+       * 下載走同一個 buildFile，結果會一樣。
+       */
+      message =
+        stage === 'build'
+          ? '這一份紀錄目前打包不出來，下載也會遇到同樣的問題。請回報。'
+          : '這台裝置沒辦法用分享送出，改用「下載檔案」試試。';
+    } finally {
+      sharing = false;
     }
-    sharing = false;
     /**
      * 不清 pending。
      * 使用者可能是「先把現在的紀錄分享出去備份，再蓋掉」——那份等待確認的
@@ -279,7 +307,20 @@ export function initBackupPanel(mount) {
   function doExport() {
     const now = Date.now();
     const current = collect();
-    const file = buildFile(now, current);
+    /**
+     * 打包也可能失敗（紀錄裡出現無法序列化的東西）。
+     * 不接住的話 click handler 裡的例外只進 console，畫面上什麼都沒發生——
+     * 使用者分不出是按錯了還是網站壞了，也拿不到任何可回報的資訊。
+     */
+    let file;
+    try {
+      file = buildFile(now, current);
+    } catch {
+      message = '這一份紀錄目前打包不出來。請回報。';
+      pending = null;
+      draw(current);
+      return;
+    }
     const url = URL.createObjectURL(file);
     const a = document.createElement('a');
     a.href = url;

@@ -193,7 +193,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   let phase = 'setup';
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
   let passageOpen = {};
-  /* 設定畫面最後一次算出來的範圲 id 與上限，start() 直接用它，畫面與實際才不會分家 */
+  /* 設定畫面最後一次算出來的範圍 id 與上限，start() 直接用它，畫面與實際才不會分家 */
   let lastSetup = null;
 
   /**
@@ -267,7 +267,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    * 「這個語言有沒有這份題庫」兩件事——後者是白名單永遠答不了的。
    */
   /**
-   * 用 Object.hasOwn 而不是 `SOURCE_LABEL[requested]` 的真值判斷。
+   * 用自有屬性檢查，而不是 `SOURCE_LABEL[requested]` 的真值判斷。
    *
    * 後者會吃到繼承來的屬性：`?source=toString` 查到 Object.prototype.toString
    * 這個函式，真值成立；接著 poolOf 認不得這個名字、落到預設分支回傳

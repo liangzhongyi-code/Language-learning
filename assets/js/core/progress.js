@@ -59,6 +59,21 @@ export function normalizeProgress(parsed) {
   return { schemaVersion: PROGRESS_SCHEMA_VERSION, items: { ...parsed.items } };
 }
 
+/**
+ * 還沒解析的 JSON 字串裡，有沒有某個語言的紀錄。
+ *
+ * 給語言首頁用：這個語言沒有統計時，若逐題紀錄也不含這個語言，
+ * 就不必為了畫一行「還有 N 筆」去解析整包最大近 900KB 的 JSON——
+ * 只練過另一種語言的人每次進來都會白付那筆錢。
+ * id 一律以「語言-」開頭（ja-w-001、en-s-029），而且只會出現在鍵名的位置——
+ * 所以比對「引號、語言-、任意字、引號、冒號」這個形狀，值裡碰巧長得像 id 的
+ * 字串不會誤判（目前的值全是數字，這條是防未來多加字串欄位）。
+ */
+export function rawHasLang(raw, lang) {
+  if (typeof raw !== 'string' || !/^[a-z]{2}$/.test(lang)) return false;
+  return new RegExp(`"${lang}-[^"]*"\\s*:`).test(raw);
+}
+
 export function loadProgress(storage) {
   let raw;
   try {

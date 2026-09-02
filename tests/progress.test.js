@@ -22,6 +22,7 @@ import {
   weakest,
   dueIds,
   progressOfLang,
+  rawHasLang,
   PROGRESS_KEY,
 } from '../assets/js/core/progress.js';
 import {
@@ -225,6 +226,23 @@ test('normalizeProgress 不合格回傳 null，合格則複製一份', () => {
   const out = normalizeProgress(src);
   out.items['ja-w-002'] = { n: 1 };
   assert.deepEqual(Object.keys(src.items), ['ja-w-001'], '不可就地改動來源');
+});
+
+test('rawHasLang：不解析就能分出這串紀錄有沒有某個語言', () => {
+  /**
+   * 語言首頁靠它決定要不要為了畫一行字去解析整包最大近 900KB 的 JSON。
+   * 只練過英文的人進日文首頁，這一題的答案是「不用」。
+   */
+  const enOnly = JSON.stringify({ schemaVersion: 1, items: { 'en-w-001': { n: 1, w: 0 } } });
+  const both = JSON.stringify({ schemaVersion: 1, items: { 'en-w-001': { n: 1 }, 'ja-s-002': { n: 1 } } });
+  assert.equal(rawHasLang(enOnly, 'ja'), false);
+  assert.equal(rawHasLang(enOnly, 'en'), true);
+  assert.equal(rawHasLang(both, 'ja'), true);
+  for (const bad of [null, undefined, '', 42, {}]) {
+    assert.equal(rawHasLang(bad, 'ja'), false, `${JSON.stringify(bad)} 不該算有`);
+  }
+  /* 「ja-」要出現在鍵名的位置（前面有引號），值裡碰巧出現的字不算 */
+  assert.equal(rawHasLang(JSON.stringify({ items: { 'en-w-001': { note: 'ja-w-001' } } }), 'ja'), false);
 });
 
 test('clearProgress：storage 不能用時回報 false，不假裝清乾淨了', () => {

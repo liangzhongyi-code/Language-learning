@@ -6,7 +6,7 @@
  */
 
 import { loadStats, clearStats, statsOfLang } from '../core/stats.js';
-import { loadProgress, clearProgress, progressOfLang } from '../core/progress.js';
+import { loadProgress, clearProgress, progressOfLang, rawHasLang, PROGRESS_KEY } from '../core/progress.js';
 
 const LANG_LABEL = { en: '英文', ja: '日文' };
 
@@ -48,24 +48,50 @@ export function renderLangStats(mount, lang) {
   let clearNotice = '';
   const noticeHtml = () => (clearNotice ? `<p class="stats-due">${clearNotice}</p>` : '');
 
+  /* 這顆按鈕連逐題紀錄與複習排程一起清，標籤不能只寫「統計」 */
+  const clearButton = '<button class="btn ghost sm" data-clear>清除紀錄</button>';
+
   const draw = () => {
     const store = storage();
     const s = statsOfLang(loadStats(store), lang);
+    /**
+     * 逐題紀錄要不要解析，先用字串比對決定。
+     *
+     * 有統計就一定讀（要畫到期數）。沒統計時只有一種情況需要讀：逐題紀錄裡
+     * 還有這個語言的東西（統計壞掉、或清除只清了一半）——不讀就不知道有殘留，
+     * 清除鍵也跟著早退消失，使用者連再試一次的地方都沒有。
+     * 但只練過另一種語言的人，這把鑰匙可能有 900KB 而一筆都不是這個語言的；
+     * 為了畫零行字去解析它是白付。rawHasLang 一次線性掃描就分得出來。
+     */
+    let raw = null;
+    try {
+      raw = store?.getItem?.(PROGRESS_KEY) ?? null;
+    } catch {
+      /* 讀不到就當沒有 */
+    }
+    const p =
+      s.hasData || rawHasLang(raw, lang)
+        ? progressOfLang(loadProgress(store), lang, Date.now())
+        : { tracked: 0, weak: 0, due: 0 };
 
     if (!s.hasData) {
       mount.innerHTML = `
         <div class="stats">
           <span class="hint">還沒有${LANG_LABEL[lang]}的練習紀錄——開始第一局吧。</span>
-        </div>${noticeHtml()}`;
+          ${p.tracked ? `<div class="spacer"></div>${clearButton}` : ''}
+        </div>
+        ${
+          /**
+           * 措辭不能寫「沒清掉」——統計讀不到有非清除的成因：
+           * 統計那一格壞掉（匯入半截檔、寫到一半配額滿）、或某一局 saveStats 失敗而
+           * saveProgress 成功。這些人從沒按過清除，卻會被告知有東西「沒清掉」。
+           * 只陳述事實：還有逐題紀錄在，複習排程照常運作。
+           */
+          p.tracked ? `<p class="stats-due">還有 <b>${p.tracked}</b> 筆逐題紀錄，複習排程照常。</p>` : ''
+        }${noticeHtml()}`;
+      bindClear(store);
       return;
     }
-
-    /**
-     * 逐題紀錄在確定有統計之後才讀。
-     * 它是一個最大近 900KB 的 JSON.parse，而沒練過的人根本用不到它——
-     * 早退在前面就把這個成本完全省掉。
-     */
-    const p = progressOfLang(loadProgress(store), lang, Date.now());
 
     mount.innerHTML = `
       <div class="stats">
@@ -82,8 +108,7 @@ export function renderLangStats(mount, lang) {
           <div class="lbl">答對 / 總題數</div>
         </div>
         <div class="spacer"></div>
-        <!-- 這顆按鈕連逐題紀錄與複習排程一起清，標籤不能只寫「統計」 -->
-        <button class="btn ghost sm" data-clear>清除紀錄</button>
+        ${clearButton}
       </div>
       ${
         /**
@@ -92,7 +117,10 @@ export function renderLangStats(mount, lang) {
          */
         p.due || p.weak ? `<p class="stats-due">${dueLine(p)}</p>` : ''
       }${noticeHtml()}`;
+    bindClear(store);
+  };
 
+  function bindClear(store) {
     mount.querySelector('[data-clear]')?.addEventListener('click', () => {
       const ok = window.confirm(
         `確定要清除全部的練習統計嗎？\n\n這會一併清掉英文與日文的統計與逐題學習紀錄（含複習排程），而且無法復原。`
@@ -113,12 +141,12 @@ export function renderLangStats(mount, lang) {
       } else {
         clearNotice = `只清掉了${statsGone ? '統計' : '逐題紀錄'}，${
           statsGone ? '逐題紀錄' : '統計'
-        }刪不掉。重新整理再試一次。`;
+        }刪不掉。再按一次「清除紀錄」試試。`;
       }
       /* 一律重繪，訊息由 draw 畫——不用 insertAdjacentHTML，連按幾次才不會疊出好幾行 */
       draw();
     });
-  };
+  }
 
   draw();
 }
