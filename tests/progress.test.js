@@ -227,6 +227,20 @@ test('normalizeProgress 不合格回傳 null，合格則複製一份', () => {
   assert.deepEqual(Object.keys(src.items), ['ja-w-001'], '不可就地改動來源');
 });
 
+test('clearProgress：storage 不能用時回報 false，不假裝清乾淨了', () => {
+  assert.equal(clearProgress(undefined), false);
+  assert.equal(clearProgress({}), false, '沒有 removeItem 就不是成功');
+  assert.equal(
+    clearProgress({
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    }),
+    false
+  );
+  assert.equal(clearProgress(fakeStorage()), true);
+});
+
 test('clearProgress 之後讀回來是空的', () => {
   const store = fakeStorage();
   saveProgress(store, recordSession(emptyProgress(), sessionOf([['ja-w-001', true]]), T0));

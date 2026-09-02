@@ -95,8 +95,10 @@ export function saveProgress(storage, progress) {
 }
 
 export function clearProgress(storage) {
+  /* 與 saveProgress 同一道守衛：沒有東西可刪就不要回報成功 */
+  if (typeof storage?.removeItem !== 'function') return false;
   try {
-    storage?.removeItem?.(PROGRESS_KEY);
+    storage.removeItem(PROGRESS_KEY);
     return true;
   } catch {
     return false;

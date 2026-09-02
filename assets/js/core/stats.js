@@ -180,8 +180,10 @@ export function saveStats(storage, stats) {
  * 清除統計
  */
 export function clearStats(storage) {
+  /* 與 saveStats 同一道守衛：沒有東西可刪就不要回報成功 */
+  if (typeof storage?.removeItem !== 'function') return false;
   try {
-    storage?.removeItem?.(STATS_KEY);
+    storage.removeItem(STATS_KEY);
     return true;
   } catch {
     return false;

@@ -20,6 +20,7 @@ import {
 } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { loadProgress, saveProgress, recordSession, weakest, dueIds } from '../core/progress.js';
+import { sessionCount, countChip, scopeState, strandedReason } from '../core/quiz-setup.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 
@@ -70,10 +71,10 @@ const SCOPE_NOUN = { weak: '還沒練熟的題目', due: '今天該複習的題�
  */
 function strandedNote(stranded, idsByScope, scopeSizes, sourceLabel) {
   const lines = stranded.map((s) => {
-    const total = idsByScope[s].length;
-    const here = scopeSizes[s];
+    const total = idsByScope[s]?.length || 0;
+    const here = scopeSizes[s] || 0;
     const noun = esc(SCOPE_NOUN[s]);
-    return here === total
+    return strandedReason({ here, total }) === 'short'
       ? `你有 ${total} 個${noun}，還不夠出一局（至少要 ${MIN_POOL} 題），再練幾局就會出現。`
       : `你有 ${total} 個${noun}，但只有 ${here} 個在${esc(sourceLabel)}裡，不夠出一局（至少要 ${MIN_POOL} 題）。換個題型看看。`;
   });
@@ -254,25 +255,26 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     return poolOf(source, words, sentences, scenes, readings).filter((item) => set.has(item.id)).length;
   }
 
-  /**
-   * 這一局實際會出幾題。
-   *
-   * 刻意不去改寫 config.useAll。它代表的是「使用者按過『全部』」，
-   * 而上限是隨題源與範圍浮動的衍生值——把浮動值寫回使用者的選擇，
-   * 就再也分不出「他要全部」與「他要 10 題但當時只湊得出 6 題」，
-   * 於是切一次小範圍再切回來，10 題會變成 7608 題而他從沒按過全部。
-   */
-  const countWithin = (limit) => (config.useAll || config.count > limit ? limit : config.count);
-
-  /* 三顆題數膠囊裡該選取哪一顆，與 countWithin 用同一條判斷 */
-  const countChipOf = (limit) => (config.useAll || config.count > limit ? 'all' : config.count);
+  /* 題數與範圍的判斷全部在 core，這裡只是把 config 餵進去 */
+  const countWithin = (limit) => sessionCount({ ...config, limit });
+  const countChipOf = (limit) => countChip({ ...config, limit });
 
   /**
    * 網址指定的題源，要這個語言真的出得出題才採用。
    * 問 poolSize 而不是查白名單，同時解決「名稱有沒有效」與
    * 「這個語言有沒有這份題庫」兩件事——後者是白名單永遠答不了的。
    */
-  if (SOURCE_LABEL[requested] && poolSize(requested) >= MIN_POOL) {
+  /**
+   * 用 Object.hasOwn 而不是 `SOURCE_LABEL[requested]` 的真值判斷。
+   *
+   * 後者會吃到繼承來的屬性：`?source=toString` 查到 Object.prototype.toString
+   * 這個函式，真值成立；接著 poolOf 認不得這個名字、落到預設分支回傳
+   * words + sentences（7755 筆，遠超過門檻），於是 config.source 被設成
+   * 'toString'——題型那一排沒有任何膠囊選取、實際卻照混合出題，
+   * 而畫面上每個 SOURCE_LABEL[config.source] 都會印出一段函式原始碼。
+   * 這正是下面那段註解說要擋掉的失敗模式，只是換一個入口進來。
+   */
+  if (Object.hasOwn(SOURCE_LABEL, requested ?? '') && poolSize(requested) >= MIN_POOL) {
     config.source = requested;
   }
 
@@ -309,29 +311,21 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const scopeSizes = { all: pool.length, weak: sizeOf('weak'), due: sizeOf('due') };
 
     /**
-     * 只顯示出得出題的範圍，與題型那一排同一個原則：
-     * 沒有資料時整顆膠囊不出現，而不是出現一顆按了會說「題庫不足」的死按鈕。
+     * 哪幾顆膠囊該出現、選著的那顆還算不算數、哪些範圍被卡住——
+     * 判斷全部在 core/quiz-setup.js，這裡只負責把數字餵進去再畫出來。
      */
-    const scopeChoices = ['weak', 'due'].filter((s) => scopeSizes[s] >= MIN_POOL);
-
-    /* 選著的範圍變得出不了題（換了題源、或剛好複習完）就退回全部 */
-    if (config.scope !== 'all' && !scopeChoices.includes(config.scope)) config.scope = 'all';
-
-    const total = scopeSizes[config.scope];
-
-    /**
-     * 這個語言有、但目前這個題源出不了一局的範圍。
-     *
-     * 語言首頁的數字是跨題源加總的（3 個單字 + 2 個句型 = 5），這裡卻是
-     * 單一題源交集而且要湊滿一局。少了這行說明，使用者看到首頁寫著
-     * 「測驗頁的『範圍』可以只練這些」，進來卻找不到那一排。
-     *
-     * 逐個範圍判斷，不是「兩個都出不了題才說」——只要有一個被卡住就該解釋，
-     * 否則另一個湊得滿的時候，被卡住的那個仍然沒有交代。
-     */
-    const stranded = ['weak', 'due'].filter(
-      (s) => idsByScope[s]?.length && scopeSizes[s] < MIN_POOL
-    );
+    const {
+      choices: scopeChoices,
+      scope,
+      stranded,
+      limit: total,
+    } = scopeState({
+      sizes: scopeSizes,
+      totals: { weak: idsByScope.weak?.length || 0, due: idsByScope.due?.length || 0 },
+      scope: config.scope,
+      minPool: MIN_POOL,
+    });
+    config.scope = scope;
 
     mount.innerHTML = `
       <div class="card">

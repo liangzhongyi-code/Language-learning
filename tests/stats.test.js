@@ -280,6 +280,19 @@ test('statsOfLang：有紀錄時 hasData 為 true', () => {
   assert.equal(statsOfLang(st, 'en').hasData, true);
 });
 
+test('clearStats：storage 不能用時回報 false，不假裝清乾淨了', () => {
+  assert.equal(clearStats(undefined), false);
+  assert.equal(clearStats({}), false, '沒有 removeItem 就不是成功');
+  assert.equal(
+    clearStats({
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    }),
+    false
+  );
+});
+
 test('clearStats：移除 key 後讀回初始狀態', () => {
   const storage = memoryStorage();
   saveStats(storage, applySession(emptyStats(), 'en', 'words', { total: 9, correct: 9 }));

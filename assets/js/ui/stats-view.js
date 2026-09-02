@@ -94,8 +94,14 @@ export function renderLangStats(mount, lang) {
         `確定要清除全部的練習統計嗎？\n\n這會一併清掉英文與日文的統計與逐題學習紀錄（含複習排程），而且無法復原。`
       );
       if (!ok) return;
-      clearStats(store);
-      clearProgress(store);
+      /* 兩者都要真的刪掉才算數，否則使用者以為清乾淨了卻還在 */
+      if (!clearStats(store) || !clearProgress(store)) {
+        mount.insertAdjacentHTML(
+          'beforeend',
+          '<p class="stats-due">清不掉——這個瀏覽器不允許本站儲存資料。</p>'
+        );
+        return;
+      }
       draw();
     });
   };

@@ -122,6 +122,8 @@ export function initBackupPanel(mount) {
       if (current[section]) counts[section] = countOf(section, current[section]);
     }
     const hasAny = Object.keys(counts).length > 0;
+    /* 用一個代表性的小檔案問就好，不必為了畫按鈕先打包整份紀錄 */
+    const shareable = hasAny && canShareFile(new File(['{}'], 'x.json', { type: 'application/json' }));
 
     mount.innerHTML = `
       <div class="card">
@@ -134,7 +136,13 @@ export function initBackupPanel(mount) {
         <p class="backup-now">目前：${hasAny ? esc(summaryOf(counts)) : '還沒有任何紀錄'}</p>
 
         <div class="backup-actions">
-          <button class="btn ghost sm" type="button" data-export ${hasAny ? '' : 'disabled'}>匯出檔案</button>
+          <button class="btn ghost sm" type="button" data-export ${hasAny ? '' : 'disabled'}>下載檔案</button>
+          ${
+            /* 支援檔案分享才畫這顆——桌機多半沒有，畫出來只會是個死按鈕 */
+            hasAny && shareable
+              ? '<button class="btn ghost sm" type="button" data-share>分享…</button>'
+              : ''
+          }
           <!--
             檔案輸入不能用 hidden 藏。
             hidden 等同 display:none，而 display:none 的元素不可聚焦——
@@ -172,6 +180,7 @@ export function initBackupPanel(mount) {
       </div>`;
 
     mount.querySelector('[data-export]')?.addEventListener('click', doExport);
+    mount.querySelector('[data-share]')?.addEventListener('click', doShare);
     mount.querySelector('[data-file]')?.addEventListener('change', pickFile);
     mount.querySelector('[data-confirm]')?.addEventListener('click', doImport);
     mount.querySelector('[data-cancel]')?.addEventListener('click', () => {
@@ -183,14 +192,55 @@ export function initBackupPanel(mount) {
     });
   }
 
+  /**
+   * 把備份包成一個檔案物件。下載與分享都從這裡拿。
+   */
+  function buildFile(now, current) {
+    const json = JSON.stringify(exportPayload(current, now), null, 2);
+    return new File([json], fileNameFor(now), { type: 'application/json' });
+  }
+
+  /**
+   * 這台裝置能不能用系統的分享面板送出檔案。
+   *
+   * 手機上「檔案下載到哪裡」是個真問題：Android 進下載資料夾、
+   * iOS 進「檔案」App 的下載項目，而 iOS 要把它再送去別的地方很麻煩。
+   * 分享面板直接跳過那一段——AirDrop、訊息、郵件、雲端硬碟任選，
+   * 換裝置時對面收到的就是可以直接匯入的檔案。
+   *
+   * 桌機瀏覽器多半不支援檔案分享，那顆按鈕就不會出現。
+   */
+  function canShareFile(file) {
+    try {
+      return typeof navigator?.canShare === 'function' && navigator.canShare({ files: [file] });
+    } catch {
+      return false;
+    }
+  }
+
+  async function doShare() {
+    const now = Date.now();
+    const current = collect();
+    try {
+      await navigator.share({ files: [buildFile(now, current)], title: '語言學習的學習紀錄' });
+      message = '已送出。對方收到的檔案可以直接從這一頁匯入。';
+    } catch (error) {
+      /* 使用者自己按取消不是錯誤，不要嚇他 */
+      if (error?.name === 'AbortError') return;
+      message = '這台裝置沒辦法用分享送出，改用「下載檔案」試試。';
+    }
+    pending = null;
+    draw(current);
+  }
+
   function doExport() {
     const now = Date.now();
     const current = collect();
-    const json = JSON.stringify(exportPayload(current, now), null, 2);
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const file = buildFile(now, current);
+    const url = URL.createObjectURL(file);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileNameFor(now);
+    a.download = file.name;
     a.click();
     /**
      * 延後一拍再釋放。
@@ -200,7 +250,7 @@ export function initBackupPanel(mount) {
      * 一句確定的「已匯出」。延後一個 tick 的成本是零，沒有理由賭。
      */
     setTimeout(() => URL.revokeObjectURL(url), 0);
-    message = '已匯出。把這個檔案收好，之後在任何裝置上都能匯入回來。';
+    message = '已下載。手機通常會進「下載」資料夾（iPhone 在「檔案」App 裡），之後在任何裝置上都能匯入回來。';
     pending = null;
     /* 剛剛才讀過，不必為了重畫再解析一次最大近 900KB 的紀錄 */
     draw(current);
