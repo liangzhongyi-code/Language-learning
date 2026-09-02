@@ -123,7 +123,7 @@ export function initBackupPanel(mount) {
     }
     const hasAny = Object.keys(counts).length > 0;
     /* 用一個代表性的小檔案問就好，不必為了畫按鈕先打包整份紀錄 */
-    const shareable = hasAny && canShareFile(new File(['{}'], 'x.json', { type: 'application/json' }));
+    const shareable = hasAny && canShareFile();
 
     mount.innerHTML = `
       <div class="card">
@@ -152,7 +152,8 @@ export function initBackupPanel(mount) {
           -->
           <label class="btn ghost sm file-btn">
             選擇備份檔
-            <input type="file" accept="application/json,.json" data-file class="file-input">
+            <!-- 也收 .txt：分享出去的檔案是 .txt（Chromium 的 Web Share 不放行 .json），不收的話 iPhone 在「檔案」App 裡選不到它 -->
+            <input type="file" accept="application/json,.json,text/plain,.txt" data-file class="file-input">
           </label>
         </div>
 
@@ -193,11 +194,24 @@ export function initBackupPanel(mount) {
   }
 
   /**
-   * 把備份包成一個檔案物件。下載與分享都從這裡拿。
+   * 分享用的檔案型別。
+   *
+   * 不能用 application/json / .json：Chromium 的 Web Share 對檔案有一張
+   * 副檔名與 MIME 的允許清單（share_service_impl.cc），JSON 兩張都不在。
+   * 用了的話 Chrome / Edge 的 canShare 一律回 false——Android 使用者
+   * 一輩子看不到那顆按鈕，而 Android 才是行動端的大宗。
+   * text/plain + .txt 在清單內，內容還是同一份 JSON，匯入認的是內容不是副檔名。
    */
-  function buildFile(now, current) {
+  const SHARE_TYPE = 'text/plain';
+  const SHARE_EXT = '.txt';
+
+  /**
+   * 把備份包成一個檔案物件。下載用 .json（語意清楚），分享用 .txt（見上面）。
+   */
+  function buildFile(now, current, { forShare = false } = {}) {
     const json = JSON.stringify(exportPayload(current, now), null, 2);
-    return new File([json], fileNameFor(now), { type: 'application/json' });
+    const name = forShare ? fileNameFor(now).replace(/\.json$/, SHARE_EXT) : fileNameFor(now);
+    return new File([json], name, { type: forShare ? SHARE_TYPE : 'application/json' });
   }
 
   /**
@@ -208,29 +222,58 @@ export function initBackupPanel(mount) {
    * 分享面板直接跳過那一段——AirDrop、訊息、郵件、雲端硬碟任選，
    * 換裝置時對面收到的就是可以直接匯入的檔案。
    *
-   * 桌機瀏覽器多半不支援檔案分享，那顆按鈕就不會出現。
+   * 支援與否由 canShare 決定，不猜裝置類型：Windows 的 Chrome / Edge
+   * 其實支援檔案分享，Firefox 桌機不支援，用「是不是手機」去猜兩邊都會猜錯。
+   * new File 放在 try 裡——會拋錯的是它不是 canShare（canShare 只回 false）。
    */
-  function canShareFile(file) {
+  function canShareFile() {
     try {
-      return typeof navigator?.canShare === 'function' && navigator.canShare({ files: [file] });
+      const probe = new File(['{}'], `x${SHARE_EXT}`, { type: SHARE_TYPE });
+      return typeof navigator?.canShare === 'function' && navigator.canShare({ files: [probe] });
     } catch {
       return false;
     }
   }
 
+  /* 分享面板開著的時候擋掉第二次點擊——並發呼叫 share 會被瀏覽器拒絕，還會誤報成裝置不支援 */
+  let sharing = false;
+
   async function doShare() {
+    if (sharing) return;
+    sharing = true;
+    /* 焦點要在 await 之前取——分享面板打開後 activeElement 就不可信了 */
+    const wasInside = focusInside();
     const now = Date.now();
     const current = collect();
+
+    let file;
     try {
-      await navigator.share({ files: [buildFile(now, current)], title: '語言學習的學習紀錄' });
+      file = buildFile(now, current, { forShare: true });
+    } catch {
+      sharing = false;
+      message = '紀錄打包失敗，這是資料的問題不是裝置的問題——先試「下載檔案」，若一樣失敗請回報。';
+      draw(current);
+      refocus('[data-share]', wasInside);
+      return;
+    }
+
+    try {
+      await navigator.share({ files: [file], title: '語言學習的學習紀錄' });
       message = '已送出。對方收到的檔案可以直接從這一頁匯入。';
     } catch (error) {
-      /* 使用者自己按取消不是錯誤，不要嚇他 */
+      sharing = false;
+      /* 使用者自己按取消不是錯誤，不要嚇他也不要重繪——狀態沒變 */
       if (error?.name === 'AbortError') return;
       message = '這台裝置沒辦法用分享送出，改用「下載檔案」試試。';
     }
-    pending = null;
+    sharing = false;
+    /**
+     * 不清 pending。
+     * 使用者可能是「先把現在的紀錄分享出去備份，再蓋掉」——那份等待確認的
+     * 匯入預覽與分享互不相干，分享完把它弄消失只會讓他重選一次檔。
+     */
     draw(current);
+    refocus('[data-share]', wasInside);
   }
 
   function doExport() {

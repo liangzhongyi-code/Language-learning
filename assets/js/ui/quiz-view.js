@@ -193,6 +193,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   let phase = 'setup';
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
   let passageOpen = {};
+  /* 設定畫面最後一次算出來的範圲 id 與上限，start() 直接用它，畫面與實際才不會分家 */
+  let lastSetup = null;
 
   /**
    * 鍵盤提示與數字徽章的顯示。
@@ -273,8 +275,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    * 'toString'——題型那一排沒有任何膠囊選取、實際卻照混合出題，
    * 而畫面上每個 SOURCE_LABEL[config.source] 都會印出一段函式原始碼。
    * 這正是下面那段註解說要擋掉的失敗模式，只是換一個入口進來。
+   *
+   * 不用 Object.hasOwn：它是 ES2022，Safari 15.4 以下沒有，而這一行在
+   * initQuizPage 裡無條件執行、沒有 try/catch——舊 iPhone 開測驗頁會拿到一片
+   * 空白連錯誤訊息都沒有。全站其餘語法最新只到 ES2020，沒有理由在這裡拉高底線。
    */
-  if (Object.hasOwn(SOURCE_LABEL, requested ?? '') && poolSize(requested) >= MIN_POOL) {
+  const isSource = Object.prototype.hasOwnProperty.call(SOURCE_LABEL, requested ?? '');
+  if (isSource && poolSize(requested) >= MIN_POOL) {
     config.source = requested;
   }
 
@@ -326,6 +333,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       minPool: MIN_POOL,
     });
     config.scope = scope;
+    lastSetup = { idsByScope, limit: total };
 
     mount.innerHTML = `
       <div class="card">
@@ -496,9 +504,17 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   function start() {
     try {
       resetPlayState();
-      /* 範圍與上限一起算，兩者必須來自同一次讀取才不會互相打架 */
-      const onlyIds = scopeIds(config.scope);
-      const count = countWithin(sizeWithin(config.source, onlyIds));
+      /**
+       * 直接用設定畫面最後一次畫出來的那份範圍與上限，不重新讀。
+       *
+       * 重讀會讓畫面與實際分家：「今天該複習」是時間相依的，畫完設定畫面到
+       * 按下開始之間若剛好跨過一個到期時點，膠囊寫「全部（5）」卻出 6 題。
+       * 使用者按下去的就是他看到的那個數字——所見即所得比「最新」重要。
+       * 上一局的結果仍會反映：backToSetup 一定會重畫，重畫就會重讀。
+       */
+      const onlyIds = lastSetup?.idsByScope[config.scope] ?? scopeIds(config.scope);
+      const limit = lastSetup?.limit ?? sizeWithin(config.source, onlyIds);
+      const count = countWithin(limit);
       session = buildSession({
         lang,
         words,

@@ -231,8 +231,11 @@ main { padding-bottom: var(--size-10); }
 
 /**
  * 說明頁的小表格。
- * 窄螢幕上讓它自己橫向捲，而不是把整頁撐出捲軸——
- * 表格是全站唯一寬度壓不下來的內容。
+ *
+ * 沒有捲動容器，靠折行縮進卡片裡：兩欄都允許換行，表頭鎖一行。
+ * 實測 375px 手機表格可用約 287px、最小需求約 206px，320px 也放得下。
+ * 這裡的取捨是「表格寬度必須壓得進卡片」——要加第三欄或放長表頭，
+ * 就得先包一層 overflow-x:auto，否則撐出捲軸的會是整頁而不是表格。
  */
 .tbl {
   width: 100%;
@@ -248,7 +251,12 @@ main { padding-bottom: var(--size-10); }
   vertical-align: top;
 }
 .tbl th { color: var(--mute); font-weight: 600; white-space: nowrap; }
-.tbl td:first-child { white-space: nowrap; color: var(--dim); }
+/**
+ * 第一欄不鎖 nowrap。
+ * 375px 的手機上表格只有約 300px，「iPhone / iPad」鎖成一行會吃掉 111px，
+ * 第二欄只剩 190px、每行 11 個字。讓它折成兩行，第二欄才有像樣的寬度。
+ */
+.tbl td:first-child { color: var(--dim); }
 .tbl tr:last-child td { border-bottom: 0; }
 
 /* 首頁的備份面板 */

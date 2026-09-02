@@ -58,6 +58,13 @@ test('顯示與實際永遠一致，而且不會超出上限', () => {
           `顯示 ${chip} 卻要出 ${n} 題（useAll=${useAll} count=${count} limit=${limit}）`
         );
         assert.ok(n <= limit, `出的題數 ${n} 超過上限 ${limit}`);
+        /**
+         * 亮起來的那顆必須是畫面上真的有的三顆之一。
+         * 少了這條，countChip 回傳 limit 本身（例如 6）時 n === chip 仍成立、
+         * 測試全綠，但 chips() 用字串比對找不到 6 這顆——題數那一排一顆都沒選取，
+         * 正是 ?source 那邊剛修掉的同一種失敗模式。
+         */
+        assert.ok(chip === 'all' || [10, 20].includes(chip), `膠囊 ${chip} 不是畫面上有的選項`);
       }
     }
   }
@@ -142,6 +149,12 @@ test('卡住的兩種原因要分得開——建議完全相反', () => {
   assert.equal(strandedReason({ here: 0, total: 5 }), 'elsewhere');
   assert.equal(strandedReason({ here: 2, total: 5 }), 'elsewhere');
   assert.equal(strandedReason({ here: 0, total: 0 }), 'short', '兩邊都是 0 時不該說「在別處」');
+  /**
+   * here > total 在現行資料下不可達（需要同一個題庫出現重複 id），
+   * 但這條把「真的發生時算 short」釘死——題目確實都在這個題源裡，
+   * 「再練幾局」是對的建議，別讓它停在碰巧沒差的狀態。
+   */
+  assert.equal(strandedReason({ here: 2, total: 1 }), 'short', '交集比總數還多只可能是重複 id，題目仍在這裡');
 });
 
 test('壞掉或缺少的數字不會讓判斷炸掉', () => {

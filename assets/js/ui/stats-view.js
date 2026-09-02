@@ -44,6 +44,10 @@ function dueLine(p) {
 export function renderLangStats(mount, lang) {
   if (!mount) return;
 
+  /* 「清除紀錄」失敗時要說的話。由 draw 畫，重繪就自然只有一份 */
+  let clearNotice = '';
+  const noticeHtml = () => (clearNotice ? `<p class="stats-due">${clearNotice}</p>` : '');
+
   const draw = () => {
     const store = storage();
     const s = statsOfLang(loadStats(store), lang);
@@ -52,7 +56,7 @@ export function renderLangStats(mount, lang) {
       mount.innerHTML = `
         <div class="stats">
           <span class="hint">還沒有${LANG_LABEL[lang]}的練習紀錄——開始第一局吧。</span>
-        </div>`;
+        </div>${noticeHtml()}`;
       return;
     }
 
@@ -87,21 +91,31 @@ export function renderLangStats(mount, lang) {
          * 「今天有 0 個字到期」是一句沒有用的話，而且會讓人以為功能壞了。
          */
         p.due || p.weak ? `<p class="stats-due">${dueLine(p)}</p>` : ''
-      }`;
+      }${noticeHtml()}`;
 
     mount.querySelector('[data-clear]')?.addEventListener('click', () => {
       const ok = window.confirm(
         `確定要清除全部的練習統計嗎？\n\n這會一併清掉英文與日文的統計與逐題學習紀錄（含複習排程），而且無法復原。`
       );
       if (!ok) return;
-      /* 兩者都要真的刪掉才算數，否則使用者以為清乾淨了卻還在 */
-      if (!clearStats(store) || !clearProgress(store)) {
-        mount.insertAdjacentHTML(
-          'beforeend',
-          '<p class="stats-due">清不掉——這個瀏覽器不允許本站儲存資料。</p>'
-        );
-        return;
+      /**
+       * 兩個都要嘗試，不能短路。
+       * 用 `||` 短路的話，第一個成功、第二個失敗時統計已經沒了、逐題紀錄還在，
+       * 而畫面只說一句籠統的「清不掉」——使用者以為什麼都沒動，其實動了一半。
+       * 分開記結果，訊息才能講出到底剩下什麼。
+       */
+      const statsGone = clearStats(store);
+      const progressGone = clearProgress(store);
+      if (statsGone && progressGone) {
+        clearNotice = '';
+      } else if (!statsGone && !progressGone) {
+        clearNotice = '清不掉——這個瀏覽器不允許本站儲存資料。';
+      } else {
+        clearNotice = `只清掉了${statsGone ? '統計' : '逐題紀錄'}，${
+          statsGone ? '逐題紀錄' : '統計'
+        }刪不掉。重新整理再試一次。`;
       }
+      /* 一律重繪，訊息由 draw 畫——不用 insertAdjacentHTML，連按幾次才不會疊出好幾行 */
       draw();
     });
   };
