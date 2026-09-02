@@ -281,6 +281,14 @@ test('speechSynthesis 只出現在 ui/speech.js', () => {
  */
 const BROWSER_GLOBALS = /\b(document|window|globalThis|self|localStorage|sessionStorage|navigator|location|alert|fetch)\b/;
 
+/**
+ * 不在上面清單裡、core 可以用的 Web API——它們同時存在於 Node 18+ 與瀏覽器，
+ * 純值進純值出、沒有環境狀態，所以 node:test 直接跑得動。目前用到的：
+ *   TextEncoder / TextDecoder、btoa / atob、CompressionStream / DecompressionStream（core/backup-code.js）
+ * 要加新的請先確認兩件事：Node 也有、以及它不會摸到使用者環境
+ * （Blob 的 URL、crypto.subtle 的金鑰、structuredClone 的 transfer 都不算純運算）。
+ */
+
 test('core 層不得碰 DOM 或瀏覽器全域', () => {
   const coreFiles = jsFiles.filter((f) => rel(f).startsWith('assets/js/core/'));
   assert.ok(coreFiles.length >= 6, '找不到 core 模組');

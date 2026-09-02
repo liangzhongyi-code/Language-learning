@@ -98,6 +98,21 @@ export function initBackupPanel(mount) {
    */
   let codeText = '';
 
+  /**
+   * 面板拆成兩層：shell 每次重繪整塊重建；status 建一次、只換文字。
+   *
+   * 訊息若跟著 innerHTML 一起重建，就是「剛插入就帶著內容的新節點」——
+   * 螢幕閱讀器不會播報，aria-live 只對「既有節點的內容改變」有反應。
+   * 全站原本沒有任何 live region，複製代碼是第一個「唯一的輸出就是那行訊息」
+   * 的動作，成功、失敗、太長貼不進訊息，全部靜音。這裡把它補起來。
+   */
+  const shell = document.createElement('div');
+  const status = document.createElement('p');
+  status.className = 'backup-msg';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  mount.replaceChildren(shell, status);
+
   function summaryOf(counts) {
     const parts = SECTIONS.filter((s) => counts[s] !== undefined).map(
       (s) => `${SECTION_LABEL[s]} ${counts[s]} ${SECTION_UNIT[s]}`
@@ -133,7 +148,7 @@ export function initBackupPanel(mount) {
     /* 用一個代表性的小檔案問就好，不必為了畫按鈕先打包整份紀錄 */
     const shareable = hasAny && canShareFile();
 
-    mount.innerHTML = `
+    shell.innerHTML = `
       <div class="card">
         <h3 class="backup-title">學習紀錄</h3>
         <p class="backup-note">
@@ -173,7 +188,7 @@ export function initBackupPanel(mount) {
         -->
         <label class="backup-now" for="backup-code">代碼（複製到別台裝置貼上，或把別台的貼進來）</label>
         <textarea id="backup-code" class="backup-code" data-code rows="3" spellcheck="false"
-          placeholder="langlearn1:…">${esc(codeText)}</textarea>
+          placeholder="langlearn…">${esc(codeText)}</textarea>
         <div class="backup-actions">
           <button class="btn ghost sm" type="button" data-read-code>讀取代碼</button>
         </div>
@@ -198,8 +213,10 @@ export function initBackupPanel(mount) {
             : ''
         }
 
-        ${message ? `<p class="backup-msg">${esc(message)}</p>` : ''}
       </div>`;
+    /* 訊息寫進常駐的 status 節點，螢幕閱讀器才會播報；空字串就是清掉 */
+    status.textContent = message;
+    status.hidden = !message;
 
     mount.querySelector('[data-export]')?.addEventListener('click', doExport);
     mount.querySelector('[data-share]')?.addEventListener('click', doShare);
@@ -360,19 +377,38 @@ export function initBackupPanel(mount) {
 
     const { chars, chatFriendly } = codeSizeHint(code);
     const size = `約 ${chars.toLocaleString('zh-TW')} 字`;
+
+    /**
+     * 框裡若是使用者貼進來、正在等確認的代碼，不能蓋掉——那份預覽就是從它來的。
+     * 蓋掉之後預覽還在、框裡卻是另一份資料，畫面自相矛盾；他若按取消，
+     * 原本那串就得回訊息軟體重新複製。pending 開著時代碼只進剪貼簿。
+     */
+    const boxBusy = pending !== null;
+    if (!boxBusy) codeText = code;
+
     message = copied
       ? chatFriendly
         ? `已複製到剪貼簿（${size}），可以直接貼進訊息。`
         : `已複製到剪貼簿（${size}）——太長，聊天軟體多半貼不進去；貼到備忘錄或郵件，或改用檔案。`
-      : `剪貼簿不給用，請在下面的框裡全選後複製（${size}）。`;
-    codeText = code;
-    pending = null;
+      : boxBusy
+        ? '剪貼簿不給用，而框裡是你貼進來等確認的代碼——先按「確認匯入」或「取消」，再複製一次。'
+        : `剪貼簿不給用，請在下面的框裡全選後複製（${size}）。`;
+    /* 不清 pending——與分享同一個理由：使用者可能是先把現在的紀錄複製出去備份，再蓋掉 */
     draw(current);
-    /* 焦點放到代碼框並全選，手動複製只差一個 Ctrl+C */
-    if (wasInside) {
+
+    /**
+     * 剪貼簿失敗時無條件把焦點帶進框裡並全選，手動複製只差一個 Ctrl+C。
+     * 這裡不看 wasInside：Safari 點按鈕不會給焦點，而 WebKit 又剛好在
+     * await 之後拒絕 writeText——退路在最需要它的平台上如果被 wasInside
+     * 擋掉，使用者就得自己點進框、長按、找「全選」，而框裡是一行看不到頭的 base64。
+     * 他剛按了這顆按鈕，把焦點帶到結果不算搶。
+     */
+    if (!copied && !boxBusy) {
       const box = mount.querySelector('[data-code]');
       box?.focus();
       box?.select();
+    } else {
+      refocus('[data-copy-code]', wasInside);
     }
   }
 
@@ -402,7 +438,8 @@ export function initBackupPanel(mount) {
 
     const result = parseBackup(text);
     if (!result.ok) {
-      fail(result.errors.join(' '));
+      /* parseBackup 的措辭是寫給檔案的；使用者貼的是代碼，把「檔」換掉才對得上他做的事 */
+      fail(result.errors.join(' ').replace(/JSON 檔/g, '代碼內容').replace(/備份檔/g, '備份代碼'));
       return;
     }
     pending = result;
@@ -424,7 +461,6 @@ export function initBackupPanel(mount) {
       file = buildFile(now, current);
     } catch {
       message = '這一份紀錄目前打包不出來。請回報。';
-      pending = null;
       draw(current);
       return;
     }
@@ -442,7 +478,11 @@ export function initBackupPanel(mount) {
      */
     setTimeout(() => URL.revokeObjectURL(url), 0);
     message = '已下載。手機通常會進「下載」資料夾（iPhone 在「檔案」App 裡），之後在任何裝置上都能匯入回來。';
-    pending = null;
+    /**
+     * 下載、分享、複製代碼三種「把紀錄帶走」的動作都不清 pending。
+     * 等待確認的匯入預覽與帶走紀錄互不相干——使用者很可能就是
+     * 「先把現在的備份出去，再蓋掉」，把預覽弄消失只會讓他重選一次檔。
+     */
     /* 剛剛才讀過，不必為了重畫再解析一次最大近 900KB 的紀錄 */
     draw(current);
   }

@@ -58,7 +58,8 @@ test('這個環境會壓縮，而且壓縮後比不壓縮短得多', async () =>
   const code = await encodeBackupCode(big);
   const plainChars = btoa(JSON.stringify(big)).length;
   assert.ok(code.startsWith('langlearn1:'), '有壓縮能力就該用版本 1');
-  assert.ok(code.length < plainChars / 3, `壓縮後 ${code.length} 字，不壓縮 ${plainChars} 字，壓縮率不夠`);
+  /* 500 筆實測約 9.5 倍，門檻留一半餘裕——退化到 3 倍以下就該被抓到 */
+  assert.ok(code.length < plainChars / 6, `壓縮後 ${code.length} 字，不壓縮 ${plainChars} 字，壓縮率不夠`);
   assert.deepEqual(JSON.parse(await decodeBackupCode(code)), big);
 });
 
@@ -85,11 +86,78 @@ test('空的、別人的、亂打的一律擋下，而且不動任何資料', as
   }
 });
 
-test('少複製一段時說「不完整」，不是丟一句解碼錯誤', async () => {
+/**
+ * 截斷會走到兩條不同的錯誤路徑，要分開釘住：
+ *   砍掉的字數 ≡ 3 (mod 4) 時 base64 本體長度 mod 4 == 1，atob 直接拒絕 → 「少複製了一段」；
+ *   其他長度 atob 容忍（缺 padding），進到 gzip 才發現壞了 → 「解不開」。
+ * 原本用 /不完整|解不開/ 一條吃兩邊——但「解不開」那句本身就含「不完整」三個字，
+ * 那個正則對兩條訊息都為真，等於什麼都沒測到。
+ */
+test('少複製一段（長度 mod 4 == 1）：base64 就擋下，說「少複製了一段」', async () => {
   const code = await encodeBackupCode(payload);
-  /* 從中間砍一段，破壞 gzip 結構 */
+  const truncated = code.slice(0, code.length - 3);
+  await assert.rejects(() => decodeBackupCode(truncated), /少複製了一段/);
+  await assert.rejects(() => decodeBackupCode(truncated), (e) => !/解不開/.test(e.message));
+});
+
+test('砍掉一大段：base64 容忍，gzip 才發現壞了，說「解不開」', async () => {
+  const code = await encodeBackupCode(payload);
   const truncated = code.slice(0, code.length - 30);
-  await assert.rejects(() => decodeBackupCode(truncated), /不完整|解不開/);
+  await assert.rejects(() => decodeBackupCode(truncated), /解不開/);
+});
+
+test('前後夾著說明文字、程式碼圍欄、句號，都抽得出來', async () => {
+  const code = await encodeBackupCode(payload);
+  for (const wrapped of [
+    `這是我的紀錄：${code}`,
+    `${code} 請幫我匯入`,
+    '```\n' + code + '\n```',
+    `${code}。`,
+    `紀錄→ ${code} ←貼這個`,
+  ]) {
+    assert.deepEqual(JSON.parse(await decodeBackupCode(wrapped)), payload, `解不開：${wrapped.slice(0, 24)}…`);
+  }
+});
+
+test('零寬空格、軟連字號、BOM、全形冒號都清得掉——聊天軟體折長字串塞的就是這些', async () => {
+  const code = await encodeBackupCode(payload);
+  const [head, body] = code.split(':');
+  const mangled = `\uFEFF${head}\uFF1A${body.slice(0, 10)}\u200B${body.slice(10, 30)}\u00AD${body.slice(30)}\u200D`;
+  assert.deepEqual(JSON.parse(await decodeBackupCode(mangled)), payload);
+});
+
+test('版本號超過三位數不當成本站的代碼，不會印出科學記號', async () => {
+  await assert.rejects(() => decodeBackupCode('langlearn1234:AAAA'), /不是本站的代碼/);
+  await assert.rejects(() => decodeBackupCode(`langlearn${'9'.repeat(25)}:AAAA`), /不是本站的代碼/);
+});
+
+test('沒有壓縮能力時走版本 0，而且來回一致', async () => {
+  /**
+   * 這條路的受害者正是 iOS 16.4 以下、Firefox 113 以下——唯一會走 v0 的那批人。
+   * 不測的話，把前綴寫反（標成 v1 卻沒壓縮）整套測試不會有任何反應，
+   * 而他們產出的代碼在任何裝置上都解不開。
+   */
+  const saved = globalThis.CompressionStream;
+  try {
+    delete globalThis.CompressionStream;
+    assert.equal(canCompress(), false);
+    const code = await encodeBackupCode(payload);
+    assert.ok(code.startsWith('langlearn0:'), `沒有壓縮能力應該產出版本 0，實際：${code.slice(0, 12)}`);
+    assert.deepEqual(JSON.parse(await decodeBackupCode(code)), payload);
+  } finally {
+    globalThis.CompressionStream = saved;
+  }
+});
+
+test('沒有解壓能力時對版本 1 說得清楚該怎麼辦', async () => {
+  const code = await encodeBackupCode(payload);
+  const saved = globalThis.DecompressionStream;
+  try {
+    delete globalThis.DecompressionStream;
+    await assert.rejects(() => decodeBackupCode(code), /看不懂壓縮過的代碼.*檔案匯入/);
+  } finally {
+    globalThis.DecompressionStream = saved;
+  }
 });
 
 test('比自己新的版本擋下', async () => {

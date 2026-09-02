@@ -24,10 +24,13 @@ const V_GZIP = 1;
 
 /**
  * 超過這個字數就不建議貼進聊天訊息。
- * 各家上限不同（LINE 約一萬字、iMessage 更長），取一個保守值；
+ *
+ * 要看的是全場最緊的那家，不是最寬的：Telegram 單則硬上限 4,096 字（超過會被
+ * 切成多則或拒收）、LINE Messaging API 5,000、LINE App 10,000、WhatsApp 65,536、
+ * iMessage 無明訂。取 4,000，含 `langlearn1:` 前綴仍低於 4,096。
  * 超過就提示改貼備忘錄或郵件——那兩個沒有實際上限。
  */
-export const CHAT_FRIENDLY_CHARS = 5000;
+export const CHAT_FRIENDLY_CHARS = 4000;
 
 /**
  * Uint8Array → base64。
@@ -120,10 +123,29 @@ export async function encodeBackupCode(payload) {
  * 錯誤訊息都是給使用者看的，直接顯示。
  */
 export async function decodeBackupCode(text) {
-  const cleaned = String(text ?? '').replace(/\s+/g, '');
+  /**
+   * 先把看不見的東西清掉。
+   * \s 涵蓋一般空白與換行，但不含零寬空格（U+200B–200D）、軟連字號（U+00AD）
+   * 與 BOM（U+FEFF）——那正是聊天軟體為了折超長字串塞進來的字元，
+   * 少清一個就會讓比對落空，使用者被告知「這不是本站的代碼」，而它就是。
+   * 全形冒號是輸入法的常見副作用，一併換回半形。
+   */
+  const cleaned = String(text ?? '')
+    .replace(/[\s\u200B-\u200D\u00AD\uFEFF]+/g, '')
+    .replace(/\uFF1A/g, ':');
   if (!cleaned) throw new Error('還沒有貼上代碼。');
 
-  const match = cleaned.match(/^langlearn(\d+):([A-Za-z0-9+/=]+)$/);
+  /**
+   * 先試整串剛好就是代碼；不中再從文字裡抽出第一段——
+   * 從聊天訊息複製時常夾著「這是我的紀錄：」或程式碼圍欄。
+   * 抽出來的尾端若黏了英文字母會被吸進 base64 而解不開，但那會是明確的錯誤
+   * （gzip 有 CRC 與長度把關、v0 有 JSON.parse），不會靜靜解出錯的資料。
+   *
+   * 版本號限三位數：更長的不可能是我們產的，直接當成不是本站的代碼，
+   * 也免得訊息裡印出 v1e+21 這種科學記號。
+   */
+  const pattern = /langlearn(\d{1,3}):([A-Za-z0-9+/=]+)/;
+  const match = cleaned.match(new RegExp(`^${pattern.source}$`)) ?? cleaned.match(pattern);
   if (!match) throw new Error('這不是本站的代碼，沒有動任何資料。');
 
   const version = Number(match[1]);

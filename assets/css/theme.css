@@ -275,7 +275,11 @@ main { padding-bottom: var(--size-10); }
 
 /**
  * 代碼的輸入輸出共用同一個框：複製時它顯示產出的代碼，匯入時把代碼貼進來。
- * 等寬、可捲、不自動換行——base64 一長串換行了反而更難看出有沒有少一段。
+ *
+ * 讓它折行填滿三行，不鎖成一行。base64 沒有任何斷字點，不加 overflow-wrap
+ * 就會撐成一條橫向捲軸——那樣 72px 的框裡只有第一行有字、其餘永遠空白，
+ * 使用者能看見的只有開頭三四十個字元，反而更看不出這串有多大、少了沒。
+ * 軟折行不會寫進 .value，複製出去的仍是一整串。
  */
 .backup-code {
   display: block;
@@ -291,12 +295,19 @@ main { padding-bottom: var(--size-10); }
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   resize: vertical;
-  white-space: pre;
-  overflow-wrap: normal;
-  overflow-x: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 .backup-code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .backup-code::placeholder { color: var(--mute); }
+/**
+ * 手機上升到 16px。iOS Safari 對焦字級低於 16px 的表單控制項時會把整頁放大，
+ * 貼完代碼版面已經跑掉、「讀取代碼」被推出畫面，還得自己捏回來。
+ * 等寬 16px 的 base64 反而好認。
+ */
+@media (max-width: 640px) {
+  .backup-code { font-size: 16px; }
+}
 /**
  * 檔案輸入靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式。
  *

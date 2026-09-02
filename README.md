@@ -95,7 +95,10 @@ npm test
 ```
 
 **分層規則**：`頁面 → ui/ → core/ → data/`，方向不可反轉。
-`core/` 不得碰任何瀏覽器 API——這條由測試強制執行。
+`core/` 不得碰 DOM 與帶狀態的瀏覽器全域（`document`、`window`、`localStorage`、`navigator`、
+`fetch`…，完整清單在 `tests/structure.test.js` 的 `BROWSER_GLOBALS`，由測試強制執行）。
+Node 與瀏覽器共有的純運算 API 可以用——`TextEncoder`、`btoa`、`CompressionStream` 這類
+純值進純值出、沒有環境狀態的東西——判準是「`node --test` 直接跑得動」。
 
 ### 存在瀏覽器裡的三把鑰匙
 
@@ -110,7 +113,8 @@ npm test
 畫一個百分比要先解析七百 KB 的 JSON。
 
 三把鑰匙都能從首頁的「備份與還原」帶走：下載成 JSON 檔、用系統分享面板送出，
-或壓成一串 `langlearn1:…` 的代碼直接貼進訊息（gzip + base64，見 `core/backup-code.js`）。
+或壓成一串 `langlearn1:…` 的代碼直接貼進訊息（gzip + base64；沒有 CompressionStream 的舊瀏覽器
+退回不壓縮的 `langlearn0:`，解碼端兩種都認，見 `core/backup-code.js`）。
 三種容器裝的是同一份內容，匯入時都走同一道 `parseBackup` 的檢查與預覽。
 沒有帳號、沒有雲端同步，換裝置靠那個檔案或那串代碼。
 
