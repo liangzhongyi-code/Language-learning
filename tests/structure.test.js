@@ -196,9 +196,11 @@ test('重複鍵偵測本身是有效的（自我驗證）', () => {
 /**
  * 從 theme.css 的 :root 取出所有十六進位色彩變數
  */
-function themeColors() {
+function themeColors(selector = ':root {') {
   const css = readFileSync(join(ROOT, 'assets/css/theme.css'), 'utf8');
-  const root = css.slice(css.indexOf(':root'), css.indexOf('}', css.indexOf(':root')));
+  const start = css.indexOf(selector);
+  assert.ok(start >= 0, `找不到主題色票：${selector}`);
+  const root = css.slice(start, css.indexOf('}', start));
   const map = {};
   for (const m of root.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{6})\b/g)) map[m[1]] = m[2];
   return map;
@@ -221,13 +223,23 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/**
+ * 把半透明前景疊到不透明背景，得到瀏覽器實際畫出的六碼色彩。
+ */
+function blend(foreground, background, alpha) {
+  const channels = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const mixed = channels(foreground).map((value, i) =>
+    Math.round(value * alpha + channels(background)[i] * (1 - alpha))
+  );
+  return `#${mixed.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+
 test('對比度計算本身正確（自我驗證）', () => {
   assert.equal(Math.round(contrast('#ffffff', '#000000')), 21);
   assert.equal(Math.round(contrast('#ffffff', '#ffffff')), 1);
 });
 
-test('內文色在所有表面上都達到 WCAG AA 的 4.5:1', () => {
-  const c = themeColors();
+test('深色與淺色模式的內文色都在所有表面上達到 WCAG AA 的 4.5:1', () => {
   const surfaces = ['--bg', '--surface', '--surface-2', '--surface-3'];
   /**
    * 全部用在實際內文上的色，不是純裝飾。
@@ -241,25 +253,89 @@ test('內文色在所有表面上都達到 WCAG AA 的 4.5:1', () => {
   const foregrounds = ['--text', '--dim', '--mute', '--accent', '--ok', '--bad', '--warn'];
 
   const failures = [];
-  for (const fg of foregrounds) {
-    for (const bg of surfaces) {
-      const ratio = contrast(c[fg], c[bg]);
-      if (ratio < 4.5) failures.push(`${fg}(${c[fg]}) on ${bg}(${c[bg]}) = ${ratio.toFixed(2)}:1`);
+  for (const [mode, selector] of [['深色', ':root {'], ['淺色', ":root[data-theme='light']"]]) {
+    const c = themeColors(selector);
+    for (const fg of foregrounds) {
+      for (const bg of surfaces) {
+        const ratio = contrast(c[fg], c[bg]);
+        if (ratio < 4.5) failures.push(`${mode} ${fg}(${c[fg]}) on ${bg}(${c[bg]}) = ${ratio.toFixed(2)}:1`);
+      }
     }
   }
   assert.deepEqual(failures, [], `\n${failures.join('\n')}`);
 });
 
-test('語法角色色在色塊底色上達到 4.5:1', () => {
-  const c = themeColors();
-  /* 色塊底色是角色色 15% 疊在 --surface 上，取近似的最壞情況直接比 --surface */
+test('深色與淺色模式的語法角色色都達到 4.5:1', () => {
+  const expected = [
+    '--r-subject', '--r-verb', '--r-object', '--r-time', '--r-place',
+    '--r-adjective', '--r-negation', '--r-particle', '--r-other',
+  ];
   const failures = [];
-  for (const [name, hex] of Object.entries(c)) {
-    if (!name.startsWith('--r-')) continue;
-    const ratio = contrast(hex, c['--surface']);
-    if (ratio < 4.5) failures.push(`${name}(${hex}) = ${ratio.toFixed(2)}:1`);
+  let darkRoles;
+  for (const [mode, selector] of [['深色', ':root {'], ['淺色', ":root[data-theme='light']"]]) {
+    const c = themeColors(selector);
+    const roles = Object.keys(c).filter((name) => name.startsWith('--r-')).sort();
+    assert.deepEqual(roles, [...expected].sort(), `${mode}色票的語法角色必須完整，不能偷偷繼承另一套主題`);
+    if (!darkRoles) darkRoles = roles;
+    else assert.deepEqual(roles, darkRoles, '深淺色的語法角色集合必須一致');
+
+    for (const name of roles) {
+      const hex = c[name];
+      const actualBackground = blend(hex, c['--surface'], 0.15);
+      const ratio = contrast(hex, actualBackground);
+      if (ratio < 4.5) failures.push(`${mode} ${name}(${hex}) on ${actualBackground} = ${ratio.toFixed(2)}:1`);
+    }
   }
   assert.deepEqual(failures, [], `\n${failures.join('\n')}`);
+});
+
+test('深色與淺色模式的控制項邊界都達到 3:1', () => {
+  const failures = [];
+  for (const [mode, selector] of [['深色', ':root {'], ['淺色', ":root[data-theme='light']"]]) {
+    const c = themeColors(selector);
+    for (const bg of ['--surface', '--surface-2']) {
+      const ratio = contrast(c['--border-strong'], c[bg]);
+      if (ratio < 3) failures.push(`${mode} --border-strong on ${bg} = ${ratio.toFixed(2)}:1`);
+    }
+  }
+  assert.deepEqual(failures, [], `\n${failures.join('\n')}`);
+
+  const css = readFileSync(join(ROOT, 'assets/css/theme.css'), 'utf8');
+  for (const selector of ['.btn.ghost', '.chip', '.field', '.filter', '.backup-code', '.opt', '.cz-word']) {
+    const start = css.indexOf(`\n${selector} {`) + 1;
+    assert.ok(start >= 0, `找不到控制項樣式：${selector}`);
+    const block = css.slice(start, css.indexOf('}', start));
+    assert.match(block, /(?:border|border-color):[^;]*var\(--border-strong\)/, `${selector} 必須真的使用達標邊界色`);
+  }
+  assert.match(css, /\.lang-switch, \.help-link, \.theme-toggle \{[\s\S]*?border:[^;]*var\(--border-strong\)/);
+});
+
+test('共用導覽列提供持久化的黑白模式切換', () => {
+  const nav = readFileSync(join(ROOT, 'assets/js/ui/nav.js'), 'utf8');
+  const prefs = readFileSync(join(ROOT, 'assets/js/ui/prefs.js'), 'utf8');
+  const backup = readFileSync(join(ROOT, 'assets/js/ui/backup-view.js'), 'utf8');
+  const boot = readFileSync(join(ROOT, 'assets/js/ui/theme-boot.js'), 'utf8');
+  const css = readFileSync(join(ROOT, 'assets/css/theme.css'), 'utf8');
+  assert.equal((nav.match(/\$\{themeToggleHtml\(\)\}/g) || []).length, 2, '兩種共用導覽列都要放主題按鈕');
+  assert.equal((nav.match(/bindThemeToggle\(\);/g) || []).length, 2, '兩種共用導覽列都要綁定主題按鈕');
+  assert.match(nav, /aria-label="淺色模式" aria-pressed="\$\{isLight\}"/);
+  assert.match(nav, /<span data-theme-label>淺色模式<\/span>/, '可見標籤必須包含可存取名稱');
+  assert.match(nav, /addEventListener\(PREFS_IMPORTED_EVENT, applySavedTheme\)/);
+  assert.match(nav, /setPref\('theme'/);
+  assert.match(backup, /dispatchEvent\(new Event\(PREFS_IMPORTED_EVENT\)\)/);
+  assert.match(prefs, /theme:\s*'dark'/);
+  assert.match(boot, /localStorage\.getItem\('lang-learn\.prefs\.v1'\)/);
+  assert.match(css, /:root\[data-theme='light'\]/);
+  const hoverAt = css.indexOf('.blk.clickable:hover {');
+  const hover = css.slice(hoverAt, css.indexOf('}', hoverAt));
+  assert.doesNotMatch(hover, /filter:/, 'hover 不可把小字一起增亮而破壞淺色對比');
+
+  for (const file of htmlFiles) {
+    const html = readFileSync(file, 'utf8');
+    const bootAt = html.indexOf('theme-boot.js');
+    const cssAt = html.indexOf('theme.css');
+    assert.ok(bootAt >= 0 && bootAt < cssAt, `${rel(file)} 必須在 CSS 前同步主題，避免閃色`);
+  }
 });
 
 /* ── 分層邊界 ─────────────────────────────────────────────── */

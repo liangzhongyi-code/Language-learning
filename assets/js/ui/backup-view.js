@@ -11,7 +11,7 @@
 
 import { STATS_KEY } from '../core/stats.js';
 import { PROGRESS_KEY } from '../core/progress.js';
-import { PREFS_KEY } from './prefs.js';
+import { PREFS_KEY, PREFS_IMPORTED_EVENT } from './prefs.js';
 import { exportPayload, parseBackup, countOf, SECTIONS } from '../core/backup.js';
 import { encodeBackupCode, decodeBackupCode, codeSizeHint } from '../core/backup-code.js';
 
@@ -529,6 +529,7 @@ export function initBackupPanel(mount) {
     const store = storage();
     const done = [];
     const failed = [];
+    let prefsImported = false;
 
     /**
      * 先確認真的寫得進去。
@@ -548,12 +549,14 @@ export function initBackupPanel(mount) {
       try {
         store.setItem(SECTION_KEY[section], JSON.stringify(value));
         done.push(SECTION_LABEL[section]);
+        if (section === 'prefs') prefsImported = true;
       } catch {
         failed.push(SECTION_LABEL[section]);
       }
     }
 
     const wasInside = focusInside();
+    if (prefsImported) window.dispatchEvent(new Event(PREFS_IMPORTED_EVENT));
     pending = null;
     message = !failed.length
       ? `已還原：${done.join('、')}。`

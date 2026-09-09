@@ -9,7 +9,16 @@
 /* 匯出給備份面板用——它要知道偏好存在哪一格才倒得出來 */
 export const PREFS_KEY = 'lang-learn.prefs.v1';
 
+/**
+ * 整份偏好由匯入功能覆寫後，用這個事件通知同頁的 UI 立即重讀。
+ */
+export const PREFS_IMPORTED_EVENT = 'lang-learn:prefs-imported';
+
 const DEFAULTS = {
+  /**
+   * 全站顯示模式：dark / light。預設延續原本的深色介面。
+   */
+  theme: 'dark',
   /* 文法頁的兩排連接線 */
   grammarLines: true,
   /* 假名表顯示模式：hiragana / katakana / both */

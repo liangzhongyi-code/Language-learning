@@ -4,8 +4,8 @@
  * 分成兩層：
  *   1. 尺度 token（間距、字級、動畫曲線）
  *   2. 語意 token（顏色、圓角、字體）
- * 元件只吃 token，不寫死任何值。所有色碼一律只出現在下面的 :root 區塊，
- * 其他檔案一律用 var()——要換配色只需要動那一段。
+ * 元件只吃 token，不寫死任何值。所有色碼一律只出現在下面兩套 :root 色票，
+ * 其他檔案一律用 var()——要換配色只需要動深色與淺色兩段。
  *
  * 尺度採用 Open Props（MIT）的比例。原本是整包 import 進來，
  * 但實測全站只用到它 607 個變數裡的 13 個，其中還夾帶 344 個用不到的色碼，
@@ -14,6 +14,9 @@
  */
 
 :root {
+  color-scheme: dark;
+  --content-max: 1180px;
+
   /* ── 間距尺度 ── */
   --size-1: 0.25rem;
   --size-2: 0.5rem;
@@ -41,7 +44,7 @@
 
   /* ── 邊框 ── */
   --border: #2b3038;
-  --border-strong: #3a4150;
+  --border-strong: #697386;
 
   /**
    * 文字三階。
@@ -72,7 +75,7 @@
   --r-place: #a98cd8;
   --r-adjective: #5fc0b8;
   --r-negation: #e09a6b;
-  --r-particle: #8b95a2;
+  --r-particle: #929caa;
   --r-other: #9aa4b2;
 
   /* ── 圓角 ── */
@@ -95,6 +98,43 @@
   --t: 200ms var(--ease-out-3);
 }
 
+/**
+ * 淺色模式不是把背景直接翻白而已，每一階文字與語意色都重新配過。
+ * 兩套色票都由 structure.test.js 驗證所有內文組合至少 4.5:1。
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3f6fb;
+  --surface: #ffffff;
+  --surface-2: #edf1f7;
+  --surface-3: #e3e9f2;
+  --border: #d9e0ea;
+  --border-strong: #748196;
+  --text: #172033;
+  --dim: #435168;
+  --mute: #59697f;
+  --accent: #2457d6;
+  --accent-soft: rgba(36, 87, 214, 0.11);
+  --accent-ink: #ffffff;
+  --ok: #116b49;
+  --ok-soft: rgba(17, 107, 73, 0.11);
+  --bad: #9f2632;
+  --bad-soft: rgba(159, 38, 50, 0.1);
+  --warn: #805000;
+  --warn-soft: rgba(128, 80, 0, 0.11);
+  --r-subject: #2457d6;
+  --r-verb: #9f2632;
+  --r-object: #116b49;
+  --r-time: #805000;
+  --r-place: #69429a;
+  --r-adjective: #087269;
+  --r-negation: #914619;
+  --r-particle: #4d5e72;
+  --r-other: #526173;
+  --lift: 0 1px 3px rgba(28, 43, 72, 0.08);
+  --lift-lg: 0 14px 38px rgba(28, 43, 72, 0.1);
+}
+
 /* 尊重使用者的減少動態偏好 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -112,13 +152,16 @@
 html, body { margin: 0; padding: 0; }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 12% 0%, var(--accent-soft) 0, transparent 30rem),
+    var(--bg);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  transition: background-color var(--t), color var(--t);
 }
 
 h1, h2, h3 {
@@ -139,7 +182,7 @@ a:hover { text-decoration: underline; }
 
 /* 版面置中，內文靠左 */
 .wrap {
-  max-width: 880px;
+  max-width: var(--content-max);
   margin: 0 auto;
   padding: 0 var(--size-4);
 }
@@ -162,7 +205,7 @@ main { padding-bottom: var(--size-10); }
   align-items: center;
   gap: var(--size-3);
   flex-wrap: wrap;
-  max-width: 880px;
+  max-width: var(--content-max);
   margin: 0 auto;
   padding: var(--size-2) var(--size-4);
 }
@@ -187,27 +230,51 @@ main { padding-bottom: var(--size-10); }
 .tabs a[aria-current='page'] { background: var(--accent-soft); color: var(--accent); }
 
 .topbar-right { display: flex; gap: var(--size-1); align-items: center; }
-.lang-switch, .help-link {
+.lang-switch, .help-link, .theme-toggle {
   padding: 6px 11px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   font-size: 13px;
   color: var(--dim);
+  background: transparent;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  white-space: nowrap;
   transition: all var(--t-fast);
 }
-.lang-switch:hover, .help-link:hover {
+.theme-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.lang-switch:hover, .help-link:hover, .theme-toggle:hover {
   color: var(--text);
   border-color: var(--border-strong);
+  background: var(--surface-2);
   text-decoration: none;
+}
+.theme-toggle [data-theme-symbol] {
+  display: inline-block;
+  width: 1.15em;
+  margin-right: 5px;
+  text-align: center;
 }
 
 /* ══════════════════════════════════════════════════════════
    區塊標題與卡片
    ══════════════════════════════════════════════════════════ */
 
-.page-head { padding: var(--size-7) 0 var(--size-3); }
+.page-head {
+  margin-top: var(--size-7);
+  padding: 34px 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--surface), var(--surface-2));
+  box-shadow: var(--lift-lg);
+}
 .page-head h1 { font-size: var(--font-size-6); }
-.page-head p { color: var(--mute); font-size: 14px; margin: var(--size-2) 0 0; }
+.page-head p { color: var(--dim); font-size: 15px; margin: var(--size-2) 0 0; max-width: 76ch; }
 
 .sec-head { margin: var(--size-7) 0 var(--size-2); }
 .sec-head h2 { font-size: var(--font-size-4); }
@@ -218,13 +285,13 @@ main { padding-bottom: var(--size-10); }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--size-5);
-  box-shadow: var(--lift);
+  box-shadow: var(--lift-lg);
 }
 .card + .card { margin-top: var(--size-4); }
 
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--size-3);
   margin-top: var(--size-4);
 }
@@ -292,7 +359,7 @@ main { padding-bottom: var(--size-10); }
   line-height: 1.5;
   color: var(--dim);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   resize: vertical;
   overflow-wrap: anywhere;
@@ -410,7 +477,7 @@ main { padding-bottom: var(--size-10); }
   font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', var(--font-body);
 }
 .entry h3 { font-size: 17px; margin: var(--size-2) 0 var(--size-1); }
-.entry p { color: var(--mute); font-size: 13px; margin: 0; line-height: 1.6; }
+.entry p { color: var(--mute); font-size: 14px; margin: 0; line-height: 1.65; }
 
 /* ══════════════════════════════════════════════════════════
    按鈕與表單
@@ -432,7 +499,7 @@ main { padding-bottom: var(--size-10); }
 }
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: translateY(1px); }
-.btn.ghost { background: transparent; color: var(--dim); border-color: var(--border); box-shadow: none; }
+.btn.ghost { background: transparent; color: var(--dim); border-color: var(--border-strong); box-shadow: none; }
 .btn.ghost:hover { color: var(--text); border-color: var(--border-strong); filter: none; }
 .btn.sm { font-size: 13px; padding: 7px 14px; min-height: 36px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; filter: none; }
@@ -447,7 +514,7 @@ main { padding-bottom: var(--size-10); }
   padding: 6px 13px;
   min-height: 34px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--dim);
   cursor: pointer;
@@ -469,7 +536,7 @@ main { padding-bottom: var(--size-10); }
   padding: 11px 15px;
   min-height: 44px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--text);
   transition: border-color var(--t-fast);
@@ -488,7 +555,7 @@ main { padding-bottom: var(--size-10); }
 .filter-bar { display: flex; flex-direction: column; gap: var(--size-2); }
 
 .filter {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-2);
   overflow: hidden;
@@ -764,7 +831,7 @@ html.no-speech .speak { display: none !important; }
 .blk.moved {
   border-style: dashed;
   border-width: 2px;
-  background: color-mix(in srgb, var(--blk, var(--r-other)) 24%, transparent);
+  background: color-mix(in srgb, var(--blk, var(--r-other)) 15%, transparent);
 }
 .blk.moved::after {
   content: '語序不同';
@@ -778,10 +845,10 @@ html.no-speech .speak { display: none !important; }
   background: var(--warn);
   color: var(--accent-ink);
 }
-.blk.particle { padding-left: 9px; padding-right: 9px; opacity: 0.78; }
+.blk.particle { padding-left: 9px; padding-right: 9px; }
 .blk.particle .txt { font-size: 14px; }
 .blk.clickable { cursor: pointer; }
-.blk.clickable:hover { filter: brightness(1.25); }
+.blk.clickable:hover { transform: translateY(-1px); box-shadow: var(--lift); }
 
 .r-subject { --blk: var(--r-subject); }
 .r-verb { --blk: var(--r-verb); }
@@ -947,7 +1014,7 @@ html.no-lines .gap-mid svg { display: none; }
   padding: 12px 16px;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   font-family: inherit;
   font-size: 16px;
@@ -1067,7 +1134,7 @@ html.no-lines .gap-mid svg { display: none; }
   padding: 8px 15px;
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   font-family: inherit;
   font-size: 17px;
@@ -1185,20 +1252,53 @@ html.no-lines .gap-mid svg { display: none; }
    行動裝置
    ══════════════════════════════════════════════════════════ */
 
-@media (max-width: 640px) {
-  .wrap { padding: 0 var(--size-3); }
+/**
+ * 寬螢幕才放大閱讀尺度。手機仍維持 16px，避免一個選項被迫折成太多行。
+ */
+@media (min-width: 960px) {
+  body { font-size: 17px; }
+  .page-head { padding: 42px 46px; }
+  .page-head h1 { font-size: 3rem; }
+  .page-head p { font-size: 16px; line-height: 1.8; }
+  .sec-head h2 { font-size: 1.65rem; }
+  .sec-head p { font-size: 14.5px; }
+  .card { padding: var(--size-7); }
+  .entry { padding: var(--size-5); }
+  .entry h3 { font-size: 18px; }
+  .entry p { font-size: 14.5px; }
+  .word-target { font-size: 20px; }
+  .opt { font-size: 16px; }
+  .context.passage { font-size: 17.5px; }
+}
 
+@media (max-width: 720px) {
   /**
-   * 手機上所有可點的東西都放大到至少 44px 高。
-   * 桌機用滑鼠指標，差幾 px 無所謂；手指沒有那個精度，
-   * 34px 的朗讀鍵與 26px 的導覽連結實測都很難點準。
+   * 導覽列多了主題開關後，641–699px 也放不下單列。
+   * 這個區間跟手機採同一個清楚的兩列結構，避免工具列孤零零換到左下角。
    */
   .topbar-in { padding: var(--size-1) var(--size-3); gap: var(--size-2); }
   .topbar-in .home { min-height: 44px; display: inline-flex; align-items: center; }
   .tabs { order: 3; width: 100%; margin-right: 0; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
   .tabs a { white-space: nowrap; min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; }
   .topbar-right { margin-left: auto; }
-  .lang-switch, .help-link { min-height: 44px; display: inline-flex; align-items: center; padding: 0 13px; }
+  .lang-switch, .help-link, .theme-toggle { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; }
+  .theme-toggle [data-theme-label] { display: none; }
+  .theme-toggle [data-theme-symbol] { margin-right: 0; font-size: 18px; }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 var(--size-3); }
+  .page-head {
+    margin-top: var(--size-3);
+    padding: var(--size-5);
+    border-radius: var(--radius);
+  }
+
+  /**
+   * 手機上所有可點的東西都放大到至少 44px 高。
+   * 桌機用滑鼠指標，差幾 px 無所謂；手指沒有那個精度，
+   * 34px 的朗讀鍵與 26px 的導覽連結實測都很難點準。
+   */
 
   .speak { width: 44px; height: 44px; font-size: 17px; }
   .speak.tall { width: 56px; }
@@ -1214,7 +1314,7 @@ html.no-lines .gap-mid svg { display: none; }
   .link-btn { min-height: 44px; font-size: 14px; }
   /* 小按鈕在桌機刻意做小（次要動作），但手指沒有那個精度 */
   .btn.sm { min-height: 44px; padding: 10px 18px; }
-  .chip { min-height: 42px; padding: 8px 15px; font-size: 14px; }
+  .chip { min-height: 44px; padding: 8px 15px; font-size: 14px; }
 
   /**
    * 小字在手機上往上調一級。
