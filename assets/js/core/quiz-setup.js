@@ -33,6 +33,18 @@ export function countChip({ useAll, count, limit }) {
 }
 
 /**
+ * 把易錯／到期的全語言 id 總數限制在目前選擇的難度。
+ * allowedIds 為 null 表示不分級；Set 則只計算該級實際存在的題目。
+ */
+export function scopeTotals(idsByScope, allowedIds = null) {
+  return Object.fromEntries(['weak', 'due'].map((scope) => {
+    const ids = idsByScope?.[scope] || [];
+    const total = allowedIds ? ids.filter((id) => allowedIds.has(id)).length : ids.length;
+    return [scope, total];
+  }));
+}
+
+/**
  * 範圍那一排的狀態。
  *
  *   sizes  目前題源 ∩ 各範圍有幾題（畫面上膠囊顯示的數字）

@@ -521,6 +521,11 @@ main { padding-bottom: var(--size-10); }
   transition: all var(--t-fast);
 }
 .chip:hover { color: var(--text); border-color: var(--border-strong); }
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.chip:disabled:hover { color: var(--dim); border-color: var(--border-strong); }
 .chip[aria-pressed='true'] {
   background: var(--accent-soft);
   border-color: var(--accent);
@@ -1180,6 +1185,31 @@ html.no-lines .gap-mid svg { display: none; }
   line-height: 1.6;
 }
 
+/* 每道測驗題下方的問題回報欄位，預設收合，不打斷正常作答節奏 */
+.issue-report {
+  margin-top: var(--size-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.issue-report > summary {
+  padding: 12px 16px;
+  color: var(--dim);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.issue-report[open] > summary { border-bottom: 1px solid var(--border); }
+.issue-body { padding: 0 var(--size-4) var(--size-4); }
+.issue-label {
+  display: block;
+  margin-top: var(--size-3);
+  color: var(--dim);
+  font-size: 13px;
+}
+.issue-description { display: block; margin-top: var(--size-2); resize: vertical; }
+.issue-code { margin-top: var(--size-2); }
+.issue-message { min-height: 1.5em; margin: var(--size-2) 0 0; color: var(--dim); font-size: 13px; }
+
 /* 結果畫面 */
 .score { display: flex; align-items: baseline; gap: var(--size-3); flex-wrap: wrap; }
 .score b { font-family: var(--font-display); font-size: 46px; font-weight: 600; color: var(--accent); line-height: 1; }
@@ -1315,6 +1345,7 @@ html.no-lines .gap-mid svg { display: none; }
   /* 小按鈕在桌機刻意做小（次要動作），但手指沒有那個精度 */
   .btn.sm { min-height: 44px; padding: 10px 18px; }
   .chip { min-height: 44px; padding: 8px 15px; font-size: 14px; }
+  .issue-description { font-size: 16px; }
 
   /**
    * 小字在手機上往上調一級。

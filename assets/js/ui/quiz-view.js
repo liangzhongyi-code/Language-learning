@@ -20,7 +20,9 @@ import {
 } from '../core/quiz-engine.js';
 import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
 import { loadProgress, saveProgress, recordSession, weakest, dueIds } from '../core/progress.js';
-import { sessionCount, countChip, scopeState, strandedReason } from '../core/quiz-setup.js';
+import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../core/quiz-setup.js';
+import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
+import { levelLabel, levelsOf } from '../data/shared/levels.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 
@@ -69,9 +71,9 @@ const SCOPE_NOUN = { weak: '還沒練熟的題目', due: '今天該複習的題�
  * 每個範圍各報自己的交集數，不能用一個數字描述兩個——
  * 易錯有 3 題、到期有 0 題時，共用一個數字會把 3 安在到期頭上。
  */
-function strandedNote(stranded, idsByScope, scopeSizes, sourceLabel) {
+function strandedNote(stranded, scopeTotals, scopeSizes, sourceLabel) {
   const lines = stranded.map((s) => {
-    const total = idsByScope[s]?.length || 0;
+    const total = scopeTotals[s] || 0;
     const here = scopeSizes[s] || 0;
     const noun = esc(SCOPE_NOUN[s]);
     return strandedReason({ here, total }) === 'short'
@@ -171,6 +173,12 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      */
     kanjiMode: lang === 'ja' ? storedKanjiMode() : 'show',
     /**
+     * 日文測驗的 JLPT 難度隔離。all 表示不分級，數字 1–5 對應 N5–N1。
+     * 不存成長期偏好：切換題型時某些級別可能根本沒有足夠題目，
+     * 記住它會讓下次開頁直接落在一個不能開始的狀態。
+     */
+    level: 'all',
+    /**
      * 出題範圍：all / weak / due。
      * 不記進偏好——「今天該複習」是當下的狀態不是長期選擇，
      * 記住它會讓人下次打開時莫名其妙只剩三題可出。
@@ -193,6 +201,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   let phase = 'setup';
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
   let passageOpen = {};
+  /* 每題的回報說明與產生過的代碼；作答造成重繪時不能把使用者剛打的字洗掉 */
+  const issueStates = new Map();
   /* 設定畫面最後一次算出來的範圍 id 與上限，start() 直接用它，畫面與實際才不會分家 */
   let lastSetup = null;
 
@@ -204,7 +214,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    * pointer: coarse，那樣會把提示藏給真正用得到的人看不到。
    *
    * 所以不猜有沒有鍵盤，等它自己出現——按下任何一個鍵就把提示放出來並記住。
-   * 這一頁沒有任何文字輸入框，所以觸控裝置上的 keydown 只可能來自實體鍵盤。
+   * 問題回報欄位雖然可以輸入文字，但下方快捷鍵處理會先讓 textarea 通過，
+   * 不會把描述裡的數字誤當成答案。
    */
   const KEYBOARD_CLASS = 'has-keyboard';
   let keyboardSeen = loadPrefs().keyboardSeen === true;
@@ -235,6 +246,31 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   }
 
   /**
+   * 依目前選擇的 JLPT 級別切出題庫。
+   * 英文頁永遠回完整題庫；日文的 all 也不做任何篩選。
+   */
+  function poolAtLevel(source, level = config.level) {
+    const pool = poolOf(source, words, sentences, scenes, readings);
+    if (lang !== 'ja' || level === 'all') return pool;
+    return pool.filter((item) => item.level === Number(level));
+  }
+
+  /**
+   * 某一級在所有題型裡實際存在的題目 id。
+   * mixed 與 cloze 都重用單字／句子的 id，Set 會自然去重；閱讀題則要先攤平才拿得到題目 id。
+   */
+  const levelIdCache = new Map();
+  function idsAtLevel(level) {
+    if (level === 'all') return null;
+    if (!levelIdCache.has(level)) {
+      const numeric = Number(level);
+      const all = [...words, ...sentences, ...scenes, ...poolOf('reading', words, sentences, scenes, readings)];
+      levelIdCache.set(level, new Set(all.filter((item) => item.level === numeric).map((item) => item.id)));
+    }
+    return levelIdCache.get(level);
+  }
+
+  /**
    * 某個範圍涵蓋哪些題目 id，全部則是 null。
    *
    * progress 由呼叫端傳進來，讓一次重畫只讀一次學習紀錄——
@@ -251,10 +287,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     scope === 'all' ? null : scopeIdsFrom(loadProgress(storage()), scope);
 
   /* 目前題源 ∩ 某個範圍有幾題 */
-  function sizeWithin(source, ids) {
-    if (!ids) return poolSize(source);
+  function sizeWithin(source, ids, level = config.level) {
+    const pool = poolAtLevel(source, level);
+    if (!ids) return pool.length;
     const set = new Set(ids);
-    return poolOf(source, words, sentences, scenes, readings).filter((item) => set.has(item.id)).length;
+    return pool.filter((item) => set.has(item.id)).length;
   }
 
   /* 題數與範圍的判斷全部在 core，這裡只是把 config 餵進去 */
@@ -291,10 +328,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     const chips = (name, options, current) =>
       options
         .map(
-          ([value, label]) =>
+          ([value, label, disabled = false]) =>
             `<button class="chip" data-set="${name}" data-value="${value}" aria-pressed="${
               String(value) === String(current)
-            }">${esc(label)}</button>`
+            }" ${disabled ? 'disabled' : ''}>${esc(label)}</button>`
         )
         .join('');
 
@@ -303,12 +340,29 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      * 學習紀錄只讀一次、題庫只取一次——兩者都是這一頁最貴的操作。
      */
     const progress = loadProgress(storage());
-    const pool = poolOf(config.source, words, sentences, scenes, readings);
+    const fullPool = poolOf(config.source, words, sentences, scenes, readings);
+    const levelCounts = Object.fromEntries(
+      levelsOf('ja').map(({ level }) => [level, fullPool.filter((item) => item.level === level).length])
+    );
+
+    /**
+     * 切換題型後，原本的級別可能不足四題。
+     * 例如句型沒有 N2/N1、情境的 N4 目前只有三題；這時退回「全部」，
+     * 不留下沒有任何膠囊選中、按開始才爆錯的幽靈狀態。
+     */
+    if (lang === 'ja' && config.level !== 'all' && (levelCounts[config.level] || 0) < MIN_POOL) {
+      config.level = 'all';
+    }
+    const pool = config.level === 'all'
+      ? fullPool
+      : fullPool.filter((item) => item.level === Number(config.level));
     const idsByScope = {
       all: null,
       weak: scopeIdsFrom(progress, 'weak'),
       due: scopeIdsFrom(progress, 'due'),
     };
+    const levelIds = idsAtLevel(config.level);
+    const totals = scopeTotals(idsByScope, levelIds);
     const sizeOf = (scope) => {
       const ids = idsByScope[scope];
       if (!ids) return pool.length;
@@ -328,12 +382,12 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       limit: total,
     } = scopeState({
       sizes: scopeSizes,
-      totals: { weak: idsByScope.weak?.length || 0, due: idsByScope.due?.length || 0 },
+      totals,
       scope: config.scope,
       minPool: MIN_POOL,
     });
     config.scope = scope;
-    lastSetup = { idsByScope, limit: total };
+    lastSetup = { idsByScope, limit: total, level: config.level };
 
     mount.innerHTML = `
       <div class="card">
@@ -354,6 +408,30 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             ...(readings.length ? [['reading', `閱讀（${poolSize('reading')}）`]] : []),
           ], config.source)}</div>
         </div>
+
+        ${
+          lang === 'ja'
+            ? `<div class="setting">
+          <label>JLPT 難度</label>
+          <div class="chips">${chips(
+            'level',
+            [['all', `全部（${fullPool.length}）`]].concat(
+              levelsOf('ja').map(({ level, label }) => [
+                level,
+                `${label}（${levelCounts[level] || 0}）`,
+                (levelCounts[level] || 0) < MIN_POOL,
+              ])
+            ),
+            config.level
+          )}</div>
+          <p class="setting-note">${
+            config.level === 'all'
+              ? '不分級，題目與自動抽出的干擾選項可能來自 N5 到 N1。'
+              : `只使用 ${levelsOf('ja').find((item) => item.level === Number(config.level))?.label} 題庫；題目、干擾選項與填空候選詞都不會跨級。`
+          }　灰色級別表示目前題型不足 ${MIN_POOL} 題。</p>
+        </div>`
+            : ''
+        }
 
         ${
           /**
@@ -449,10 +527,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             config.scope
           )}</div>
           ${SCOPE_NOTE[config.scope] ? `<p class="setting-note">${SCOPE_NOTE[config.scope]}</p>` : ''}
-          ${stranded.length ? strandedNote(stranded, idsByScope, scopeSizes, SOURCE_LABEL[config.source]) : ''}
+          ${stranded.length ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source]) : ''}
         </div>`
             : stranded.length
-              ? strandedNote(stranded, idsByScope, scopeSizes, SOURCE_LABEL[config.source])
+              ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source])
               : ''
         }
 
@@ -470,6 +548,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         <div class="actions">
           <button class="btn" type="button" data-start>開始測驗</button>
         </div>
+        <p class="setting-note quiz-backup-link">測驗紀錄會自動保存在這個瀏覽器；要匯出請到<a href="../index.html#backup">全站首頁的「備份與還原」</a>。</p>
       </div>`;
 
     mount.querySelectorAll('[data-set]').forEach((chip) => {
@@ -514,6 +593,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
        */
       const onlyIds = lastSetup?.idsByScope[config.scope] ?? scopeIds(config.scope);
       const limit = lastSetup?.limit ?? sizeWithin(config.source, onlyIds);
+      const selectedLevel = lastSetup?.level ?? config.level;
       const count = countWithin(limit);
       session = buildSession({
         lang,
@@ -525,6 +605,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         direction: config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
+        level: selectedLevel === 'all' ? null : Number(selectedLevel),
         onlyIds,
         count,
       });
@@ -560,11 +641,131 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    * 題號與進度條，兩種題型共用
    */
   function quizTop(index, total, label) {
+    const difficulty = lang === 'ja' && session.level ? `${levelLabel('ja', session.level)} · ` : '';
     return `
         <div class="quiz-top">
-          <span class="progress-text">第 ${index + 1} / ${total} 題 · ${esc(label)}</span>
+          <span class="progress-text">第 ${index + 1} / ${total} 題 · ${difficulty}${esc(label)}</span>
           <span class="bar"><i style="width:${progressPercent(session)}%"></i></span>
         </div>`;
+  }
+
+  const issueKeyOf = (question, index) => `${index}:${question.sourceId}`;
+  const answerStampOf = (question) => JSON.stringify({
+    answeredIndex: question.answeredIndex ?? null,
+    submitted: question.submitted ?? false,
+    filled: question.filled ?? null,
+  });
+
+  function issueStateFor(question, index) {
+    const key = issueKeyOf(question, index);
+    const answerStamp = answerStampOf(question);
+    if (!issueStates.has(key)) {
+      issueStates.set(key, { open: false, description: '', code: '', message: '', answerStamp });
+    }
+    const state = issueStates.get(key);
+    if (state.answerStamp !== answerStamp) {
+      state.answerStamp = answerStamp;
+      state.code = '';
+      state.message = '';
+    }
+    return state;
+  }
+
+  /**
+   * 每題共用的問題回報欄位。
+   * 代碼會帶題目 id、畫面快照與當局設定，但不會帶整份學習紀錄。
+   */
+  function issueReportHtml(question, index) {
+    const state = issueStateFor(question, index);
+    return `
+      <details class="issue-report" data-issue data-issue-key="${esc(issueKeyOf(question, index))}" ${state.open ? 'open' : ''}>
+        <summary>這題有問題？產生回報代碼</summary>
+        <div class="issue-body">
+          <p class="setting-note">題目 ID：<code>${esc(question.sourceId)}</code>。請簡單寫下哪裡不對，再把代碼傳給我；代碼不包含其他題目的學習紀錄。</p>
+          <label class="issue-label">問題描述（選填，最多 300 字）
+            <textarea class="field issue-description" data-issue-description rows="3" maxlength="300"
+              placeholder="例如：中文翻譯不自然、正解可能有兩個、假名有誤……">${esc(state.description)}</textarea>
+          </label>
+          <div class="actions">
+            <button class="btn ghost sm" type="button" data-issue-copy>複製回報代碼</button>
+          </div>
+          <div class="issue-output" data-issue-output ${state.code ? '' : 'hidden'}>
+            <label class="issue-label">回報代碼
+              <textarea class="backup-code issue-code" data-issue-code rows="3" readonly>${esc(state.code)}</textarea>
+            </label>
+          </div>
+          <p class="issue-message" data-issue-message role="status" aria-live="polite">${esc(state.message)}</p>
+        </div>
+      </details>`;
+  }
+
+  function bindIssueReport(question, index) {
+    const panel = mount.querySelector('[data-issue]');
+    if (!panel) return;
+    const state = issueStateFor(question, index);
+    const description = panel.querySelector('[data-issue-description]');
+    const codeBox = panel.querySelector('[data-issue-code]');
+    const output = panel.querySelector('[data-issue-output]');
+    const status = panel.querySelector('[data-issue-message]');
+    const key = issueKeyOf(question, index);
+
+    panel.addEventListener('toggle', () => {
+      state.open = panel.open;
+    });
+    description.addEventListener('input', () => {
+      if (state.description === description.value) return;
+      state.description = description.value;
+      state.code = '';
+      state.message = '';
+      codeBox.value = '';
+      output.hidden = true;
+      status.textContent = '';
+    });
+    panel.querySelector('[data-issue-copy]').addEventListener('click', async () => {
+      state.description = description.value;
+      const report = issueReportOf({
+        session,
+        question,
+        index,
+        settings: {
+          direction: question.direction,
+          kanjiMode: hasKanaVersion(session.source) ? config.kanjiMode : 'show',
+          readingAskIn: session.source === 'reading' ? config.readingAskIn : null,
+          scope: config.scope,
+        },
+        description: state.description,
+      });
+      state.code = encodeIssueCode(report);
+      const generatedCode = state.code;
+      codeBox.value = generatedCode;
+      output.hidden = false;
+
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(generatedCode);
+        copied = true;
+      } catch {
+        /* 剪貼簿被擋時保留畫面上的代碼，讓使用者手動複製 */
+      }
+      /* 等待權限期間若使用者已作答或換題，舊結果不能覆蓋新畫面的狀態 */
+      if (state.code !== generatedCode) return;
+      state.message = copied
+        ? '已複製。把這串回報代碼貼給我即可定位題目。'
+        : '剪貼簿不給用，已在下方顯示代碼；請全選後複製。';
+      const livePanel = mount.querySelector('[data-issue]');
+      if (livePanel?.dataset.issueKey === key) {
+        const liveStatus = livePanel.querySelector('[data-issue-message]');
+        const liveCode = livePanel.querySelector('[data-issue-code]');
+        const liveOutput = livePanel.querySelector('[data-issue-output]');
+        liveStatus.textContent = state.message;
+        liveCode.value = generatedCode;
+        liveOutput.hidden = false;
+        if (!copied) {
+          liveCode.focus();
+          liveCode.select();
+        }
+      }
+    });
   }
 
   function renderChoiceQuestion() {
@@ -695,6 +896,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         }">${options}</div>
         ${feedback}
         ${translation}
+        ${issueReportHtml(q, index)}
 
         <div class="actions">
           <button class="btn" type="button" data-next ${answered ? '' : 'disabled'}>${
@@ -713,6 +915,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     });
     mount.querySelector('[data-next]').addEventListener('click', next);
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
+    bindIssueReport(q, index);
   }
 
   /* ── 填空題 ───────────────────────────────────────────── */
@@ -755,10 +958,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     return draft;
   }
 
-  /* 換局時把畫面暫存丟掉：填空的作答暫存、閱讀短文的展開狀態 */
+  /* 換局時把畫面暫存丟掉：填空作答、閱讀展開狀態與題目回報草稿 */
   function resetPlayState() {
     draft = null;
     passageOpen = {};
+    issueStates.clear();
   }
 
   /* 清空一格，同時把它從放置順序裡拿掉 */
@@ -893,6 +1097,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         ${bank}
         ${errorMessage ? `<div class="notice">${esc(errorMessage)}</div>` : ''}
         ${feedback}
+        ${issueReportHtml(q, index)}
 
         <div class="actions">
           ${
@@ -910,6 +1115,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     mount.querySelector('[data-submit]')?.addEventListener('click', submitCloze);
     mount.querySelector('[data-next]')?.addEventListener('click', next);
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
+    bindIssueReport(q, index);
 
     /**
      * 剛好填滿最後一格時把提交鍵帶進視野。
@@ -1134,10 +1340,12 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    * 少了這兩道守衛，Enter 會被無條件攔截並 preventDefault，
    * 結果畫面上「再玩一局」「回首頁」按了沒反應——純鍵盤使用者會卡在那一頁出不來。
    */
-  const INTERACTIVE = 'button, a[href], input, select, textarea, [contenteditable]';
+  const INTERACTIVE = 'button, a[href], input, select, textarea, summary, [contenteditable]';
+  const TEXT_ENTRY = 'input, select, textarea, [contenteditable]';
 
   document.addEventListener('keydown', (event) => {
-    noticeKeyboard(event);
+    /* 手機在回報欄位叫出的虛擬鍵盤不算實體鍵盤，不能因此放出數字快捷鍵提示 */
+    if (!event.target.closest?.(TEXT_ENTRY)) noticeKeyboard(event);
     if (phase !== 'playing' || !session) return;
     if (event.target.closest?.(INTERACTIVE)) return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;

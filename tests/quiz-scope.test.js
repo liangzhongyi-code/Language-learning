@@ -13,6 +13,8 @@ import assert from 'node:assert/strict';
 import { buildSession, poolOf } from '../assets/js/core/quiz-engine.js';
 import { words as jaWords } from '../assets/js/data/ja/words.js';
 import { sentences as jaSentences } from '../assets/js/data/ja/sentences.js';
+import { scenes as jaScenes } from '../assets/js/data/ja/scenes.js';
+import { readings as jaReadings } from '../assets/js/data/ja/readings.js';
 
 function seeded() {
   let n = 0;
@@ -118,4 +120,62 @@ test('範圍與隱藏漢字可以同時用', () => {
     assert.ok(new Set(ids).has(q.sourceId));
     for (const o of q.options) assert.ok(!KANJI.test(o.text), `選項出現漢字：${o.text}`);
   }
+});
+
+test('JLPT 難度隔離會同時限制題目與自動抽出的干擾選項', () => {
+  const session = build({ level: 2, count: 20 });
+  const n4Targets = new Set(jaWords.filter((word) => word.level === 2).map((word) => word.target));
+
+  assert.equal(session.level, 2);
+  for (const q of session.questions) {
+    assert.equal(q.level, 2, `${q.sourceId} 不是 N4 題目`);
+    for (const option of q.options) {
+      assert.ok(n4Targets.has(option.text), `N4 題混入其他級別選項：${option.text}`);
+    }
+  }
+});
+
+test('日文六種題型在有足夠資料的 JLPT 級別都能獨立出題', () => {
+  const sources = ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading'];
+  for (const source of sources) {
+    const pool = poolOf(source, jaWords, jaSentences, jaScenes, jaReadings);
+    for (const level of [1, 2, 3, 4, 5]) {
+      if (pool.filter((item) => item.level === level).length < 4) continue;
+      const session = buildSession({
+        lang: 'ja',
+        words: jaWords,
+        sentences: jaSentences,
+        scenes: jaScenes,
+        readings: jaReadings,
+        source,
+        level,
+        count: 4,
+        rng: seeded(),
+      });
+      assert.equal(session.questions.length, 4, `${source} level=${level} 題數不對`);
+      assert.ok(
+        session.questions.every((question) => question.level === level),
+        `${source} level=${level} 混入其他級別`
+      );
+    }
+  }
+});
+
+test('JLPT 難度不合法或該級題庫不足時給出可理解的錯誤', () => {
+  for (const level of [0, 6, '2', NaN]) {
+    assert.throws(() => build({ level }), /難度不合法/);
+  }
+  assert.throws(
+    () => buildSession({
+      lang: 'ja',
+      words: jaWords,
+      sentences: jaSentences,
+      scenes: jaScenes,
+      readings: jaReadings,
+      source: 'scene',
+      level: 2,
+      count: 4,
+    }),
+    /題庫筆數不足/
+  );
 });

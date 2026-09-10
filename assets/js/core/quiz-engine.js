@@ -291,6 +291,7 @@ function buildChoiceQuestion(item, pool, { lang, direction, rng, byCategory = nu
   return {
     kind: 'choice',
     sourceId: item.id,
+    level: item.level,
     direction,
     prompt: item[fields.prompt],
     promptRuby: fields.prompt === 'target' ? item.ruby ?? null : null,
@@ -326,6 +327,7 @@ function buildSceneQuestion(scene, { lang, rng }) {
   return {
     kind: 'choice',
     sourceId: scene.id,
+    level: scene.level,
     direction: 'zh2target',
     /* 場合描述，畫面上要放在問題之上 */
     context: scene.scene,
@@ -367,6 +369,7 @@ function buildReadingQuestion(item, { lang, rng, askIn = 'zh' }) {
   return {
     kind: 'choice',
     sourceId: item.id,
+    level: item.level,
     passageId: item.passageId,
     direction: 'target2zh',
     title: item.title,
@@ -554,6 +557,7 @@ function buildClozeQuestion(sentence, pool, { lang, rng }) {
   return {
     kind: 'cloze',
     sourceId: sentence.id,
+    level: sentence.level,
     /* 填空一律看中文填目標語言，沒有反向的意義 */
     direction: 'zh2target',
     prompt: sentence.zh,
@@ -593,6 +597,12 @@ export function buildSession({
    */
   kanjiMode = 'show',
   /**
+   * 只使用某一個難度的題目與干擾選項。null 表示不分級。
+   * 這與 onlyIds 不同：level 是題庫隔離，所以連干擾選項也不能跨級；
+   * onlyIds 是複習範圍，只限制出哪幾題，干擾選項仍取自完整的同級題庫。
+   */
+  level = null,
+  /**
    * 只從這些 id 裡出題（易錯、今天到期…）。null 表示整個題庫。
    *
    * 收的是 id 而不是條件，因為條件要讀 localStorage 裡的學習紀錄，
@@ -604,9 +614,15 @@ export function buildSession({
   rng = Math.random,
 }) {
   const base = poolOf(source, words, sentences, scenes, readings);
+  if (level !== null && (!Number.isInteger(level) || level < 1 || level > 5)) {
+    throw new Error(`難度不合法：${level}。請選 N5 到 N1。`);
+  }
+
+  /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
+  const leveled = level === null ? base : base.filter((item) => item.level === level);
   /* ruby 與 kana 讀的都是假名，差別只在要不要把漢字一起帶著標上去 */
   const swap = kanjiMode !== 'show' && hasKanaVersion(source);
-  const pool = swap ? kanaPool(base, kanjiMode === 'ruby') : base;
+  const pool = swap ? kanaPool(leveled, kanjiMode === 'ruby') : leveled;
 
   if (pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(
@@ -659,7 +675,7 @@ export function buildSession({
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });
   });
 
-  return { lang, source, direction, questions, cursor: 0 };
+  return { lang, source, direction, level, questions, cursor: 0 };
 }
 
 /**

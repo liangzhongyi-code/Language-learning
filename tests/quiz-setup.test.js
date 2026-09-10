@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { sessionCount, countChip, scopeState, strandedReason } from '../assets/js/core/quiz-setup.js';
+import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../assets/js/core/quiz-setup.js';
 
 const MIN_POOL = 4;
 
@@ -83,6 +83,16 @@ const state = (over) =>
 
 test('沒有紀錄時整排不出現——不放按了會說「題庫不足」的死按鈕', () => {
   assert.deepEqual(state({}).choices, []);
+});
+
+test('選了 JLPT 級別後，範圍總數只計算同級題目', () => {
+  const ids = {
+    weak: ['ja-w-n4-a', 'ja-w-n4-b', 'ja-w-n5-a'],
+    due: ['ja-w-n5-a'],
+  };
+  const n4 = new Set(['ja-w-n4-a', 'ja-w-n4-b']);
+  assert.deepEqual(scopeTotals(ids, n4), { weak: 2, due: 0 });
+  assert.deepEqual(scopeTotals(ids), { weak: 3, due: 1 }, '不分級時維持全語言總數');
 });
 
 test('湊得滿一局的範圍才出現', () => {
