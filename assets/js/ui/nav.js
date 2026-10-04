@@ -8,21 +8,14 @@
  * 從英文單字頁切過去會到日文單字頁。靠 key 對應，不是靠檔名。
  */
 
-import { loadPrefs, setPref, PREFS_IMPORTED_EVENT } from './prefs.js';
+import { appearanceHtml, bindAppearance, setAppearance, APPEARANCE_EVENT } from './appearance.js';
 
 const THEME = { dark: 'dark', light: 'light' };
 
 /**
- * 套用已保存的主題。模組載入時先做，導覽列出現前頁面就會用正確色票。
+ * 外觀模組負責偏好與匯入同步；快速黑白切換按鈕跟著相同狀態更新。
  */
-function applySavedTheme() {
-  const saved = loadPrefs().theme;
-  document.documentElement.dataset.theme = saved === THEME.light ? THEME.light : THEME.dark;
-  syncThemeButton();
-}
-
-applySavedTheme();
-window.addEventListener(PREFS_IMPORTED_EVENT, applySavedTheme);
+window.addEventListener(APPEARANCE_EVENT, syncThemeButton);
 
 /**
  * 每個語言的頁面清單。key 相同者互為對方語言的同功能頁。
@@ -86,12 +79,11 @@ function bindThemeToggle() {
   button.addEventListener('click', () => {
     const root = document.documentElement;
     const isLight = root.dataset.theme !== THEME.light;
-    root.dataset.theme = isLight ? THEME.light : THEME.dark;
-    syncThemeButton();
-    setPref('theme', root.dataset.theme);
+    setAppearance('theme', isLight ? THEME.light : THEME.dark);
   });
 
   syncThemeButton();
+  bindAppearance();
 }
 
 /**
@@ -125,6 +117,7 @@ export function renderNav() {
         <nav class="tabs" aria-label="${esc(LANG_LABEL[lang])}學習項目">${tabs}</nav>
         <div class="topbar-right">
           ${themeToggleHtml()}
+          ${appearanceHtml()}
           <a class="lang-switch" href="../${other}/${otherPage.file}"
              title="切換到${esc(LANG_LABEL[other])}的同一個功能">${esc(LANG_LABEL[other])}</a>
           <a class="help-link" href="../help.html">使用教學</a>
@@ -150,6 +143,7 @@ export function renderRootNav(currentKey) {
         </nav>
         <div class="topbar-right">
           ${themeToggleHtml()}
+          ${appearanceHtml()}
           <a class="help-link" href="./help.html"
              ${currentKey === 'help' ? 'aria-current="page"' : ''}>使用教學</a>
         </div>

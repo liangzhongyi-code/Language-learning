@@ -312,6 +312,7 @@ test('深色與淺色模式的控制項邊界都達到 3:1', () => {
 
 test('共用導覽列提供持久化的黑白模式切換', () => {
   const nav = readFileSync(join(ROOT, 'assets/js/ui/nav.js'), 'utf8');
+  const appearance = readFileSync(join(ROOT, 'assets/js/ui/appearance.js'), 'utf8');
   const prefs = readFileSync(join(ROOT, 'assets/js/ui/prefs.js'), 'utf8');
   const backup = readFileSync(join(ROOT, 'assets/js/ui/backup-view.js'), 'utf8');
   const boot = readFileSync(join(ROOT, 'assets/js/ui/theme-boot.js'), 'utf8');
@@ -320,8 +321,10 @@ test('共用導覽列提供持久化的黑白模式切換', () => {
   assert.equal((nav.match(/bindThemeToggle\(\);/g) || []).length, 2, '兩種共用導覽列都要綁定主題按鈕');
   assert.match(nav, /aria-label="淺色模式" aria-pressed="\$\{isLight\}"/);
   assert.match(nav, /<span data-theme-label>淺色模式<\/span>/, '可見標籤必須包含可存取名稱');
-  assert.match(nav, /addEventListener\(PREFS_IMPORTED_EVENT, applySavedTheme\)/);
-  assert.match(nav, /setPref\('theme'/);
+  assert.match(appearance, /addEventListener\(PREFS_IMPORTED_EVENT, reload\)/);
+  assert.match(nav, /setAppearance\('theme'/);
+  assert.equal((nav.match(/\$\{appearanceHtml\(\)\}/g) || []).length, 2);
+  assert.match(appearance, /savePrefs\(\{ \.\.\.loadPrefs\(\), \.\.\.state \}\)/);
   assert.match(backup, /dispatchEvent\(new Event\(PREFS_IMPORTED_EVENT\)\)/);
   assert.match(prefs, /theme:\s*'dark'/);
   assert.match(boot, /localStorage\.getItem\('lang-learn\.prefs\.v1'\)/);
@@ -335,6 +338,28 @@ test('共用導覽列提供持久化的黑白模式切換', () => {
     const bootAt = html.indexOf('theme-boot.js');
     const cssAt = html.indexOf('theme.css');
     assert.ok(bootAt >= 0 && bootAt < cssAt, `${rel(file)} 必須在 CSS 前同步主題，避免閃色`);
+  }
+});
+
+test('每套外觀配色的深淺內文、主按鈕與控制項邊界都有足夠對比', () => {
+  for (const theme of ['dark', 'light']) {
+    for (const palette of ['classic', 'midnight', 'forest', 'warm']) {
+      const c = {
+        ...themeColors(),
+        ...(theme === 'light' ? themeColors(":root[data-theme='light'] {") : {}),
+        ...(palette !== 'classic' ? themeColors(`:root[data-palette='${palette}'] {`) : {}),
+        ...(theme === 'light' && palette !== 'classic' ? themeColors(`:root[data-theme='light'][data-palette='${palette}'] {`) : {}),
+      };
+      for (const fg of ['--text', '--dim', '--mute', '--accent', '--ok', '--bad', '--warn']) {
+        for (const bg of ['--bg', '--surface', '--surface-2', '--surface-3']) {
+          assert.ok(contrast(c[fg], c[bg]) >= 4.5, `${theme}/${palette}: ${fg} on ${bg}`);
+        }
+      }
+      assert.ok(contrast(c['--accent-ink'], c['--accent']) >= 4.5, `${theme}/${palette}: 主按鈕`);
+      for (const bg of ['--bg', '--surface', '--surface-2']) {
+        assert.ok(contrast(c['--border-strong'], c[bg]) >= 3, `${theme}/${palette}: 控制項 on ${bg}`);
+      }
+    }
   }
 });
 

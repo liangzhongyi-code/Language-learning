@@ -4,8 +4,8 @@
  * 分成兩層：
  *   1. 尺度 token（間距、字級、動畫曲線）
  *   2. 語意 token（顏色、圓角、字體）
- * 元件只吃 token，不寫死任何值。所有色碼一律只出現在下面兩套 :root 色票，
- * 其他檔案一律用 var()——要換配色只需要動深色與淺色兩段。
+ * 元件只吃 token，不寫死任何值。色碼集中在 :root 基底與配色色票，
+ * 其他檔案一律用 var()；配色覆寫也要同時照顧深色與淺色。
  *
  * 尺度採用 Open Props（MIT）的比例。原本是整包 import 進來，
  * 但實測全站只用到它 607 個變數裡的 13 個，其中還夾帶 344 個用不到的色碼，
@@ -60,6 +60,13 @@
   --accent: #7aa2f7;
   --accent-soft: rgba(122, 162, 247, 0.13);
   --accent-ink: #0e1116;
+  --glow: rgba(122, 162, 247, 0.14);
+  --glow-secondary: rgba(169, 140, 216, 0.10);
+  --dust: rgba(228, 232, 239, 0.18);
+  --preview-classic: #7aa2f7;
+  --preview-midnight: #8fc6ed;
+  --preview-forest: #8dcebb;
+  --preview-warm: #e3bd8a;
   --ok: #86c99a;
   --ok-soft: rgba(134, 201, 154, 0.13);
   --bad: #e08a84;
@@ -116,6 +123,9 @@
   --accent: #2457d6;
   --accent-soft: rgba(36, 87, 214, 0.11);
   --accent-ink: #ffffff;
+  --glow: rgba(36, 87, 214, 0.07);
+  --glow-secondary: rgba(105, 66, 154, 0.05);
+  --dust: rgba(23, 32, 51, 0.13);
   --ok: #116b49;
   --ok-soft: rgba(17, 107, 73, 0.11);
   --bad: #9f2632;
@@ -135,6 +145,52 @@
   --lift-lg: 0 14px 38px rgba(28, 43, 72, 0.1);
 }
 
+/**
+ * 配色只覆寫背景與強調色；正誤回饋、語法角色及閱讀表面保持穩定。
+ */
+:root[data-palette='midnight'] {
+  --bg: #101924;
+  --accent: #8fc6ed;
+  --accent-soft: rgba(143, 198, 237, 0.13);
+  --glow: rgba(80, 148, 221, 0.16);
+  --glow-secondary: rgba(100, 115, 204, 0.10);
+}
+:root[data-palette='forest'] {
+  --bg: #101c1b;
+  --accent: #8dcebb;
+  --accent-soft: rgba(141, 206, 187, 0.13);
+  --glow: rgba(69, 154, 120, 0.14);
+  --glow-secondary: rgba(155, 173, 113, 0.09);
+}
+:root[data-palette='warm'] {
+  --bg: #1c1715;
+  --accent: #e3bd8a;
+  --accent-soft: rgba(227, 189, 138, 0.13);
+  --glow: rgba(191, 124, 69, 0.14);
+  --glow-secondary: rgba(159, 106, 105, 0.09);
+}
+:root[data-theme='light'][data-palette='midnight'] {
+  --bg: #f0f5fc;
+  --accent: #205fb3;
+  --accent-soft: rgba(32, 95, 179, 0.10);
+  --glow: rgba(80, 148, 221, 0.07);
+  --glow-secondary: rgba(100, 115, 204, 0.04);
+}
+:root[data-theme='light'][data-palette='forest'] {
+  --bg: #f0f7f3;
+  --accent: #17644f;
+  --accent-soft: rgba(23, 100, 79, 0.10);
+  --glow: rgba(69, 154, 120, 0.07);
+  --glow-secondary: rgba(155, 173, 113, 0.04);
+}
+:root[data-theme='light'][data-palette='warm'] {
+  --bg: #fbf5ed;
+  --accent: #875020;
+  --accent-soft: rgba(135, 80, 32, 0.10);
+  --glow: rgba(191, 124, 69, 0.07);
+  --glow-secondary: rgba(159, 106, 105, 0.04);
+}
+
 /* 尊重使用者的減少動態偏好 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -152,9 +208,8 @@
 html, body { margin: 0; padding: 0; }
 
 body {
-  background:
-    radial-gradient(circle at 12% 0%, var(--accent-soft) 0, transparent 30rem),
-    var(--bg);
+  background: var(--bg);
+  isolation: isolate;
   color: var(--text);
   font-family: var(--font-body);
   font-size: 16px;
@@ -163,6 +218,31 @@ body {
   min-height: 100vh;
   transition: background-color var(--t), color var(--t);
 }
+
+/**
+ * 自製 CSS 背景，不下載圖片、不攔截點擊。只有兩個固定圖層，避免大量粒子 DOM。
+ */
+body::before, body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+body::before {
+  background: radial-gradient(ellipse at 8% 4%, var(--glow), transparent 55%),
+    radial-gradient(ellipse at 92% 62%, var(--glow-secondary), transparent 55%);
+}
+:root[data-background='plain'] body::before,
+:root:not([data-background='dust']) body::after { display: none; }
+:root[data-background='dust'] body::after {
+  background-image: radial-gradient(circle, var(--dust) 1px, transparent 1.6px),
+    radial-gradient(circle, var(--dust) 1px, transparent 1.6px);
+  background-size: 137px 173px, 233px 251px;
+  background-position: 21px 43px, 88px 117px;
+  animation: ambient-breathe 12s ease-in-out infinite alternate;
+}
+@keyframes ambient-breathe { from { opacity: 0.25; } to { opacity: 0.65; } }
 
 h1, h2, h3 {
   font-family: var(--font-display);
@@ -375,6 +455,87 @@ main { padding-bottom: var(--size-10); }
 @media (max-width: 640px) {
   .backup-code { font-size: 16px; }
 }
+
+/* 外觀選單：非模態，面板在窄螢幕依視窗寬度縮放。 */
+.appearance { position: relative; }
+.appearance-toggle, .appearance-close {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--dim);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.appearance-toggle::-webkit-details-marker { display: none; }
+.appearance[open] > summary { color: var(--accent); border-color: var(--accent); }
+.appearance-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  width: 390px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  max-height: min(720px, var(--appearance-room, 70vh));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--lift-lg);
+  color: var(--text);
+}
+.appearance-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.appearance-head h2 { font-size: 22px; }
+.appearance-head p { margin: 4px 0 0; font-size: 13px; color: var(--dim); }
+.appearance-close { font-size: 24px; flex-shrink: 0; padding: 0; }
+.appearance-panel fieldset { margin: 20px 0 0; border: 0; padding: 0; min-width: 0; }
+.appearance-panel legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.appearance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.appearance-grid.backgrounds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.appearance-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 0;
+}
+.appearance-choice input { position: absolute; top: 12px; right: 12px; margin: 0; accent-color: var(--accent); }
+.appearance-choice:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.appearance-choice:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.appearance-choice small { font-size: 12px; color: var(--dim); }
+.appearance-preview { display: block; height: 40px; border-radius: 6px; background: var(--bg); }
+.palette-classic { background: linear-gradient(135deg, var(--bg), var(--preview-classic)); }
+.palette-midnight { background: linear-gradient(135deg, var(--bg), var(--preview-midnight)); }
+.palette-forest { background: linear-gradient(135deg, var(--bg), var(--preview-forest)); }
+.palette-warm { background: linear-gradient(135deg, var(--bg), var(--preview-warm)); }
+.preview-aurora { background: radial-gradient(ellipse at 15% 0%, var(--accent-soft), transparent), var(--bg); }
+.preview-dust { background: radial-gradient(circle, var(--accent) 1px, transparent 1.5px) 0 0 / 17px 19px, var(--bg); }
+.appearance-modes { display: flex; gap: 10px; }
+.appearance-modes label { flex: 1; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.appearance-modes label, .appearance-effects { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 10px; cursor: pointer; }
+.appearance-modes input, .appearance-effects input { width: 18px; height: 18px; accent-color: var(--accent); }
+.appearance-effects { margin-top: 16px; padding-left: 0; font-size: 14px; }
+.appearance-note, .appearance-status { font-size: 12px; line-height: 1.65; color: var(--dim); margin: 6px 0 0; }
+.appearance-status { min-height: 40px; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+@media (max-width: 720px) {
+  .appearance { position: static; }
+  .appearance-panel { right: 16px; top: calc(100% + 8px); width: calc(100% - 32px); max-width: 390px; }
+}
 /**
  * 檔案輸入靠外層的 label 當按鈕——原生的檔案選擇器沒辦法套樣式。
  *
@@ -525,6 +686,21 @@ main { padding-bottom: var(--size-10); }
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/**
+ * 玻璃層只放在入口與導覽；題面、閱讀和填空保留原本的不透明表面。
+ * 不支援 color-mix 的瀏覽器沿用上面的實心底色。
+ */
+@supports (background: color-mix(in srgb, red, transparent)) {
+  body[data-page='root'] .entry,
+  body[data-page='home'] .entry {
+    background: color-mix(in srgb, var(--surface) 97%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+a.entry:hover { box-shadow: var(--lift-lg); }
+.page-head { border-top-color: var(--border-strong); }
 .chip:disabled:hover { color: var(--dim); border-color: var(--border-strong); }
 .chip[aria-pressed='true'] {
   background: var(--accent-soft);
@@ -1518,3 +1694,27 @@ html.has-keyboard .cz-word .key { display: inline-flex; }
 .prompt:has(.rb),
 .cz-line:has(.rb) { line-height: 2; }
 .opts.has-ruby .opt { line-height: 2; }
+
+/**
+ * 使用者與系統任一方要求降低特效即生效。保留靜態柔光，但移除微塵、模糊和動態。
+ */
+:root[data-reduced-effects='true'] *,
+:root[data-reduced-effects='true'] *::before,
+:root[data-reduced-effects='true'] *::after {
+  animation: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+:root[data-reduced-effects='true'] body::after { display: none; }
+:root[data-reduced-effects='true'] .topbar,
+:root[data-reduced-effects='true'] .entry { background: var(--surface); }
+@media (prefers-reduced-motion: reduce) {
+  body::after { display: none !important; }
+  *, *::before, *::after {
+    animation: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .topbar, body[data-page='root'] .entry, body[data-page='home'] .entry { background: var(--surface); }
+}

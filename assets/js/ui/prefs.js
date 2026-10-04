@@ -19,6 +19,9 @@ const DEFAULTS = {
    * 全站顯示模式：dark / light。預設延續原本的深色介面。
    */
   theme: 'dark',
+  palette: 'classic',
+  background: 'aurora',
+  reducedEffects: false,
   /* 文法頁的兩排連接線 */
   grammarLines: true,
   /* 假名表顯示模式：hiragana / katakana / both */
@@ -86,10 +89,19 @@ export function loadPrefs() {
  */
 export function setPref(key, value) {
   const next = { ...loadPrefs(), [key]: value };
+  savePrefs(next);
+  return next;
+}
+
+/**
+ * 保存完整偏好並回報真正的寫入結果；呼叫端可據此提示未保存的外觀選擇。
+ */
+export function savePrefs(prefs) {
   try {
-    window.localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    return true;
   } catch {
     /* 無痕模式或容量已滿：這次的偏好不保存，但畫面照常運作 */
+    return false;
   }
-  return next;
 }
