@@ -8,14 +8,7 @@
  * 從英文單字頁切過去會到日文單字頁。靠 key 對應，不是靠檔名。
  */
 
-import { appearanceHtml, bindAppearance, setAppearance, APPEARANCE_EVENT } from './appearance.js';
-
-const THEME = { dark: 'dark', light: 'light' };
-
-/**
- * 外觀模組負責偏好與匯入同步；快速黑白切換按鈕跟著相同狀態更新。
- */
-window.addEventListener(APPEARANCE_EVENT, syncThemeButton);
+import { appearanceHtml, bindAppearance } from './appearance.js';
 
 /**
  * 每個語言的頁面清單。key 相同者互為對方語言的同功能頁。
@@ -47,46 +40,6 @@ const PAGES = {
 const LANG_LABEL = { en: '英文', ja: '日文' };
 
 /**
- * 主題按鈕顯示目前狀態；aria-pressed 固定代表「淺色模式是否開啟」。
- */
-function themeToggleHtml() {
-  const isLight = document.documentElement.dataset.theme === THEME.light;
-  return `<button class="theme-toggle" type="button" data-theme-toggle
-    aria-label="淺色模式" aria-pressed="${isLight}">
-    <span data-theme-symbol aria-hidden="true">☀</span>
-    <span data-theme-label>淺色模式</span>
-  </button>`;
-}
-
-/**
- * 同步已存在的按鈕；匯入偏好時不重建導覽列也能立刻反映狀態。
- */
-function syncThemeButton() {
-  const button = document.querySelector('[data-theme-toggle]');
-  if (!button) return;
-  const isLight = document.documentElement.dataset.theme === THEME.light;
-  button.setAttribute('aria-pressed', String(isLight));
-  button.title = isLight ? '切換成深色模式' : '切換成淺色模式';
-}
-
-/**
- * 綁定全站共用的黑白模式切換，並把選擇寫進既有偏好設定備份。
- */
-function bindThemeToggle() {
-  const button = document.querySelector('[data-theme-toggle]');
-  if (!button) return;
-
-  button.addEventListener('click', () => {
-    const root = document.documentElement;
-    const isLight = root.dataset.theme !== THEME.light;
-    setAppearance('theme', isLight ? THEME.light : THEME.dark);
-  });
-
-  syncThemeButton();
-  bindAppearance();
-}
-
-/**
  * HTML 逸出，避免資料裡的角括號破壞結構
  */
 const esc = (s) =>
@@ -116,7 +69,6 @@ export function renderNav() {
         <a class="home" href="../index.html">語言學習</a>
         <nav class="tabs" aria-label="${esc(LANG_LABEL[lang])}學習項目">${tabs}</nav>
         <div class="topbar-right">
-          ${themeToggleHtml()}
           ${appearanceHtml()}
           <a class="lang-switch" href="../${other}/${otherPage.file}"
              title="切換到${esc(LANG_LABEL[other])}的同一個功能">${esc(LANG_LABEL[other])}</a>
@@ -126,7 +78,7 @@ export function renderNav() {
     </header>`;
 
   document.body.insertAdjacentHTML('afterbegin', html);
-  bindThemeToggle();
+  bindAppearance();
 }
 
 /**
@@ -142,7 +94,6 @@ export function renderRootNav(currentKey) {
           <a href="./ja/index.html">日文</a>
         </nav>
         <div class="topbar-right">
-          ${themeToggleHtml()}
           ${appearanceHtml()}
           <a class="help-link" href="./help.html"
              ${currentKey === 'help' ? 'aria-current="page"' : ''}>使用教學</a>
@@ -150,5 +101,5 @@ export function renderRootNav(currentKey) {
       </div>
     </header>`;
   document.body.insertAdjacentHTML('afterbegin', html);
-  bindThemeToggle();
+  bindAppearance();
 }

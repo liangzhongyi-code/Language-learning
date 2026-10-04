@@ -300,6 +300,10 @@ main { padding-bottom: var(--size-10); }
 
 .tabs { display: flex; gap: var(--size-1); flex-wrap: wrap; margin-right: auto; }
 .tabs a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 6px 12px;
   border-radius: var(--radius-sm);
   font-size: 13.5px;
@@ -309,36 +313,30 @@ main { padding-bottom: var(--size-10); }
 .tabs a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 .tabs a[aria-current='page'] { background: var(--accent-soft); color: var(--accent); }
 
-.topbar-right { display: flex; gap: var(--size-1); align-items: center; }
-.lang-switch, .help-link, .theme-toggle {
-  padding: 6px 11px;
+.topbar-right { display: flex; gap: var(--size-2); align-items: center; }
+.lang-switch, .help-link, .appearance-toggle, .appearance-close {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   font-size: 13px;
   color: var(--dim);
   background: transparent;
   font-family: inherit;
-  line-height: inherit;
+  line-height: 1.5;
   cursor: pointer;
   white-space: nowrap;
   transition: all var(--t-fast);
 }
-.theme-toggle[aria-pressed='true'] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.lang-switch:hover, .help-link:hover, .theme-toggle:hover {
+.lang-switch:hover, .help-link:hover, .appearance-toggle:hover, .appearance-close:hover {
   color: var(--text);
   border-color: var(--border-strong);
   background: var(--surface-2);
   text-decoration: none;
-}
-.theme-toggle [data-theme-symbol] {
-  display: inline-block;
-  width: 1.15em;
-  margin-right: 5px;
-  text-align: center;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -458,22 +456,7 @@ main { padding-bottom: var(--size-10); }
 
 /* 外觀選單：非模態，面板在窄螢幕依視窗寬度縮放。 */
 .appearance { position: relative; }
-.appearance-toggle, .appearance-close {
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--dim);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  list-style: none;
-}
+.appearance-toggle { list-style: none; }
 .appearance-toggle::-webkit-details-marker { display: none; }
 .appearance[open] > summary { color: var(--accent); border-color: var(--accent); }
 .appearance-panel {
@@ -1479,7 +1462,7 @@ html.no-lines .gap-mid svg { display: none; }
 
 @media (max-width: 720px) {
   /**
-   * 導覽列多了主題開關後，641–699px 也放不下單列。
+   * 學習分頁加上外觀與語言工具，在窄螢幕放不下單列。
    * 這個區間跟手機採同一個清楚的兩列結構，避免工具列孤零零換到左下角。
    */
   .topbar-in { padding: var(--size-1) var(--size-3); gap: var(--size-2); }
@@ -1487,9 +1470,6 @@ html.no-lines .gap-mid svg { display: none; }
   .tabs { order: 3; width: 100%; margin-right: 0; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
   .tabs a { white-space: nowrap; min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; }
   .topbar-right { margin-left: auto; }
-  .lang-switch, .help-link, .theme-toggle { min-height: 44px; display: inline-flex; align-items: center; padding: 0 12px; }
-  .theme-toggle [data-theme-label] { display: none; }
-  .theme-toggle [data-theme-symbol] { margin-right: 0; font-size: 18px; }
 }
 
 @media (max-width: 640px) {

@@ -291,7 +291,7 @@ chunks: [
 ## 換配色
 
 全站色碼只有一個來源：`assets/css/theme.css` 的深淺基底與配色 `:root` 色票。
-導覽列「外觀」提供四種配色、三種 CSS 背景及降低特效開關；原有黑白快速切換仍保留。
+導覽列「外觀」統一提供深色／淺色模式切換、四種配色、三種 CSS 背景及降低特效開關。
 `palette`、`background`、`reducedEffects` 與 `theme` 同存在 `lang-learn.prefs.v1`，隨原有備份匯出／匯入。
 `theme-boot.js` 在 CSS 前套用設定，`ui/appearance.js` 負責互動與匯入同步，`core/appearance.js` 驗證合法值。
 玻璃效果只用於導覽與首頁入口，測驗／閱讀表面維持實心；系統減少動態及使用者降低特效任一啟用即停用微塵、動態與模糊。

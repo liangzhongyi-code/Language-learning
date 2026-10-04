@@ -8,7 +8,7 @@ import { PALETTES, BACKGROUNDS, normalizeAppearance } from '../assets/js/core/ap
  * 執行真實 prefs 與外觀模組，僅用小型 DOM／儲存替身測跨模組事件。
  * 版面、原生 details 與鍵盤行為另外在瀏覽器驗證。
  */
-function harness(initial = {}, fail = false) {
+function harness(initial = {}, fail = false, navEntry = null) {
   let blocked = fail;
   const key = 'lang-learn.prefs.v1';
   const values = new Map([[key, JSON.stringify(initial)]]);
@@ -29,7 +29,8 @@ function harness(initial = {}, fail = false) {
     querySelector: (selector) => selector === '.appearance-panel' ? content : selector === '[data-appearance-status]' ? status : selector === '[data-system-effects]' ? systemNote : { addEventListener() {}, focus() {} },
     addEventListener(type, callback) { panelListeners.set(type, callback); },
   };
-  const document = { documentElement: { dataset: {} }, querySelector: () => panel, addEventListener() {} };
+  const body = { dataset: { lang: 'ja', page: 'home' }, html: '', insertAdjacentHTML(position, html) { this.html += html; } };
+  const document = { body, documentElement: { dataset: {} }, querySelector: () => panel, addEventListener() {} };
   const media = { matches: true, addEventListener(type, callback) { this.change = callback; } };
   const window = {
     innerHeight: 568,
@@ -42,11 +43,26 @@ function harness(initial = {}, fail = false) {
     dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); },
   };
   const strip = (path) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import .+;\r?\n/gm, '').replace(/\bexport /g, '');
-  const code = strip('../assets/js/ui/prefs.js') + '\n' + strip('../assets/js/ui/appearance.js');
-  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance});', { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance });
-  api.bindAppearance();
-  return { ...api, values, key, window, document, controls, status, systemNote, media, panel, content, toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
+  const code = strip('../assets/js/ui/prefs.js') + '\n' + strip('../assets/js/ui/appearance.js') + '\n' + strip('../assets/js/ui/nav.js');
+  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});', { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance });
+  if (navEntry) api[navEntry]();
+  else api.bindAppearance();
+  return { ...api, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
 }
+
+test('根頁與語言內頁只有外觀入口，且可直接切換並保存深淺模式', () => {
+  for (const navEntry of ['renderNav', 'renderRootNav']) {
+    const h = harness({}, false, navEntry);
+    assert.equal((h.document.body.html.match(/data-appearance-panel/g) || []).length, 1);
+    assert.doesNotMatch(h.document.body.html, /data-theme-toggle/);
+    for (const theme of ['light', 'dark']) {
+      h.change(h.controls.find((c) => c.dataset.appearance === 'theme' && c.value === theme));
+      assert.equal(h.document.documentElement.dataset.theme, theme);
+      assert.equal(JSON.parse(h.values.get(h.key)).theme, theme);
+      assert.equal(h.controls.find((c) => c.value === theme).checked, true);
+    }
+  }
+});
 
 test('外觀設定寫入同一份 prefs，且保留漢字與學習設定', () => {
   const h = harness({ kanjiMode: 'kana', grammarLines: false });
