@@ -4,11 +4,11 @@
 
 - 日期／時區：2026-10-05（Asia/Taipei）。
 - 類型：修復／資料契約／文件同步。
-- 狀態：修復已驗證；提交／發布證據見本檔後續發布紀錄。
+- 狀態：本輪修復已發布並確認 Pages 資產更新；未接線功能仍未完成。
 - 核准：使用者確認複查範圍 `fd9b18a → 451fbbe`，並要求「都幫我修復」；先前已明確授權本專案確認後提交、推送及確認 Pages。
 - 前次紀錄：[011 審查修復](2026-10-05-011-review-fixes.md)、[012 發布與線上 QA](2026-10-05-012-pages-qa.md)。012 的驗收版本與結果保留，不拿來冒充本次驗收。
 - 規格：[每日學習](../../openspec/changes/add-daily-learning/design.md)、[整合功能](../../openspec/changes/add-offline-study-suite/design.md)。
-- 分支：`feature/add-offline-study-suite`；修復前版本：`451fbbe09f7e570c8e9e21b41f0212631db5de8b`。本次 commit 以本檔 Git 歷史為準；此稿未提交。
+- 分支：`feature/add-offline-study-suite`；修復前版本：`451fbbe09f7e570c8e9e21b41f0212631db5de8b`。程式修復提交：`88f81e377c7d96bf23fb3024fad95478e2d3883a`；本段發布證據由後續純文件提交補記，見本檔 Git 歷史。
 
 ## 需求、修復前後
 
@@ -74,3 +74,11 @@ schema／IndexedDB 版本不變，不對損壞 v2 狀態做猜測式修復。以
 A 階段 scheduler 仍沿用原 `srs.dueAfter` 的裝置當地時間排程；固定 timeZone 此階段用於學習日／配額／計畫鍵。這是保留既有 Leitner 的範圍說明，不把固定學習日時區冒稱已套到全部 due；原 due 不重算。B 階段／跨平台接線要另驗 adapter 的時區與保留原 due 政策。
 
 寫稿時尚未提交／部署；發布後會追加實際提交、部署及線上資產比對證據，不由本機測試推論 Pages 更新。Chromium 不代替 iOS／Android 真機驗收。
+
+## 發布補記（2026-10-05）
+
+- 修復提交 `88f81e3`：26 個經查核的程式、測試與文件檔案。正常快轉推送 `451fbbe → 88f81e3` 至 Pages 使用的 main；沒有 force push，也沒有提交 `.idea`／`.cursor` 個人設定或工具檔案。
+- [GitHub Pages 部署工作](https://github.com/liangzhongyi-code/Language-learning/actions/runs/37270090177)：head_sha 為完整修復 SHA，狀態 completed／success。
+- 主代理從實際 Pages 讀取 `daily-plan.js`、`learning-schema.js`、新增 `learning-identity.js`、`backup-view.js`、`ui/platform/web-repository.js` 及本篇原提交版本，全部 HTTP 200；只正規化 CRLF／LF 後，內容與本機提交完全相同。
+- 本段只留存已發生的發布證據，不改執行邏輯；上述本機真 Chromium 是隔離 fixture 站的功能驗證，本次線上確認是部署狀態及六份資產內容，不冒充又跑了一輪線上完整 QA。
+- 後續純文件提交不改程式修復 SHA 所代表的執行行為；012 的舊 QA 與本篇新驗證保持各自版本界線。
