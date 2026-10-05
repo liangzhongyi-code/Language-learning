@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "test": "node --test",
+    "test:browser": "node --test tests/browser/runner-checks.mjs && node tests/browser/run.mjs --suite all",
     "serve": "npx -y serve ."
   },
   "keywords": [
@@ -13,5 +14,11 @@
     "static-site",
     "github-pages"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
 }

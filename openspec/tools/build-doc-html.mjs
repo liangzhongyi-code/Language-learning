@@ -18,10 +18,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 
 const changeId = process.argv[2];
-const outDir = process.argv[3] || 'D:\\jimmy.lzy\\IdeaProjects\\Claude計劃(html)';
+const outDir = process.argv[3] || process.env.LANG_LEARN_DOC_OUTPUT;
 
-if (!changeId) {
-  console.error('用法：node build-doc-html.mjs <change-id> [輸出目錄]');
+if (!changeId || !outDir) {
+  console.error('用法：node build-doc-html.mjs <change-id> <輸出目錄>（也可設定 LANG_LEARN_DOC_OUTPUT）');
   process.exit(1);
 }
 
@@ -600,7 +600,7 @@ svg.flow text{font-family:var(--sans); fill:var(--fg-dim)}
     </div>
     <div class="meta-box">
       <div>change-id：<b>${escapeHtml(changeId)}</b></div>
-      <div>分支：<code>feature/${escapeHtml(changeId)}</code></div>
+      <div>分支：<code>${escapeHtml(process.env.DOC_BRANCH || `feature/${changeId}`)}</code></div>
       <div>產生日期：<b>${readableDate}</b></div>
     </div>
     <nav id="nav">${navHtml}</nav>

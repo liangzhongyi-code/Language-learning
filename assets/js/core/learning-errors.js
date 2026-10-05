@@ -1,0 +1,35 @@
+/**
+ * 可供核心、repository 與 UI 共用的穩定錯誤碼；訊息只供顯示，不作分支判定。
+ */
+export const LEARNING_ERROR_CODES = Object.freeze({
+  INVALID_DATA: 'INVALID_DATA',
+  INVALID_OPERATION: 'INVALID_OPERATION',
+  INVALID_RECEIPT: 'INVALID_RECEIPT',
+  STALE_EPOCH: 'STALE_EPOCH',
+  OPERATION_MISMATCH: 'OPERATION_MISMATCH',
+  REVISION_EXHAUSTED: 'REVISION_EXHAUSTED',
+  UNSUPPORTED_VERSION: 'UNSUPPORTED_VERSION',
+  REVISION_CONFLICT: 'REVISION_CONFLICT',
+  EPOCH_MISMATCH: 'EPOCH_MISMATCH',
+  OPERATION_CONFLICT: 'OPERATION_CONFLICT',
+  ENTRY_CONFLICT: 'ENTRY_CONFLICT',
+  NOT_READY: 'NOT_READY',
+  STORAGE_ERROR: 'STORAGE_ERROR',
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  MIGRATION_FAILED: 'MIGRATION_FAILED',
+  STALE_PREVIEW: 'STALE_PREVIEW',
+  CANCELLED: 'CANCELLED',
+  UNSUPPORTED: 'UNSUPPORTED',
+});
+
+/**
+ * details 僅放結構化診斷，不放完整備份、答案、憑證或原始私人資料。
+ */
+export class LearningError extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = 'LearningError';
+    this.code = code;
+    this.details = details;
+  }
+}

@@ -11,6 +11,13 @@
 
 ---
 
+## 規格與邏輯變更文件
+
+- [每次邏輯變更紀錄](docs/logic-changes/README.md)：查變更原因、前後行為、影響及驗證結果。
+- [變更紀錄範本](docs/logic-changes/TEMPLATE.md)：每次實作同步填寫；規劃與已發布必須分開記錄。
+- [專案文件規則](AGENTS.md)：後續代理與維護者共同遵循的留存約定。
+- 進行中規格放在 `openspec/changes/`，已完成規格放在 `openspec/archive/`；原始 Markdown 留在專案，HTML 只作外部閱讀副本。
+
 ## ⚠️ 本機開發：不能雙擊 HTML 直接開
 
 網站用的是 ES Modules（`<script type="module">`），瀏覽器對 `file://` 的模組載入有
@@ -51,12 +58,28 @@ repo 叫什麼名字都可以——全站使用相對路徑，放在子路徑底
 
 ## 測試
 
+開發與自動化測試環境使用 **Node.js 20 以上**。網站執行期仍為零依賴。
+
+純 Node 測試不需安裝套件或 Chromium：
+
 ```bash
 npm test
 ```
 
-等同 `node --test`，用 Node 內建的測試執行器，**零安裝**（需要 Node 18 以上）。
+等同 `node --test`，只跑純 Node 測試，不會自動啟動瀏覽器。
 `package.json` 的 `dependencies` 永遠是空的——網站本體不依賴任何套件。
+
+瀏覽器整合測試需另外安裝鎖定的開發依賴及 Chromium；乾淨環境依序執行：
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+`test:browser` 先驗證測試器會正確回報失敗，再跑全部瀏覽器套件（含 IndexedDB 遷移、交易與分頁）。
+測試使用隔離 Chromium context 和本機隨機連接埠，不使用個人瀏覽器或真實學習紀錄。
+缺少 Chromium 會明確失敗，不會跳過後宣稱成功。Linux CI 若缺少系統函式庫，可在允許安裝的環境使用 `npx playwright install --with-deps chromium`。
 
 測試涵蓋三件事：
 
@@ -94,7 +117,9 @@ npm test
 │       ├── ui/             DOM 綁定層
 │       └── data/           靜態題庫 ← 新增內容改這裡
 ├── tests/
-└── openspec/               初版的規格文件（已歸檔的歷史紀錄）＋ 資料處理小工具
+├── docs/logic-changes/     每次邏輯變更的索引、範本與紀錄
+├── AGENTS.md              專案文件留存規則
+└── openspec/               進行中規格、已歸檔歷史與資料處理工具
 ```
 
 **分層規則**：`頁面 → ui/ → core/ → data/`，方向不可反轉。

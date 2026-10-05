@@ -360,8 +360,10 @@ export function initBackupPanel(mount) {
     let code;
     try {
       code = await encodeBackupCode(exportPayload(current, Date.now()));
-    } catch {
-      message = '這一份紀錄目前打包不出來。請回報。';
+    } catch (error) {
+      message = error?.code === 'BACKUP_SIZE_LIMIT'
+        ? `${error.message} 可先用「下載檔案」保留原始紀錄；超限檔案仍受匯入大小限制，不保證能匯入 v2，請保留目前裝置上的資料。`
+        : '這一份紀錄目前打包不出來。請回報。';
       draw(current);
       refocus('[data-copy-code]', wasInside);
       return;
@@ -477,7 +479,7 @@ export function initBackupPanel(mount) {
      * 一句確定的「已匯出」。延後一個 tick 的成本是零，沒有理由賭。
      */
     setTimeout(() => URL.revokeObjectURL(url), 0);
-    message = '已下載。手機通常會進「下載」資料夾（iPhone 在「檔案」App 裡），之後在任何裝置上都能匯入回來。';
+    message = '已下載。手機通常會進「下載」資料夾（iPhone 在「檔案」App 裡）。請保留檔案；還原時仍需通過格式、版本與大小檢查。';
     /**
      * 下載、分享、複製代碼三種「把紀錄帶走」的動作都不清 pending。
      * 等待確認的匯入預覽與帶走紀錄互不相干——使用者很可能就是

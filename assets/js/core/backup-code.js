@@ -18,9 +18,40 @@
  * 所以這一支放在 core、測試可以直接跑。
  */
 
+import { BACKUP_JSON_MAX_BYTES, BACKUP_CODE_MAX_BYTES } from './backup-limits.js';
+
 const PREFIX = 'langlearn';
 const V_PLAIN = 0;
 const V_GZIP = 1;
+
+/**
+ * 大小錯誤保留穩定 code 與 byte 上限，解壓失敗時不能被改寫成損壞代碼。
+ */
+class BackupSizeError extends Error {
+  constructor(label, limitBytes) {
+    super(`${label}超過 ${limitBytes / (1024 * 1024)} MiB 上限。`);
+    this.code = 'BACKUP_SIZE_LIMIT';
+    this.limitBytes = limitBytes;
+  }
+}
+
+/**
+ * 分段計算 UTF-8 bytes，避免為了拒絕超大字串先配置同樣大的編碼陣列。
+ * 不拆開 surrogate pair；孤立 surrogate 的 bytes 與 TextEncoder 相同。
+ */
+function checkTextSize(text, limitBytes, error) {
+  if (text.length > limitBytes) throw error;
+  const encoder = new TextEncoder();
+  let total = 0;
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(start + 8192, text.length);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xD800 && last <= 0xDBFF) end--;
+    total += encoder.encode(text.slice(start, end)).byteLength;
+    if (total > limitBytes) throw error;
+    start = end;
+  }
+}
 
 /**
  * 超過這個字數就不建議貼進聊天訊息。
@@ -52,17 +83,25 @@ function fromBase64(text) {
 }
 
 /**
- * 把一條 ReadableStream 讀到底，接成一個 Uint8Array
+ * 每個 chunk 先檢查限額，確認全部在界線內才合併；失敗立即取消讀端。
  */
-async function drain(stream) {
+async function drain(stream, maxBytes, sizeError) {
   const reader = stream.getReader();
   const chunks = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    total += value.length;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) throw sizeError;
+      if (value.byteLength) chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
   const out = new Uint8Array(total);
   let offset = 0;
@@ -78,19 +117,31 @@ async function drain(stream) {
  * 寫入與讀取要同時進行——先把 write 等完再讀的話，資料一大就會因為
  * 背壓互相等待而卡死。
  */
-async function through(transform, bytes) {
+async function through(transform, bytes, maxBytes, sizeError) {
   const writer = transform.writable.getWriter();
-  const writing = writer.write(bytes).then(() => writer.close());
+  const writing = (async () => {
+    try {
+      await writer.write(bytes);
+      await writer.close();
+    } finally {
+      writer.releaseLock();
+    }
+  })();
   /**
-   * 先掛一個接手。讀端解壓失敗（代碼被截斷）時 drain 會先拋出，
-   * 這個函式就此結束，寫端的 promise 之後才被串流的錯誤打回來——
-   * 沒人等它就變成 unhandled rejection。真正要報的錯誤 drain 已經拋了，
-   * 寫端這一份不必再冒出來。
+   * 立即接手寫端拒絕；讀端可能還在讀取或等待 cancel，尚未 await writing。
+   * 不等到 catch 才掛處理器，避免截斷或超限導致 unhandled rejection。
+   * 後面仍等待寫端結束，並保留先遇到的讀端錯誤。
    */
   writing.catch(() => {});
-  const out = await drain(transform.readable);
-  await writing;
-  return out;
+  try {
+    const out = await drain(transform.readable, maxBytes, sizeError);
+    await writing;
+    return out;
+  } catch (error) {
+    await writer.abort(error).catch(() => {});
+    await writing.catch(() => {});
+    throw error;
+  }
 }
 
 /**
@@ -104,12 +155,19 @@ export function canCompress() {
  * 備份物件 → 代碼字串
  */
 export async function encodeBackupCode(payload) {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  if (canCompress()) {
-    const packed = await through(new CompressionStream('gzip'), bytes);
-    return `${PREFIX}${V_GZIP}:${toBase64(packed)}`;
+  const json = JSON.stringify(payload);
+  checkTextSize(json, BACKUP_JSON_MAX_BYTES, new BackupSizeError('備份 JSON ', BACKUP_JSON_MAX_BYTES));
+  const bytes = new TextEncoder().encode(json);
+  const codeError = new BackupSizeError('備份代碼', BACKUP_CODE_MAX_BYTES);
+  const version = canCompress() ? V_GZIP : V_PLAIN;
+  const prefix = `${PREFIX}${version}:`;
+  const packedLimit = Math.floor((BACKUP_CODE_MAX_BYTES - prefix.length) / 4) * 3;
+  let packed = bytes;
+  if (version === V_GZIP) {
+    packed = await through(new CompressionStream('gzip'), bytes, packedLimit, codeError);
   }
-  return `${PREFIX}${V_PLAIN}:${toBase64(bytes)}`;
+  if (packed.byteLength > packedLimit) throw codeError;
+  return `${prefix}${toBase64(packed)}`;
 }
 
 /**
@@ -123,6 +181,8 @@ export async function encodeBackupCode(payload) {
  * 錯誤訊息都是給使用者看的，直接顯示。
  */
 export async function decodeBackupCode(text) {
+  const input = String(text ?? '');
+  checkTextSize(input, BACKUP_CODE_MAX_BYTES, new BackupSizeError('備份代碼輸入', BACKUP_CODE_MAX_BYTES));
   /**
    * 先把看不見的東西清掉。
    * \s 涵蓋一般空白與換行，但不含零寬空格（U+200B–200D）、軟連字號（U+00AD）
@@ -130,7 +190,7 @@ export async function decodeBackupCode(text) {
    * 少清一個就會讓比對落空，使用者被告知「這不是本站的代碼」，而它就是。
    * 全形冒號是輸入法的常見副作用，一併換回半形。
    */
-  const cleaned = String(text ?? '')
+  const cleaned = input
     .replace(/[\s\u200B-\u200D\u00AD\uFEFF]+/g, '')
     .replace(/\uFF1A/g, ':');
   if (!cleaned) throw new Error('還沒有貼上代碼。');
@@ -163,12 +223,15 @@ export async function decodeBackupCode(text) {
       throw new Error('這個瀏覽器看不懂壓縮過的代碼，請改用檔案匯入。');
     }
     try {
-      bytes = await through(new DecompressionStream('gzip'), bytes);
-    } catch {
+      bytes = await through(new DecompressionStream('gzip'), bytes, BACKUP_JSON_MAX_BYTES,
+        new BackupSizeError('解壓後備份', BACKUP_JSON_MAX_BYTES));
+    } catch (error) {
+      if (error instanceof BackupSizeError) throw error;
       throw new Error('代碼不完整或被改動過，解不開。');
     }
   }
 
+  if (bytes.byteLength > BACKUP_JSON_MAX_BYTES) throw new BackupSizeError('備份 JSON ', BACKUP_JSON_MAX_BYTES);
   return new TextDecoder().decode(bytes);
 }
 

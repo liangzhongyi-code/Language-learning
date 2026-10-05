@@ -14,15 +14,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /**
  * 遞迴收集副檔名符合的檔案。
  *
- * tests 也要跳過：這一支測的是「原始碼有沒有違反架構約定」，
- * 而測試本身就會出現 speechSynthesis 這種被禁的字串（在 regex 裡），
- * 掃自己會變成自我指涉的誤判。
+ * 入口白名單只有根目錄同副檔名檔案，以及 assets/en/ja 三個來源目錄。
+ * 工具、報告與測試不是網站來源，不應遞迴讀取；真正來源的讀取錯誤仍須拋出。
  */
-function collect(dir, ext, out = []) {
-  for (const name of readdirSync(dir)) {
-    if (['node_modules', '.git', 'openspec', 'tests'].includes(name)) continue;
+function collect(dir, ext, out = [], fs = { readdirSync, statSync }, root = ROOT) {
+  for (const name of fs.readdirSync(dir)) {
+    if (dir === root && !['assets', 'en', 'ja'].includes(name) && !name.endsWith(ext)) continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) collect(full, ext, out);
+    if (fs.statSync(full).isDirectory()) collect(full, ext, out, fs, root);
     else if (name.endsWith(ext)) out.push(full);
   }
   return out;
@@ -34,6 +33,24 @@ const jsFiles = collect(ROOT, '.js');
 const cssFiles = collect(ROOT, '.css');
 
 /* ── 頁面齊全 ─────────────────────────────────────────────── */
+
+test('來源掃描只進入頁面與 assets 白名單，不碰工具目錄；來源讀取錯誤不可吞掉', () => {
+  const fixtureRoot = join(ROOT, 'fixture');
+  const visited = [];
+  const fs = {
+    readdirSync(dir) {
+      visited.push(relative(fixtureRoot, dir).replace(/\\/g, '/'));
+      if (dir === fixtureRoot) return ['.gstack', '.idea', 'node_modules', 'docs', 'openspec', 'tests', 'assets', 'en', 'ja', 'index.html', 'help.html'];
+      if (dir === join(fixtureRoot, 'assets')) return ['feature.js'];
+      if (['en', 'ja'].some(name => dir === join(fixtureRoot, name))) return ['index.html'];
+      throw new Error('工具目錄不可被讀取');
+    },
+    statSync(file) { return { isDirectory: () => ['assets', 'en', 'ja'].some(name => file === join(fixtureRoot, name)) }; },
+  };
+  assert.deepEqual(collect(fixtureRoot, '.js', [], fs, fixtureRoot), [join(fixtureRoot, 'assets', 'feature.js')]);
+  assert.deepEqual(visited, ['', 'assets', 'en', 'ja']);
+  assert.throws(() => collect(fixtureRoot, '.js', [], { ...fs, readdirSync() { throw new Error('source denied'); } }, fixtureRoot), /source denied/);
+});
 
 test('13 個頁面都存在', () => {
   const expected = [
