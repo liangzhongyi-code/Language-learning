@@ -8,6 +8,7 @@ import { validateLearningRecord, validatePlainJson } from './learning-schema.js'
 import { speakTextOf } from './speech-text.js';
 import { LearningError } from './learning-errors.js';
 import { reviewIdentity } from './review-events.js';
+import { localStudyDate, resolveStudyDay } from './study-day.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const finished = entry => entry.status === 'completed' || entry.status === 'skipped';
@@ -106,7 +107,7 @@ function firstQuestion({ entry, plan, words, direction, rng, itemStates, questio
  * rng 僅首次產生選項使用；不讀 Math.random、Date.now 或平台儲存。
  */
 export function prepareEntry({ plan, ledger, session = null, entryId, words, now, sessionId,
-  direction = 'target2zh', rng = () => 0.5, itemStates = {}, questionSnapshot }) {
+  direction = 'target2zh', rng = () => 0.5, itemStates = {}, questionSnapshot, studyDayState }) {
   checkLedger(plan, ledger, now);
   assertPlanSession(plan, session);
   const next = clone(plan);
@@ -126,6 +127,18 @@ export function prepareEntry({ plan, ledger, session = null, entryId, words, now
     return { plan: next, ledger: nextLedger, session: nextSession };
   }
   if (entry.kind === 'new') {
+    // 只擋首次介紹的過期清單；已保存題面可續答，倒退時鐘沿用已建立日，不重領額度。
+    let currentDate;
+    try {
+      // 有改區政策時必須沿用 resolveStudyDay 的單調日界，不能把尚未生效的 pendingZone 當新日。
+      const day = studyDayState === undefined ? null : resolveStudyDay(studyDayState, now);
+      if (day && day.timeZone !== plan.timeZone) fail('STALE_PLAN', '學習時區已更新，請重新取得今日清單。');
+      currentDate = day ? day.localDate : localStudyDate(now, plan.timeZone);
+    } catch (error) {
+      if (error instanceof LearningError) throw error;
+      fail('INVALID_DATA', '學習日政策或時間不合法，沒有領取新字額度。');
+    }
+    if (currentDate > plan.localDate) fail('STALE_PLAN', '學習日已更新，請重新取得今日清單再開始新字。');
     if (nextLedger.excludedSourceIds.includes(entry.sourceId)) fail('ENTRY_CONFLICT', '今日已略過此字，請重新取得清單。');
     if (nextLedger.startedSourceIds.includes(entry.sourceId)) fail('ENTRY_CONFLICT', '此字已由其他題次開始，請重新取得清單。');
     if (nextLedger.startedSourceIds.length >= nextLedger.newLimit) fail('QUOTA_EXCEEDED', '今日新字額度已用完。');

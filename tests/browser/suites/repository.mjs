@@ -129,6 +129,8 @@ export async function run(args) {
     ['F03 缺 structuredClone 的型別保留與不可變 token', () => paginationWithoutStructuredClone(page)],
     ['F03 無 crypto 在 ready/commit/clear 前回 typed error', () => unavailableCrypto(page)],
     ['F03/D19 損毀 index/store shape 拒絕開放且保留資料', () => corruptDatabaseShape(page)],
+    ['F03/D19 完整 meta 驗證在 ready 與寫入交易均拒絕且保留原資料', () => corruptMetadata(page)],
+    ['F03/O18 清除後為可攜的合法空資料、保留原子回滾並拒絕舊世代', () => validEmptyAfterClear(page)],
     ['F03/D12/O18 固定入參快照與 clear 後 late write', () => immutableAndLateWrite(page)],
   ];
   const errors = [];
@@ -407,4 +409,103 @@ async function immutableAndLateWrite(page) {
   assert.equal(result.late.code, 'STALE_EPOCH');
   assert.equal(result.zombie, undefined);
   assert.equal(result.after.migrationStatus, 'cleared');
+}
+
+async function corruptMetadata(page) {
+  const results = await page.evaluate(async () => {
+    const { make, command, outcome, raw } = window.regression;
+    const variants = [
+      ['zone', { timeZone: 'not/a-zone' }, 'UNSUPPORTED_SCHEMA'],
+      ['history', { historyStartedAt: -1 }, 'UNSUPPORTED_SCHEMA'],
+      ['missing-history', { historyStartedAt: undefined }, 'UNSUPPORTED_SCHEMA'],
+      ['policy', { schedulerPolicyVersion: 99 }, 'UNSUPPORTED_VERSION'],
+      ['schema', { schemaVersion: 99 }, 'UNSUPPORTED_SCHEMA'],
+    ];
+    const rows = [];
+    for (const [name, patch, expected] of variants) {
+      const dbName = 'meta-' + name;
+      const repo = make(dbName);
+      try {
+        const before = await repo.ready();
+        const invalid = { ...before, ...patch };
+        if (name === 'missing-history') delete invalid.historyStartedAt;
+        await raw(dbName, db => new Promise((resolve, reject) => {
+          const tx = db.transaction(['meta', 'notes'], 'readwrite');
+          tx.objectStore('meta').put(invalid, 'current');
+          tx.objectStore('notes').put({ text: 'preserve this' }, 'original');
+          tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+        }));
+        const op = command(before, 'attempt', [{ store: 'notes', key: 'original', value: { text: 'lost' } }]);
+        const ready = await outcome(() => repo.ready());
+        const commit = await outcome(() => repo.commit(op));
+        const clear = await outcome(() => repo.clearLearning(op));
+        const migration = await outcome(() => repo.migrateFromLegacy({ getItem: () => null }));
+        const original = await raw(dbName, db => new Promise((resolve, reject) => {
+          const tx = db.transaction(['meta', 'notes', 'operations']);
+          const meta = tx.objectStore('meta').get('current');
+          const note = tx.objectStore('notes').get('original');
+          const receipts = tx.objectStore('operations').count();
+          tx.oncomplete = () => resolve({ meta: meta.result, note: note.result, receipts: receipts.result });
+          tx.onabort = () => reject(tx.error);
+        }));
+        rows.push({ name, expected, invalid, ready, commit, clear, migration, original });
+      } finally { repo.close(); }
+    }
+    return rows;
+  });
+  for (const row of results) {
+    for (const action of ['ready', 'commit', 'clear', 'migration']) {
+      assert.equal(row[action].code, row.expected, row.name + '/' + action);
+    }
+    assert.deepEqual(row.original.meta, row.invalid, '不自動修寫或覆蓋損毀 meta');
+    assert.deepEqual(row.original.note, { text: 'preserve this' });
+    assert.equal(row.original.receipts, 0, '失敗不得產生成功收據');
+  }
+}
+
+async function validEmptyAfterClear(page) {
+  const result = await page.evaluate(async () => {
+    const { emptyLearning, validateLearning } = await import('/assets/js/core/learning-schema.js');
+    const { make, command, outcome } = window.regression;
+    const repo = make('clear-empty');
+    const failing = make('clear-empty', { beforeCommit() { throw new Error('fixture clear abort'); } });
+    try {
+      await repo.migrateFromLegacy({ getItem: () => null });
+      const before = await repo.ready();
+      await repo.commit(command(before, 'seed', [{ store: 'notes', key: 'a', value: { text: 'keep until committed' } }]));
+      const seeded = await repo.ready();
+      const op = { operationId: 'clear', epoch: seeded.dataEpoch, expectedRevision: seeded.revision };
+      const failed = await outcome(() => failing.clearLearning(op));
+      const rollback = { meta: await repo.ready(), note: await repo.get('notes', 'a'),
+        favorites: await repo.get('books', 'favorites'), receipts: await repo.list('operations') };
+      const cleared = await repo.clearLearning(op);
+      const meta = await repo.ready();
+      const learning = emptyLearning({ now: meta.historyStartedAt, timeZone: meta.timeZone, dataEpoch: meta.dataEpoch });
+      learning.meta = meta;
+      learning.library.books = Object.fromEntries((await repo.list('books')).map(row => [row.key, row.value]));
+      learning.achievements.policyVersion = (await repo.get('achievements', 'policy'))?.policyVersion;
+      learning.reminderPreferences = await repo.get('reminders', 'preferences');
+      learning.operations = Object.fromEntries((await repo.list('operations')).map(row => [row.key, row.value]));
+      const ignoredMigration = await repo.migrateFromLegacy({ getItem() { throw new Error('must not read legacy after clear'); } });
+      const collections = ['stats', 'progress', 'itemStates', 'reviewEvents', 'dailyPlans', 'dailyLedger',
+        'sessions', 'operations', 'restorePoints', 'notes', 'intents', 'outbox'];
+      const emptyCounts = await Promise.all(collections.map(async store => [store, (await repo.list(store)).length]));
+      return { seeded, failed, rollback, cleared, meta, learning, validation: validateLearning(learning),
+        ignoredMigration, emptyCounts, retry: await outcome(() => repo.clearLearning(op)) };
+    } finally { repo.close(); failing.close(); }
+  });
+  assert.equal(result.failed.code, 'STORAGE_ABORTED');
+  assert.deepEqual(result.rollback.meta, result.seeded, '清除故障必須保留 epoch/revision');
+  assert.deepEqual(result.rollback.note, { text: 'keep until committed' });
+  assert.ok(result.rollback.favorites, '故障不可清掉原固定簿');
+  assert.equal(result.rollback.receipts.length, 1);
+  assert.equal(result.cleared.revision, result.seeded.revision + 1);
+  assert.notEqual(result.meta.dataEpoch, result.seeded.dataEpoch);
+  assert.equal(result.validation.ok, true, JSON.stringify(result.validation.errors));
+  assert.deepEqual(result.emptyCounts.map(([, count]) => count), Array(result.emptyCounts.length).fill(0));
+  assert.equal(result.learning.library.books.favorites.system, true);
+  assert.deepEqual(result.learning.library.books.favorites.wordIds, []);
+  assert.deepEqual(result.learning.reminderPreferences, { enabled: false, localTime: '20:00', timeZone: 'Asia/Taipei', generation: 0 });
+  assert.deepEqual(result.ignoredMigration, result.meta);
+  assert.equal(result.retry.code, 'STALE_EPOCH', '清除回應遺失的舊 epoch 不得跨世代重送');
 }

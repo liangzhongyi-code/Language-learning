@@ -5,15 +5,13 @@
  * 真正會消失的是「清除網站資料」「無痕模式」「換一台裝置」這三件事。
  * 這一支就是為那三件事準備的：把紀錄倒成一個檔案，之後倒回來。
  *
- * 這裡刻意不做深度驗證。
- * 每一種資料的載入函式（loadStats、loadProgress、loadPrefs）本來就規定
- * 「壞資料一律安靜回到初始狀態」，把同一套規則在這裡再寫一份，
- * 只會多一個遲早與本尊分家的副本。所以匯入只確認兩件事：
- * 這是不是本站的備份檔、每個區塊是不是一個物件。剩下的交給載入端。
- *
- * 也因此這一支不 import 任何資料模組——它只認得備份檔的外殼，
- * 不認得裡面裝什麼。日後多一種要備份的資料，只要在 SECTIONS 加一個名字。
+ * 匯入前沿用共用的統計／進度驗證器，不等覆寫後才交給載入端降級成空資料。
+ * 偏好只收現在支援的欄位與模式；壞區塊明確跳過，合法的舊資料原樣救回。
  */
+
+import { validatePlainJson, validateStats, validateProgress } from './learning-schema.js';
+import { BACKUP_JSON_MAX_BYTES } from './backup-limits.js';
+import { PALETTES, BACKGROUNDS } from './appearance.js';
 
 /**
  * 檔案的識別字串。
@@ -34,6 +32,39 @@ export const BACKUP_VERSION = 1;
 export const SECTIONS = ['stats', 'progress', 'prefs'];
 
 const isPlainObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const boolPrefs = new Set(['reducedEffects', 'grammarLines', 'keyboardSeen', 'hideKanji']);
+const prefModes = {
+  theme: ['dark', 'light'],
+  palette: PALETTES.map(item => item.value),
+  background: BACKGROUNDS.map(item => item.value),
+  kanaMode: ['hiragana', 'katakana', 'both'],
+  readingAskIn: ['zh', 'target'],
+  kanjiMode: ['show', 'ruby', 'kana'],
+};
+
+function validPrefs(value) {
+  return isPlainObject(value) && validatePlainJson(value).ok && Object.entries(value).every(([key, item]) =>
+    boolPrefs.has(key) ? typeof item === 'boolean' : own(prefModes, key) && prefModes[key].includes(item));
+}
+
+/**
+ * 先分段計算 UTF-8 上限，拒絕時不先配置整份超大 JSON 的編碼陣列。
+ */
+function withinSizeLimit(text) {
+  if (text.length > BACKUP_JSON_MAX_BYTES) return false;
+  const encoder = new TextEncoder();
+  let total = 0;
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(start + 8192, text.length);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xD800 && last <= 0xDBFF) end--;
+    total += encoder.encode(text.slice(start, end)).byteLength;
+    if (total > BACKUP_JSON_MAX_BYTES) return false;
+    start = end;
+  }
+  return true;
+}
 
 /**
  * 一個區塊裡有幾筆資料，給匯入前的預覽用。
@@ -68,6 +99,12 @@ export function exportPayload(data, now) {
  * 那就把學習紀錄救回來，然後告訴使用者統計沒救回來。
  */
 export function parseBackup(text) {
+  if (typeof text !== 'string') {
+    return { ok: false, data: {}, counts: {}, exportedAt: null, errors: ['這不是一個有效的 JSON 檔。'] };
+  }
+  if (!withinSizeLimit(text)) {
+    return { ok: false, data: {}, counts: {}, exportedAt: null, errors: ['備份資料超過 10 MiB 上限，沒有動任何資料。'] };
+  }
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -86,17 +123,18 @@ export function parseBackup(text) {
   }
 
   /**
-   * 只擋比自己新的版本。
-   * 舊版備份要能繼續匯入——備份的意義就是放很久之後還救得回來，
-   * 網站更新一次就讓所有舊備份失效，等於沒有備份。
+   * 保留明確支援的 v0/v1，不把缺版本、字串或小數當成合法舊版。
+   * 外殼不合法時整份拒絕，不能藉一個合法偏好區塊繞過版本檢查。
    */
-  if (Number(parsed.version) > BACKUP_VERSION) {
+  if (!Number.isInteger(parsed.version) || parsed.version < 0 || parsed.version > BACKUP_VERSION) {
     return {
       ok: false,
       data: {},
       counts: {},
       exportedAt: null,
-      errors: [`這份備份是較新的格式（v${parsed.version}），這個版本的網站看不懂。`],
+      errors: [typeof parsed.version === 'number'
+        ? `這份備份的格式版本不支援（v${parsed.version}），沒有動任何資料。`
+        : '這份備份的格式版本不合法，沒有動任何資料。'],
     };
   }
 
@@ -106,7 +144,9 @@ export function parseBackup(text) {
   for (const section of SECTIONS) {
     const value = parsed[section];
     if (value === undefined) continue;
-    if (!isPlainObject(value)) {
+    const valid = section === 'stats' ? validateStats(value).ok
+      : section === 'progress' ? validateProgress(value).ok : validPrefs(value);
+    if (!valid) {
       errors.push(`「${section}」的格式不對，這一項跳過。`);
       continue;
     }

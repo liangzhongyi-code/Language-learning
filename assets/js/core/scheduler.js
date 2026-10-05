@@ -5,27 +5,16 @@
 import { nextBox, dueAfter, GRADUATED_BOX } from './srs.js';
 import { validatePlainJson, validateLearningRecord, validateProgress } from './learning-schema.js';
 import { LearningError } from './learning-errors.js';
+import { skillKeyFor } from './learning-identity.js';
+export { skillKeyFor } from './learning-identity.js';
 
 export const LEITNER_VERSION = 'leitner-a1';
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const invalid = (message) => { throw new LearningError('INVALID_DATA', message); };
-const abilities = ['recognition', 'production', 'listening-recognition', 'listening-production', 'assembly', 'grammar'];
 
 function checked(collection, value) {
   const result = validateLearningRecord(collection, value);
   if (!result.ok) throw new LearningError('INVALID_DATA', `學習紀錄不合法：${collection}。`, { errors: result.errors });
-}
-
-/**
- * 方向使用真實題面方向，不接受 mixed 或顯示用翻譯文字；key 的三個組件不能碰撞。
- */
-export function skillKeyFor({ sourceId, ability, direction }) {
-  if (typeof sourceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sourceId)
-    || ['constructor', 'prototype', '__proto__'].includes(sourceId)
-    || !abilities.includes(ability) || !['zh2target', 'target2zh'].includes(direction)) invalid('能力或實際出題方向不合法。');
-  const key = `${sourceId}:${ability}:${direction}`;
-  if (key.length > 256) invalid('能力 key 過長。');
-  return key;
 }
 
 /**

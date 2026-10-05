@@ -2,7 +2,8 @@
  * 把某個 change-id 底下的所有 markdown 文件，打包成一份可閱讀的單檔 HTML。
  *
  * 用法：
- *   node openspec/tools/build-doc-html.mjs <change-id> [輸出目錄]
+ *   node openspec/tools/build-doc-html.mjs <change-id> <輸出目錄>
+ *   或設定 LANG_LEARN_DOC_OUTPUT 後省略輸出目錄；兩者都未提供會明確退出。
  *
  * 規則（依全域偏好）：
  *   - .md 是唯一真實來源，HTML 只是閱讀副本，永遠重新產生、不手改
@@ -39,6 +40,13 @@ if (!changeDir) {
   process.exit(1);
 }
 const isArchived = changeDir.includes(`${sep}archive${sep}`);
+
+/**
+ * 閱讀版顯示可直接重跑的 PowerShell 指令，含必要輸出目錄。
+ * 單引號內重複單引號保留路徑原值；之後仍需 HTML escaping，兩層用途不同。
+ */
+const quotePowerShell = (value) => `'${String(value).replace(/'/g, "''")}'`;
+const rebuildCommand = `node openspec/tools/build-doc-html.mjs ${quotePowerShell(changeId)} ${quotePowerShell(resolve(outDir))}`;
 
 /* ── markdown → HTML（只支援本專案文件用到的語法） ───────────────────── */
 
@@ -607,8 +615,8 @@ svg.flow text{font-family:var(--sans); fill:var(--fg-dim)}
     <div class="hint">
       本頁為閱讀副本，<b>不是</b>修改對象。<br>
       原始 md 位於 <code>openspec/${isArchived ? 'archive' : 'changes'}/${escapeHtml(changeId)}/</code>，
-      修改請改 md 原檔，再重新執行<br>
-      <code>node openspec/tools/build-doc-html.mjs ${escapeHtml(changeId)}</code>
+      修改請改 md 原檔，再於專案根目錄的 PowerShell 執行<br>
+      <code>${escapeHtml(rebuildCommand)}</code>
     </div>
   </aside>
   <main id="main">${docsHtml}</main>

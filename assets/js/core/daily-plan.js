@@ -150,7 +150,69 @@ function newWords(ctx) {
 
 function dueEntries(ctx) {
   const poolIds = new Set(ctx.pool.map(word => word.id));
-  const keyOf = entry => identity(entry, ctx.lang);
+  /**
+   * 同一跨日題次會由無題面的 legacy 摘要取得固定能力；只綁定同來源、同 entryId。
+   * 不能只靠 sourceId 把其他能力視為完成；極簡快照也不藉後代資料猜測能力。
+   * 舊版跨日重新產生的精確 ID 另按同級、介紹時間與嚴格跨日關係辨認。
+   * 矛盾的歷史綁定不推測，明確拒絕而保留原件。
+   */
+  const bindings = new Map();
+  const lineageOf = entry => JSON.stringify([entry.sourceId, entry.entryId]);
+  const levelPlans = ctx.plans.filter(plan => plan.level === ctx.level);
+  for (const plan of levelPlans) for (const entry of plan.orderedEntries) {
+    const key = identity(entry, ctx.lang);
+    if (!key.startsWith('skill:')) continue;
+    const lineage = lineageOf(entry);
+    if (!bindings.has(lineage)) bindings.set(lineage, key);
+    else if (bindings.get(lineage) !== key) bindings.set(lineage, null);
+  }
+  /**
+   * 舊版只有尚未綁定能力的 review／已介紹 new 使用 planId:kind:sourceId。
+   * 已知 state 所排的別種能力 ID 帶 skillKey，不會落入此分組；任意 ID 與極簡
+   * 快照也不在此處推測。只使用更晚日期的唯一能力綁定，日期相同不算跨日後代。
+   */
+  const oldGroups = new Map();
+  for (const plan of levelPlans) for (const entry of plan.orderedEntries) {
+    const generatedReview = entry.kind === 'review' && entry.entryId === `${plan.planId}:review:${entry.sourceId}`;
+    const generatedNew = entry.kind === 'new' && entry.introducedAt !== null
+      && entry.entryId === `${plan.planId}:new:${entry.sourceId}`;
+    if (!generatedReview && !generatedNew) continue;
+    const key = identity(entry, ctx.lang);
+    if (key.startsWith('entry:')) continue;
+    const group = JSON.stringify([plan.level, entry.sourceId, entry.introducedAt]);
+    if (!oldGroups.has(group)) oldGroups.set(group, []);
+    oldGroups.get(group).push({ entry, localDate: plan.localDate, key });
+  }
+  const oldBindings = new Map();
+  for (const rows of oldGroups.values()) {
+    rows.sort((a, b) => compare(b.localDate, a.localDate));
+    const laterSkills = new Set();
+    for (let at = 0; at < rows.length;) {
+      let end = at + 1;
+      while (end < rows.length && rows[end].localDate === rows[at].localDate) end++;
+      for (let i = at; i < end; i++) {
+        const { entry, key } = rows[i];
+        if (!key.startsWith('legacy:') || bindings.get(lineageOf(entry))) continue;
+        if (laterSkills.size > 1) throw new LearningError('UNSUPPORTED', '舊跨日題次有多個不同能力或方向，無法安全辨認後代；原始紀錄仍保留。');
+        if (laterSkills.size === 1) oldBindings.set(lineageOf(entry), [...laterSkills][0]);
+      }
+      for (let i = at; i < end; i++) {
+        const { entry, key } = rows[i];
+        const bound = key.startsWith('legacy:') ? bindings.get(lineageOf(entry)) ?? oldBindings.get(lineageOf(entry)) : key;
+        if (bound?.startsWith('skill:')) laterSkills.add(bound);
+      }
+      at = end;
+    }
+  }
+  const keyOf = entry => {
+    const key = identity(entry, ctx.lang);
+    if (!key.startsWith('legacy:') || !entry.entryId) return key;
+    const lineage = lineageOf(entry);
+    if (bindings.has(lineage) && bindings.get(lineage) === null) {
+      throw new LearningError('UNSUPPORTED', '同一舊題次有矛盾的能力或方向，無法安全續排；原始紀錄仍保留。');
+    }
+    return bindings.get(lineage) ?? oldBindings.get(lineage) ?? key;
+  };
   const done = new Set();
   for (const plan of ctx.plans.filter(plan => plan.localDate === ctx.localDate)) {
     for (const entry of plan.orderedEntries) if (entry.status === 'completed' && entry.kind !== 'reinforcement') {
@@ -184,8 +246,10 @@ function dueEntries(ctx) {
     if (poolIds.has(state.sourceId) && state.due <= ctx.now) add({ sourceId: state.sourceId, skillKey: state.skillKey,
       due: state.due, last: state.lastEligibleReviewAt ?? state.legacySummary?.last ?? 0 });
   }
+  const carriedSources = new Set([...candidates.values()].filter(candidate => candidate.carry).map(candidate => candidate.sourceId));
   for (const [sourceId, row] of Object.entries(ctx.progress.items)) {
-    if (!stateSources.has(sourceId) && poolIds.has(sourceId) && row.n > 0 && isDue(row, ctx.now)) {
+    // 尚未提交的 carry 已代表這筆來源摘要；摘要沒有能力維度，不能再造一張 legacy 卡。
+    if (!stateSources.has(sourceId) && !carriedSources.has(sourceId) && poolIds.has(sourceId) && row.n > 0 && isDue(row, ctx.now)) {
       add({ sourceId, skillKey: null, due: row.due ?? 0, last: row.last ?? 0 });
     }
   }
@@ -224,8 +288,8 @@ export function buildDailyPlan(options) {
   const orderedEntries = selectedRows.map(row => {
     const entry = makeEntry(planId, row.sourceId ?? row.id, due.length ? 'review' : 'new', row.skillKey ?? null);
     if (row.carry) {
-      // 無法判定能力的舊快照保持原題次，避免每天製造新的未知身份；不推測已完成。
-      if (identity(row, ctx.lang).startsWith('entry:')) entry.entryId = row.entryId;
+      // 跨日只是搬動未完成題次，不是新增題次；穩定 ID 可連結首次 legacy 到後續能力。
+      entry.entryId = row.entryId;
       entry.questionSnapshot = clone(row.questionSnapshot);
       entry.introducedAt = row.introducedAt;
     }

@@ -148,7 +148,7 @@ test('D09 未提交或無提示答對不憑空補強；reinforcement 不再遞�
 test('D02/D11 純續答只根據持久完成狀態前進，不保存半填答案', () => {
   const data = fixture(3);
   data.plan.sessionId = 's';
-  for (const e of data.plan.orderedEntries.slice(0, 2)) Object.assign(e, { status: 'completed', reviewId: `${e.entryId}:r`, questionSnapshot: { sourceId: e.sourceId } });
+  for (const e of data.plan.orderedEntries.slice(0, 2)) Object.assign(e, { status: 'completed', reviewId: `${e.entryId}:r`, introducedAt: now, questionSnapshot: { sourceId: e.sourceId } });
   const resumed = resumeStudySession(data);
   assert.equal(resumed.done, false);
   assert.equal(resumed.index, 2);
@@ -159,7 +159,7 @@ test('D02/D11 純續答只根據持久完成狀態前進，不保存半填答案
 test('D14 有 skillKey 時不把產出題默換成辨認題，須提供匹配的既定題面', () => {
   const data = fixture(1);
   const e = data.plan.orderedEntries[0];
-  const state = { skillKey: `${e.sourceId}:production:zh-ja`, sourceId: e.sourceId, ability: 'production', direction: 'zh-ja',
+  const state = { skillKey: `${e.sourceId}:production:zh2target`, sourceId: e.sourceId, ability: 'production', direction: 'zh2target',
     legacySummary: null, schedulerName: 'leitner', schedulerVersion: '1', schedulerState: { box: 1 }, due: now, lastEligibleReviewAt: null, learningStatus: 'review' };
   e.kind = 'review'; e.skillKey = state.skillKey;
   const itemStates = { [state.skillKey]: state };
@@ -175,7 +175,7 @@ test('D14 有 skillKey 時不把產出題默換成辨認題，須提供匹配的
 test('D14 辨認反向 due 使用 state 的實際方向；拒絕錯 source／能力的外來題面', () => {
   const data = fixture(1);
   const e = data.plan.orderedEntries[0];
-  const state = { skillKey: `${e.sourceId}:recognition:zh-ja`, sourceId: e.sourceId, ability: 'recognition', direction: 'zh-ja',
+  const state = { skillKey: `${e.sourceId}:recognition:zh2target`, sourceId: e.sourceId, ability: 'recognition', direction: 'zh2target',
     legacySummary: null, schedulerName: 'leitner', schedulerVersion: '1', schedulerState: { box: 1 }, due: now, lastEligibleReviewAt: null, learningStatus: 'review' };
   e.kind = 'review'; e.skillKey = state.skillKey;
   const itemStates = { [state.skillKey]: state };
@@ -206,7 +206,7 @@ test('D02 session 的順序或保存題面不符時拒絕，不假稱可恢復',
 test('D09 補強結果的整體 learning 關聯通過 schema，只有原題具有已提交事件', () => {
   const data = fixture(1);
   const e = data.plan.orderedEntries[0];
-  const state = { skillKey: `${e.sourceId}:recognition:ja-zh`, sourceId: e.sourceId, ability: 'recognition', direction: 'ja-zh',
+  const state = { skillKey: `${e.sourceId}:recognition:target2zh`, sourceId: e.sourceId, ability: 'recognition', direction: 'target2zh',
     legacySummary: null, schedulerName: 'leitner', schedulerVersion: '1', schedulerState: { box: 1 }, due: now, lastEligibleReviewAt: null, learningStatus: 'review' };
   e.kind = 'review'; e.skillKey = state.skillKey;
   const prepared = prep(data, 0, { itemStates: { [state.skillKey]: state } });

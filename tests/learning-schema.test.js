@@ -86,8 +86,8 @@ test('F01 typed errors expose stable code and details', () => {
 
 function populated() {
   const value = fresh();
-  const skillKey = 'ja-w-001:recognition:ja-zh';
-  const state = { skillKey, sourceId: 'ja-w-001', ability: 'recognition', direction: 'ja-zh', legacySummary: legacy(), schedulerName: 'legacy', schedulerVersion: '1', schedulerState: null, due: now + 60000, lastEligibleReviewAt: null, learningStatus: 'review' };
+  const skillKey = 'ja-w-001:recognition:target2zh';
+  const state = { skillKey, sourceId: 'ja-w-001', ability: 'recognition', direction: 'target2zh', legacySummary: legacy(), schedulerName: 'legacy', schedulerVersion: '1', schedulerState: null, due: now + 60000, lastEligibleReviewAt: null, learningStatus: 'review' };
   const entry = { entryId: 'entry-1', sourceId: 'ja-w-001', skillKey, kind: 'review', status: 'completed', questionSnapshot: { sourceId: 'ja-w-001', prompt: '假資料', options: ['一', '二'] }, reviewId: 'review-1', introducedAt: null };
   value.itemStates = { [skillKey]: state };
   value.reviewEvents = { 'review-1': { reviewId: 'review-1', sessionId: 'session-1', planId: 'plan-1', entryId: 'entry-1', sourceId: 'ja-w-001', skillKey, answeredAt: now, correct: true, assistance: { hintUsed: false, retry: false, replayCount: 0 }, responseMs: null, questionMode: 'choice', scheduleEligible: false, schedulerVersion: '1', before: null, after: { due: now + 60000 } } };

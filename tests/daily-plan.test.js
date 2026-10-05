@@ -10,7 +10,7 @@ const args = (extra = {}) => ({ words, localDate: '2026-10-05', timeZone: 'Asia/
 const ids = (plan) => plan.orderedEntries.map(e => e.sourceId);
 const progressOf = (count) => ({ schemaVersion: 1, items: Object.fromEntries(words.slice(0, count).map((w, i) => [w.id, { n: 1, w: 0, due: now - 1000 + i, last: now - 5000 }])) });
 const ledger = (startedSourceIds = []) => ({ ledgerId: '2026-10-05:ja', localDate: '2026-10-05', timeZone: 'Asia/Taipei', lang: 'ja', startedSourceIds, excludedSourceIds: [], newLimit: 5, updatedAt: now });
-const state = (id, ability, due) => ({ skillKey: `${id}:${ability}:ja-zh`, sourceId: id, ability, direction: 'ja-zh', legacySummary: null, schedulerName: 'leitner', schedulerVersion: '1', schedulerState: { box: 1 }, due, lastEligibleReviewAt: null, learningStatus: 'review' });
+const state = (id, ability, due) => ({ skillKey: `${id}:${ability}:target2zh`, sourceId: id, ability, direction: 'target2zh', legacySummary: null, schedulerName: 'leitner', schedulerVersion: '1', schedulerState: { box: 1 }, due, lastEligibleReviewAt: null, learningStatus: 'review' });
 
 test('D01 首日 N5 只取穩定 ID 前五字、零複習，數字 level1 正規化且符合 schema', () => {
   const result = buildDailyPlan(args({ words: [...words].reverse(), level: 1, rng: () => 0.99 }));

@@ -14,6 +14,7 @@ import { PROGRESS_KEY } from '../core/progress.js';
 import { PREFS_KEY, PREFS_IMPORTED_EVENT } from './prefs.js';
 import { exportPayload, parseBackup, countOf, SECTIONS } from '../core/backup.js';
 import { encodeBackupCode, decodeBackupCode, codeSizeHint } from '../core/backup-code.js';
+import { BACKUP_JSON_MAX_BYTES } from '../core/backup-limits.js';
 
 /**
  * 區塊名稱對應的 localStorage 鑰匙。
@@ -91,6 +92,8 @@ export function initBackupPanel(mount) {
   /* 解析完、等使用者確認的那一份。確認之前絕不寫入 */
   let pending = null;
   let message = '';
+  let importGeneration = 0;
+  let readingBackup = false;
   /**
    * 代碼框裡的文字。複製時是我們產出的代碼，匯入時是使用者貼進來的。
    * 存在狀態裡而不是只留在 DOM——整塊是 innerHTML 重建的，
@@ -136,6 +139,37 @@ export function initBackupPanel(mount) {
   }
 
   const focusInside = () => mount.contains(document.activeElement);
+
+  /**
+   * 檔案與代碼共用同一輪讀取識別。開始新讀取立即撤下舊預覽，
+   * 取消／匯入也換代，已失效的非同步結果不能重畫或搶焦點。
+   */
+  function beginImportRead() {
+    const generation = ++importGeneration;
+    pending = null;
+    readingBackup = true;
+    message = '正在讀取備份，尚未變更任何紀錄。';
+    draw();
+    return generation;
+  }
+
+  function failImportRead(generation, why, selector, wasInside) {
+    if (generation !== importGeneration) return;
+    readingBackup = false;
+    pending = null;
+    message = why;
+    draw();
+    refocus(selector, wasInside);
+  }
+
+  function finishImportRead(generation, result, wasInside) {
+    if (generation !== importGeneration) return;
+    readingBackup = false;
+    pending = result;
+    message = '';
+    draw();
+    refocus('[data-confirm]', wasInside);
+  }
 
   function draw(known) {
     /* 呼叫端剛讀過就不要再讀一次——collect() 要解析最大近 900KB 的紀錄 */
@@ -210,7 +244,9 @@ export function initBackupPanel(mount) {
                    <button class="btn ghost sm" type="button" data-cancel>取消</button>
                  </div>
                </div>`
-            : ''
+            : readingBackup
+              ? '<div class="backup-actions"><button class="btn ghost sm" type="button" data-cancel>取消讀取</button></div>'
+              : ''
         }
 
       </div>`;
@@ -227,9 +263,13 @@ export function initBackupPanel(mount) {
       codeText = event.currentTarget.value;
     });
     mount.querySelector('[data-file]')?.addEventListener('change', pickFile);
-    mount.querySelector('[data-confirm]')?.addEventListener('click', doImport);
+    const previewGeneration = importGeneration;
+    mount.querySelector('[data-confirm]')?.addEventListener('click', () => doImport(previewGeneration));
     mount.querySelector('[data-cancel]')?.addEventListener('click', () => {
+      if (previewGeneration !== importGeneration) return;
       const wasInside = focusInside();
+      importGeneration++;
+      readingBackup = false;
       pending = null;
       message = '';
       draw();
@@ -385,7 +425,7 @@ export function initBackupPanel(mount) {
      * 蓋掉之後預覽還在、框裡卻是另一份資料，畫面自相矛盾；他若按取消，
      * 原本那串就得回訊息軟體重新複製。pending 開著時代碼只進剪貼簿。
      */
-    const boxBusy = pending !== null;
+    const boxBusy = pending !== null || readingBackup;
     if (!boxBusy) codeText = code;
 
     message = copied
@@ -421,33 +461,27 @@ export function initBackupPanel(mount) {
     const wasInside = focusInside();
     const box = mount.querySelector('[data-code]');
     codeText = box ? box.value : codeText;
-
-    const fail = (why) => {
-      pending = null;
-      message = why;
-      draw();
-      refocus('[data-code]', wasInside);
-    };
+    const code = codeText;
+    const generation = beginImportRead();
+    const fail = why => failImportRead(generation, why, '[data-code]', wasInside);
 
     let text;
     try {
-      text = await decodeBackupCode(codeText);
+      text = await decodeBackupCode(code);
     } catch (error) {
       /* decodeBackupCode 的訊息都是寫給使用者看的 */
       fail(error?.message || '代碼讀不出來。');
       return;
     }
 
+    if (generation !== importGeneration) return;
     const result = parseBackup(text);
     if (!result.ok) {
       /* parseBackup 的措辭是寫給檔案的；使用者貼的是代碼，把「檔」換掉才對得上他做的事 */
       fail(result.errors.join(' ').replace(/JSON 檔/g, '代碼內容').replace(/備份檔/g, '備份代碼'));
       return;
     }
-    pending = result;
-    message = '';
-    draw();
-    refocus('[data-confirm]', wasInside);
+    finishImportRead(generation, result, wasInside);
   }
 
   function doExport() {
@@ -497,14 +531,12 @@ export function initBackupPanel(mount) {
 
     /* 焦點現在就在那顆選檔按鈕上（是它觸發了這個事件），重繪會把它銷毀 */
     const wasInside = focusInside();
-
-    const fail = (why) => {
-      pending = null;
-      message = why;
-      draw();
-      /* 失敗時焦點回到選檔鍵，使用者可以直接再選一次 */
-      refocus('[data-file]', wasInside);
-    };
+    const generation = beginImportRead();
+    const fail = why => failImportRead(generation, why, '[data-file]', wasInside);
+    if (file.size > BACKUP_JSON_MAX_BYTES) {
+      fail('備份資料超過 10 MiB 上限，沒有動任何資料。');
+      return;
+    }
 
     let text;
     try {
@@ -514,20 +546,19 @@ export function initBackupPanel(mount) {
       return;
     }
 
+    if (generation !== importGeneration) return;
     const result = parseBackup(text);
     if (!result.ok) {
       fail(result.errors.join(' '));
       return;
     }
-    pending = result;
-    message = '';
-    draw();
-    /* 成功時焦點推進到剛冒出來的確認鍵，這是流程的下一步 */
-    refocus('[data-confirm]', wasInside);
+    finishImportRead(generation, result, wasInside);
   }
 
-  function doImport() {
-    if (!pending) return;
+  function doImport(generation) {
+    if (generation !== importGeneration || !pending) return;
+    importGeneration++;
+    readingBackup = false;
     const store = storage();
     const done = [];
     const failed = [];

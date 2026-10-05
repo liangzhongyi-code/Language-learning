@@ -69,6 +69,8 @@
 - Rationale：scope 保存續答、日帳本防換級別刷額度。
 - Consequences：只替換未開始項目；新到期另列下一段，不推翻已完成目標。新字首版按級別內穩定順序，非字頻排名。
 
+2026-10-05 實作守衛補充：跨日 carry 保留同一 entryId，不替舊摘要重造題次。新字首次 prepare 要依當下已解析學習日拒絕過期 plan；有 pending 改區政策時注入 studyDayState，沿用 resolveStudyDay 的單調日界，不能只比系統日期。已保存的題面可跨日續答且不再 claim，見 [013 修復紀錄](../../../docs/logic-changes/2026-10-05-013-review-regressions.md)。固定學習日不等於所有排程都使用該時區：A adapter 暫保留既有 srs.dueAfter 裝置當地時間政策，B／APP 接線須另驗，不重算舊 due。
+
 ### TD4：能力與排程資格
 - Context：看漢字猜對、同日多點幾次不代表長期熟練。
 - Options：只有 sourceId（混算）；每 UI 選項一張卡（過度碎裂）；能力 key＋上下文（較明確）。

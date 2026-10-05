@@ -4,6 +4,7 @@
  */
 import { canonicalJson, checkOperation, operationReceipt } from '../../core/learning-operations.js';
 import { migrateLegacy } from '../../core/learning-migration.js';
+import { emptyLearning, validateLearningRecord } from '../../core/learning-schema.js';
 
 const DB_VERSION = 1;
 const SCHEMA_VERSION = 2;
@@ -38,10 +39,12 @@ function storageFailure(error) {
 }
 
 function validateMeta(meta) {
-  if (!meta || meta.schemaVersion !== SCHEMA_VERSION || !Number.isSafeInteger(meta.revision) ||
-      meta.revision < 0 || typeof meta.dataEpoch !== 'string' || !meta.dataEpoch ||
-      !['pending', 'complete', 'cleared'].includes(meta.migrationStatus)) {
-    throw failure('UNSUPPORTED_SCHEMA', '學習資料版本或結構不正確，已停止寫入，請保留原資料。');
+  const checked = validateLearningRecord('meta', meta);
+  if (!checked.ok) {
+    const code = meta?.schemaVersion === SCHEMA_VERSION &&
+      checked.errors.some(error => error.code === 'UNSUPPORTED_VERSION')
+      ? 'UNSUPPORTED_VERSION' : 'UNSUPPORTED_SCHEMA';
+    throw failure(code, '學習資料版本或結構不正確，已停止寫入，請保留原資料。');
   }
   return meta;
 }
@@ -316,10 +319,18 @@ export function createWebRepository({
               if (decision.replay) { result = decision.result; return; }
               const next = { ...meta, revision: meta.revision + 1 };
               if (clear) {
+                /**
+                 * 固定收藏簿與預設政策屬合法空資料的一部分；與刪除一起提交，
+                 * 不依靠 cleared 之後永遠不會再執行的舊資料遷移來補回。
+                 */
+                const empty = emptyLearning({ now: now(), timeZone: meta.timeZone, dataEpoch: epoch() });
                 for (const store of COLLECTIONS) tx.objectStore(store).clear();
-                next.dataEpoch = epoch();
+                next.dataEpoch = empty.meta.dataEpoch;
                 next.migrationStatus = 'cleared';
-                next.historyStartedAt = now();
+                next.historyStartedAt = empty.meta.historyStartedAt;
+                tx.objectStore('books').put(empty.library.books.favorites, 'favorites');
+                tx.objectStore('achievements').put({ policyVersion: empty.achievements.policyVersion }, 'policy');
+                tx.objectStore('reminders').put(empty.reminderPreferences, 'preferences');
               } else {
                 for (const change of changes) {
                   const store = tx.objectStore(change.store);
@@ -329,7 +340,11 @@ export function createWebRepository({
               }
               const receipt = operationReceipt(operation, payloadHash, next.revision);
               tx.objectStore('meta').put(next, 'current');
-              tx.objectStore('operations').put(receipt, receiptKey);
+              /**
+               * 清除操作跨到新 epoch；舊 epoch 的收據只能回傳，不能寫回新世代。
+               * 舊頁重送依既有 STALE_EPOCH 規則拒絕，不沿用跨世代收據。
+               */
+              if (!clear) tx.objectStore('operations').put(receipt, receiptKey);
               result = receipt.result;
               if (beforeCommit) {
                 const hook = beforeCommit();

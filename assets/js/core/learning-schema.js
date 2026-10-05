@@ -4,6 +4,7 @@
  */
 import { LearningError } from './learning-errors.js';
 import { isStudyTimeZone } from './study-zone.js';
+import { skillKeyFor } from './learning-identity.js';
 
 export const LEARNING_SCHEMA_VERSION = 2;
 export const LEARNING_META_VERSION = 2;
@@ -154,6 +155,11 @@ const itemState = withRules(shape({ skillKey: id, sourceId: id,
   direction: id, legacySummary: nullable(legacyRecord), schedulerName: choice('legacy', 'leitner', 'fsrs'),
   schedulerVersion: id, schedulerState: nullable(jsonObject), due: timestamp,
   lastEligibleReviewAt: nullable(timestamp), learningStatus: choice('introduced', 'learning', 'review', 'mastered') }), (v, p, e) => {
+  try {
+    if (v.skillKey !== skillKeyFor(v)) issue(e, p, '能力 key 與來源、能力或方向不一致。');
+  } catch {
+    issue(e, p, '能力狀態必須使用合法來源與 canonical 出題方向。');
+  }
   if (v.schedulerName === 'legacy' && (v.legacySummary === null || v.schedulerState !== null)) {
     issue(e, p, 'legacy 排程須保留摘要且尚無新排程狀態。');
   }
@@ -171,6 +177,8 @@ const entry = withRules(shape({ entryId: id, sourceId: id, skillKey: nullable(id
   questionSnapshot: nullable(snapshot), reviewId: nullable(id), introducedAt: nullable(timestamp) }), (v, p, e) => {
   if ((v.status === 'completed') !== (v.reviewId !== null)) issue(e, p, '已完成項目必須且只能具有 reviewId。');
   if (['prepared', 'completed'].includes(v.status) && v.questionSnapshot === null) issue(e, p, '已開始項目必須有保存的題面。');
+  if (v.kind === 'new' && ['prepared', 'completed'].includes(v.status) && v.introducedAt === null) issue(e, p, '已開始新字必須有介紹時間及日配額 claim。');
+  if (v.kind === 'new' && ['pending', 'skipped'].includes(v.status) && v.introducedAt !== null) issue(e, p, '尚未開始或略過的新字不可已有介紹時間。');
   if (v.questionSnapshot && v.questionSnapshot.sourceId !== v.sourceId) issue(e, p, '題面 sourceId 與項目不一致。');
 });
 const dailyPlan = withRules(shape({ planId: id, sessionId: nullable(id), localDate: date, timeZone: zone, lang,
