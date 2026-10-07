@@ -361,6 +361,17 @@ export function initLearningBackupPanel(mount) {
 
   const api = {
     previewFrom: (readText, source) => previewFrom(readText, source),
+    /**
+     * 來源失效（例如 Google 切換帳號）時撤下該來源的預覽；確認中的交易不受影響。
+     */
+    dismissPreview(source) {
+      if (!preview || preview.source !== source || !controller) return;
+      try { controller.cancel(); } catch { return; }
+      generation++;
+      preview = null;
+      message = '帳號已變更，來自雲端的預覽已撤下。';
+      draw();
+    },
     async refresh() { await loadCounts(); draw(); },
     get store() { return store; },
   };

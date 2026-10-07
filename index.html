@@ -61,6 +61,7 @@
     <h2>備份與還原</h2>
   </div>
   <div id="backup"></div>
+  <div id="google-backup" class="stack-gap"></div>
 
   <div class="actions" style="margin-top:28px">
     <a class="btn ghost" href="./help.html">第一次來？看使用教學 →</a>
@@ -77,8 +78,10 @@
 <script type="module">
   import { renderRootNav } from './assets/js/ui/nav.js';
   import { initLearningBackupPanel } from './assets/js/ui/learning-backup-view.js';
+  import { initGoogleBackupPanel } from './assets/js/ui/google-backup-view.js';
   renderRootNav('home');
-  initLearningBackupPanel(document.getElementById('backup'));
+  const backupPanel = initLearningBackupPanel(document.getElementById('backup'));
+  initGoogleBackupPanel(document.getElementById('google-backup'), backupPanel);
 </script>
 </body>
 </html>
