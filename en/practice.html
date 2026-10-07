@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英文拼寫與聽力練習 · 語言學習</title>
+<script src="../assets/js/ui/theme-boot.js"></script>
+<link rel="stylesheet" href="../assets/css/theme.css">
+</head>
+<body data-lang="en" data-page="practice">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>英文拼寫與聽力練習</h1>
+    <p>拼寫、聽力、聽寫、拼組、句子重組與語境詞性。每種能力分開記錄，有提示或重試的作答不會被當成自由產出。</p>
+  </div>
+  <div id="notice"></div>
+  <div id="app"></div>
+</main>
+
+<footer class="wrap">
+  <p class="foot">每題作答後立即保存；聽力需要裝置的離線語音，沒有語音時不會計錯。</p>
+</footer>
+
+<script type="module">
+  import { renderNav } from '../assets/js/ui/nav.js';
+  import { initPracticePage } from '../assets/js/ui/practice-view.js';
+  import { words } from '../assets/js/data/en/words.js';
+  import { practice } from '../assets/js/data/en/practice.js';
+  import { sentences } from '../assets/js/data/en/sentences.js';
+
+  renderNav();
+  initPracticePage({ lang: 'en', words, practice, sentences, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
+</script>
+</body>
+</html>

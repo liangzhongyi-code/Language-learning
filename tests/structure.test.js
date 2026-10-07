@@ -52,13 +52,16 @@ test('來源掃描只進入頁面與 assets 白名單，不碰工具目錄；來
   assert.throws(() => collect(fixtureRoot, '.js', [], { ...fs, readdirSync() { throw new Error('source denied'); } }, fixtureRoot), /source denied/);
 });
 
-test('13 個頁面都存在', () => {
+test('21 個頁面都存在', () => {
+  /* 每日學習、練習、單字簿、歷程兩種語言各一頁（add-offline-study-suite） */
+  const study = ['daily', 'practice', 'library', 'history'];
   const expected = [
     'index.html',
     'help.html',
     'en/index.html', 'en/alphabet.html', 'en/vocabulary.html', 'en/grammar.html', 'en/quiz.html',
     /* guide 只有日文有——英文對中文使用者沒有「三套文字混著寫」這種要先解釋的門檻 */
     'ja/index.html', 'ja/guide.html', 'ja/kana.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/quiz.html',
+    ...study.flatMap((page) => [`en/${page}.html`, `ja/${page}.html`]),
   ];
   for (const page of expected) {
     assert.ok(existsSync(join(ROOT, page)), `缺少頁面：${page}`);

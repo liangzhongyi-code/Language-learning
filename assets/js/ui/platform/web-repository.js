@@ -276,19 +276,21 @@ export function createWebRepository({
     });
   }
 
-  async function transact(input, clear = false) {
+  async function transact(input, clear = false, { large = false } = {}) {
     requireCrypto();
     /**
      * 複製並雜湊固定內容在 await 前後都不讀呼叫者可變物件。
      * 不能在 IndexedDB 活動交易內 await crypto，否則交易可能提前自動提交。
+     * large 只給整批匯入使用：放寬筆數與大小上限，但仍是單一交易、全有全無。
      */
-    const operation = JSON.parse(canonicalJson(input));
+    const maxBytes = large ? 24 * 1024 * 1024 : 1024 * 1024;
+    const operation = JSON.parse(canonicalJson(input, { maxBytes }));
     if (clear) operation.payload = { kind: 'clear-learning' };
-    const payloadBytes = new TextEncoder().encode(canonicalJson(operation.payload));
+    const payloadBytes = new TextEncoder().encode(canonicalJson(operation.payload, { maxBytes }));
     const digest = await cryptoApi.subtle.digest('SHA-256', payloadBytes);
     const payloadHash = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     const changes = clear ? [] : operation.payload?.changes;
-    if (!clear && (!Array.isArray(changes) || !changes.length || changes.length > 1000)) {
+    if (!clear && (!Array.isArray(changes) || !changes.length || changes.length > (large ? 60000 : 1000))) {
       throw failure('INVALID_OPERATION', '保存內容沒有合法的變更。');
     }
     for (const change of changes) {
@@ -381,6 +383,31 @@ export function createWebRepository({
         catch (error) { problem = storageFailure(error); tx.abort(); }
       };
       for (const store of stores) readStore(tx, store, (values) => { rows[store] = values; });
+    });
+  }
+
+  /**
+   * 以索引精確查詢一組列（例如同一 session 的事件、同一來源的能力），不掃描整個集合。
+   */
+  async function getAllByIndex(store, index, key) {
+    if (!COLLECTIONS.includes(store) || !(INDEXES[store] || []).includes(index)) {
+      throw failure('INVALID_QUERY', '讀取資料的範圍不正確。');
+    }
+    const db = await open();
+    return new Promise((resolveRead, reject) => {
+      const tx = db.transaction(store, 'readonly');
+      const source = tx.objectStore(store).index(index);
+      let keys;
+      let values;
+      let range;
+      try { range = IDBKeyRange.only(key); } catch { reject(failure('INVALID_QUERY', '查詢條件不正確。')); return; }
+      const keysRequest = source.getAllKeys(range);
+      keysRequest.onsuccess = () => { keys = keysRequest.result; };
+      const valuesRequest = source.getAll(range);
+      valuesRequest.onsuccess = () => { values = valuesRequest.result; };
+      tx.oncomplete = () => resolveRead(Object.fromEntries(keys.map((primary, i) => [primary, values[i]])));
+      tx.onabort = () => reject(storageFailure(tx.error));
+      tx.onerror = () => {};
     });
   }
 
@@ -484,8 +511,8 @@ export function createWebRepository({
   }
 
   return {
-    ready, get, list, readAll, migrateFromLegacy, restoreLearning,
-    commit: (operation) => transact(operation),
+    ready, get, list, readAll, getAllByIndex, migrateFromLegacy, restoreLearning,
+    commit: (operation, options) => transact(operation, false, options),
     clearLearning: (operation) => transact(operation, true),
     close() {
       if (connection) connection.close();

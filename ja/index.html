@@ -15,9 +15,15 @@
     <p>沒學過日文就從入門手冊開始；接著五十音、單字、句型，再用選題練習驗收。</p>
   </div>
 
+  <div id="today"></div>
   <div id="stats"></div>
 
   <div class="grid-cards">
+    <a class="entry" href="./daily.html">
+      <div class="icon">📅</div>
+      <h3>今日學習</h3>
+      <p>每天固定一份清單：先複習到期的字，再學新字。逐題保存，隨時接著做。</p>
+    </a>
     <a class="entry" href="./guide.html">
       <div class="icon">🧭</div>
       <h3>入門手冊</h3>
@@ -43,6 +49,21 @@
       <h3>選題測驗</h3>
       <p>選擇題、填空、情境與閱讀六種題型，每局結束檢討錯題。</p>
     </a>
+    <a class="entry" href="./practice.html">
+      <div class="icon">⌨️</div>
+      <h3>假名輸入與聽力練習</h3>
+      <p>拼寫、假名輸入、聽力、聽寫、假名拼組、句子重組與語境詞性（目前提供 N5）。</p>
+    </a>
+    <a class="entry" href="./library.html">
+      <div class="icon">📚</div>
+      <h3>單字簿</h3>
+      <p>收藏、自訂單字簿與筆記，可以匯出分享，也能只練某一本。</p>
+    </a>
+    <a class="entry" href="./history.html">
+      <div class="icon">🏅</div>
+      <h3>學習歷程</h3>
+      <p>學習日曆、連續天數與成就，只算真正作答過的題目。</p>
+    </a>
   </div>
 </main>
 
@@ -56,10 +77,12 @@
 <script type="module">
   import { renderNav } from '../assets/js/ui/nav.js';
   import { renderLangStats } from '../assets/js/ui/stats-view.js';
+  import { renderTodayCard } from '../assets/js/ui/today-card.js';
   import { words } from '../assets/js/data/ja/words.js';
   import { sentences } from '../assets/js/data/ja/sentences.js';
 
   renderNav();
+  renderTodayCard(document.getElementById('today'), { lang: 'ja', words });
   renderLangStats(document.getElementById('stats'), 'ja');
 
   /* 題庫筆數直接從資料檔數，寫死的數字遲早會跟實際內容脫節 */

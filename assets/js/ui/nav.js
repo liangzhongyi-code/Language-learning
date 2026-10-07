@@ -16,10 +16,14 @@ import { appearanceHtml, bindAppearance } from './appearance.js';
 const PAGES = {
   en: [
     { key: 'home', file: 'index.html', label: '首頁' },
+    { key: 'daily', file: 'daily.html', label: '今日' },
     { key: 'pron', file: 'alphabet.html', label: '字母發音' },
     { key: 'vocab', file: 'vocabulary.html', label: '單字' },
     { key: 'grammar', file: 'grammar.html', label: '文法' },
     { key: 'quiz', file: 'quiz.html', label: '測驗' },
+    { key: 'practice', file: 'practice.html', label: '練習' },
+    { key: 'library', file: 'library.html', label: '單字簿' },
+    { key: 'history', file: 'history.html', label: '歷程' },
   ],
   ja: [
     { key: 'home', file: 'index.html', label: '首頁' },
@@ -30,10 +34,14 @@ const PAGES = {
      * 切語言時 key 找不到對應會退回對方的首頁，這條路 renderNav 已經處理了。
      */
     { key: 'guide', file: 'guide.html', label: '入門' },
+    { key: 'daily', file: 'daily.html', label: '今日' },
     { key: 'pron', file: 'kana.html', label: '五十音' },
     { key: 'vocab', file: 'vocabulary.html', label: '單字' },
     { key: 'grammar', file: 'grammar.html', label: '文法' },
     { key: 'quiz', file: 'quiz.html', label: '測驗' },
+    { key: 'practice', file: 'practice.html', label: '練習' },
+    { key: 'library', file: 'library.html', label: '單字簿' },
+    { key: 'history', file: 'history.html', label: '歷程' },
   ],
 };
 

@@ -175,6 +175,41 @@ export function speak(text, lang, { el } = {}) {
 }
 
 /**
+ * 這台裝置有沒有該語言的本機（離線）語音。聽力題只用本機語音，
+ * 不把題目文字默默送到瀏覽器廠商的雲端語音。
+ */
+export function hasOfflineVoiceFor(lang) {
+  if (!isSupported()) return false;
+  return voices.some((v) => v.localService && (v.lang || '').toLowerCase().startsWith(lang.toLowerCase()));
+}
+
+/**
+ * 聽力題專用：只用本機語音朗讀，播放結束 resolve、出錯 reject。
+ * 呼叫端據此區分「播放失敗」與「答錯」，播放失敗不計錯、不消耗題目。
+ */
+export function speakChecked(text, lang) {
+  return new Promise((resolve, reject) => {
+    if (!isSupported()) { reject(Object.assign(new Error('此瀏覽器不支援語音朗讀。'), { code: 'SPEECH_UNSUPPORTED' })); return; }
+    const voice = voices.find((v) => v.localService && (v.lang || '').toLowerCase().startsWith(lang.toLowerCase()));
+    if (!voice) { reject(Object.assign(new Error('找不到離線語音。'), { code: 'SPEECH_NO_OFFLINE_VOICE' })); return; }
+    const content = String(text || '').trim();
+    if (!content) { reject(Object.assign(new Error('沒有可朗讀的內容。'), { code: 'SPEECH_EMPTY' })); return; }
+    cancel();
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.lang = LANG_TAGS[lang] || lang;
+    utterance.voice = voice;
+    utterance.rate = lang === 'ja' ? 0.9 : 0.95;
+    utterance.addEventListener('end', () => resolve({ ok: true }));
+    utterance.addEventListener('error', (event) => {
+      if (currentUtterance !== utterance && event.error === 'interrupted') { resolve({ ok: false, interrupted: true }); return; }
+      reject(Object.assign(new Error('語音播放失敗。'), { code: 'SPEECH_FAILED', detail: event.error }));
+    });
+    currentUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+/**
  * 頁面載入時檢查語音能力並套用降級。
  *
  * 完全不支援 → 在 <html> 掛 no-speech，CSS 會把朗讀按鈕全部藏起來。

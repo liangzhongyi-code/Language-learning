@@ -81,16 +81,22 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
    * build(rows, meta) 回傳 changes；遇到其他分頁先寫入（REVISION_CONFLICT）時重讀重算。
    * 同一 operationId 在衝突重試間沿用：衝突代表前一次沒有落盤，不會產生重複收據。
    */
-  async function commit({ stores, operationId, build }) {
+  async function commit({ stores, operationId, build, load, large = false }) {
     await ready();
     for (let attempt = 0; ; attempt++) {
-      const { meta, rows } = await repository.readAll(stores);
+      /**
+       * 自訂 load 必須先取 meta 再讀資料：之後任何其他寫入都會提高 revision，
+       * 提交時以 REVISION_CONFLICT 被擋下並重算，不會基於過期資料寫入。
+       */
+      const { meta, rows } = load
+        ? await (async () => { const fresh = await repository.ready(); return { meta: fresh, rows: await load(repository, fresh) }; })()
+        : await repository.readAll(stores);
       const built = build(rows, meta);
       const changes = Array.isArray(built) ? built : built?.changes;
       if (!changes || !changes.length) return { revision: meta.revision, unchanged: true, value: built?.value };
       try {
         const result = await repository.commit({ operationId, epoch: meta.dataEpoch,
-          expectedRevision: meta.revision, payload: { changes } });
+          expectedRevision: meta.revision, payload: { changes } }, { large });
         for (const listener of listeners) listener(result);
         return { ...result, value: built?.value };
       } catch (error) {

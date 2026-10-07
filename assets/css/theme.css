@@ -1698,3 +1698,95 @@ html.has-keyboard .cz-word .key { display: inline-flex; }
   }
   .topbar, body[data-page='root'] .entry, body[data-page='home'] .entry { background: var(--surface); }
 }
+
+/* ── 每日學習、單字簿、練習、歷程共用 ───────────────────────── */
+
+.setting-label { display: block; font-size: 13px; color: var(--dim); margin-bottom: var(--size-2); }
+.hint { color: var(--mute); font-size: 13.5px; }
+.daily-title { font-size: 18px; margin: var(--size-4) 0 var(--size-2); }
+.daily-summary { color: var(--dim); font-size: 14px; margin: 0 0 var(--size-3); line-height: 1.7; }
+.daily-summary b { color: var(--accent); }
+.daily-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--size-2);
+}
+.daily-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.daily-item.is-completed { border-color: var(--ok); }
+.daily-item.is-prepared { border-color: var(--accent); }
+.daily-kind, .daily-status { font-size: 12px; color: var(--mute); }
+.daily-word { font-size: 15px; color: var(--text); overflow-wrap: anywhere; }
+.daily-meaning { font-size: 18px; margin: var(--size-3) 0; color: var(--text); }
+.daily-examples { margin: 0 0 var(--size-3); padding-left: 20px; color: var(--dim); font-size: 14px; line-height: 1.7; }
+.opt.is-picked { border-color: var(--accent); }
+.backup-choose { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--size-2) var(--size-3); margin: 0 0 var(--size-2); }
+.backup-choose legend { font-size: 13px; color: var(--dim); padding: 0 4px; }
+.backup-choose label { display: flex; gap: var(--size-2); align-items: center; min-height: 44px; font-size: 14px; }
+.backup-points { margin-top: var(--size-4); padding-top: var(--size-3); border-top: 1px solid var(--border); font-size: 13.5px; }
+.backup-points ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--size-2); }
+.backup-points li { display: flex; flex-wrap: wrap; gap: var(--size-2); align-items: center; color: var(--dim); }
+.today-card { margin-bottom: var(--size-4); }
+.today-card .daily-summary { margin: 0; }
+.field-row { display: flex; flex-wrap: wrap; gap: var(--size-2); align-items: center; }
+.text-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.text-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tiles { display: flex; flex-wrap: wrap; gap: var(--size-2); margin: var(--size-3) 0; min-height: 48px; }
+.tile {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.tile:hover:not(:disabled) { border-color: var(--accent); }
+.tile:disabled { opacity: .45; cursor: default; }
+.tiles.is-answer { border-bottom: 2px dashed var(--border-strong); padding-bottom: var(--size-2); }
+.book-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--size-2); }
+.book-list li { display: flex; flex-wrap: wrap; gap: var(--size-2); align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.book-list .book-name { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.note-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); font-size: 14px; margin: var(--size-1) 0 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 420px; }
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--mute);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-cell.is-active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.badge-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--size-2); }
+.badge-list li { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--mute); font-size: 13.5px; }
+.badge-list li.is-unlocked { border-color: var(--ok); color: var(--text); }
+.badge-list b { display: block; font-size: 14.5px; }
