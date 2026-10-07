@@ -5,6 +5,7 @@
 import { canonicalJson, checkOperation, operationReceipt } from '../../core/learning-operations.js';
 import { migrateLegacy } from '../../core/learning-migration.js';
 import { emptyLearning, validateLearningRecord } from '../../core/learning-schema.js';
+import { PORTABLE_STORES, portableFromRows, rowsFromPortable } from '../../core/learning-snapshot.js';
 
 const DB_VERSION = 1;
 const SCHEMA_VERSION = 2;
@@ -357,8 +358,133 @@ export function createWebRepository({
     });
   }
 
+  /**
+   * 同一個唯讀交易讀取多個集合，回傳 { 集合: { key: value } } 與 meta；
+   * 首頁摘要、匯出及每日計畫都用這份一致快照，不拼接不同時間點的讀取。
+   */
+  async function readAll(stores) {
+    if (!Array.isArray(stores) || stores.some((store) => !COLLECTIONS.includes(store))) {
+      throw failure('INVALID_STORE', '不支援的資料集合。');
+    }
+    const db = await open();
+    return new Promise((resolveRead, reject) => {
+      const tx = db.transaction(['meta', ...stores], 'readonly');
+      const rows = {};
+      let meta;
+      let problem;
+      tx.oncomplete = () => resolveRead({ meta, rows });
+      tx.onabort = () => reject(problem || storageFailure(tx.error));
+      tx.onerror = () => {};
+      const metaRequest = tx.objectStore('meta').get('current');
+      metaRequest.onsuccess = () => {
+        try { meta = validateMeta(metaRequest.result); }
+        catch (error) { problem = storageFailure(error); tx.abort(); }
+      };
+      for (const store of stores) readStore(tx, store, (values) => { rows[store] = values; });
+    });
+  }
+
+  function readStore(tx, store, done) {
+    const keysRequest = tx.objectStore(store).getAllKeys();
+    keysRequest.onsuccess = () => {
+      const valuesRequest = tx.objectStore(store).getAll();
+      valuesRequest.onsuccess = () => {
+        const values = {};
+        keysRequest.result.forEach((key, i) => { values[key] = valuesRequest.result[i]; });
+        done(values);
+      };
+    };
+  }
+
+  /**
+   * 整組替換學習群組：同交易保存目前資料為還原點（最多 3 份）、換新 epoch、寫入新列。
+   * payload 為 { stats, progress, learning } 或 { restorePointKey }；驗證失敗整組不寫。
+   * 舊 epoch 的收據與 outbox 一併清除，舊頁晚到的寫入會被 STALE_EPOCH 擋下。
+   */
+  async function restoreLearning(input, { reason = 'restore' } = {}) {
+    requireCrypto();
+    const maxBytes = 24 * 1024 * 1024;
+    const operation = JSON.parse(canonicalJson(input, { maxBytes }));
+    const payload = operation.payload || {};
+    let incoming = null;
+    if (!Object.prototype.hasOwnProperty.call(payload, 'restorePointKey')) {
+      incoming = rowsFromPortable(payload);
+    } else if (typeof payload.restorePointKey !== 'string' || !payload.restorePointKey.startsWith('rp:')) {
+      throw failure('INVALID_OPERATION', '找不到指定的還原點。');
+    }
+    const payloadBytes = new TextEncoder().encode(canonicalJson(payload, { maxBytes }));
+    const digest = await cryptoApi.subtle.digest('SHA-256', payloadBytes);
+    const payloadHash = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const db = await open();
+    return new Promise((resolveWrite, reject) => {
+      const tx = db.transaction(['meta', ...COLLECTIONS], 'readwrite');
+      let result;
+      let problem;
+      const abort = (error) => { problem = storageFailure(error); tx.abort(); };
+      tx.onabort = () => reject(problem || storageFailure(tx.error));
+      tx.onerror = () => {};
+      tx.oncomplete = () => resolveWrite(result);
+      const metaRequest = tx.objectStore('meta').get('current');
+      metaRequest.onsuccess = () => {
+        try {
+          const meta = validateMeta(metaRequest.result);
+          const receiptKey = operation.epoch + ':' + operation.operationId;
+          const readReceipt = tx.objectStore('operations').get(receiptKey);
+          readReceipt.onsuccess = () => {
+            try {
+              const decision = checkOperation({ meta, operation, payloadHash, receipt: readReceipt.result });
+              if (decision.replay) { result = decision.result; return; }
+              const current = {};
+              let pending = PORTABLE_STORES.length + 1;
+              const finish = () => {
+                if (--pending > 0) return;
+                try { write(meta, current); } catch (error) { abort(error); }
+              };
+              for (const store of PORTABLE_STORES) readStore(tx, store, (values) => { current[store] = values; finish(); });
+              readStore(tx, 'restorePoints', (values) => { current.restorePoints = values; finish(); });
+            } catch (error) { abort(error); }
+          };
+        } catch (error) { abort(error); }
+      };
+      function write(meta, current) {
+        let rows = incoming;
+        let nextTimeZone = payload.learning?.meta?.timeZone;
+        let historyStartedAt = payload.learning?.meta?.historyStartedAt;
+        if (!rows) {
+          const point = current.restorePoints[payload.restorePointKey];
+          if (!point?.data) throw failure('INVALID_OPERATION', '找不到指定的還原點。');
+          rows = rowsFromPortable(point.data);
+          nextTimeZone = point.data.learning.meta.timeZone;
+          historyStartedAt = point.data.learning.meta.historyStartedAt;
+        }
+        const createdAt = now();
+        const snapshot = portableFromRows(current, meta);
+        for (const store of COLLECTIONS) {
+          if (store !== 'restorePoints') tx.objectStore(store).clear();
+        }
+        for (const [store, values] of Object.entries(rows)) {
+          const target = tx.objectStore(store);
+          for (const [key, value] of Object.entries(values)) target.put(value, key);
+        }
+        const pointKey = `rp:${String(createdAt).padStart(16, '0')}:${epoch().slice(0, 8)}`;
+        tx.objectStore('restorePoints').put({ createdAt, reason, data: snapshot }, pointKey);
+        const kept = Object.keys(current.restorePoints).sort().reverse();
+        for (const key of kept.slice(2)) tx.objectStore('restorePoints').delete(key);
+        const next = { ...meta, revision: meta.revision + 1, dataEpoch: epoch(), migrationStatus: 'complete',
+          timeZone: nextTimeZone ?? meta.timeZone, historyStartedAt: historyStartedAt ?? meta.historyStartedAt };
+        validateMeta(next);
+        tx.objectStore('meta').put(next, 'current');
+        result = { revision: next.revision, dataEpoch: next.dataEpoch, restorePointKey: pointKey };
+        if (beforeCommit) {
+          const hook = beforeCommit();
+          if (hook && typeof hook.then === 'function') throw new Error('beforeCommit must be synchronous');
+        }
+      }
+    });
+  }
+
   return {
-    ready, get, list, migrateFromLegacy,
+    ready, get, list, readAll, migrateFromLegacy, restoreLearning,
     commit: (operation) => transact(operation),
     clearLearning: (operation) => transact(operation, true),
     close() {

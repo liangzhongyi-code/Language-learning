@@ -18,13 +18,15 @@ import {
   KANJI_MODES,
   MIN_POOL,
 } from '../core/quiz-engine.js';
-import { summarize, isComplete, applySession, loadStats, saveStats } from '../core/stats.js';
-import { loadProgress, saveProgress, recordSession, weakest, dueIds } from '../core/progress.js';
+import { summarize, isComplete } from '../core/stats.js';
+import { emptyProgress, weakest, dueIds } from '../core/progress.js';
 import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../core/quiz-setup.js';
 import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
 import { levelLabel, levelsOf } from '../data/shared/levels.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
+import { awaitLearningStore } from './storage-gate.js';
+import { newOperationId, storageMessage } from './platform/learning-store.js';
 
 const DIRECTION_LABEL = {
   zh2target: { en: '中翻英', ja: '中翻日' },
@@ -134,17 +136,6 @@ function rubyHtml(pairs, fallback) {
   return `<span class="rb">${inner}</span>`;
 }
 
-/**
- * localStorage 取用一律包起來，被停用時回傳 undefined
- */
-function storage() {
-  try {
-    return window.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
 export function initQuizPage({ lang, words, sentences, scenes = [], readings = [], mount, noticeHost }) {
   /**
    * 設定值。題源可由網址參數預選，供單字頁與文法頁的捷徑使用。
@@ -195,8 +186,18 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   let session = null;
   /* 統計只在進入結果畫面時寫入一次，避免重複累加 */
   let recorded = false;
-  /* 統計寫入失敗要一直提示到離開結果畫面，不能只在第一次渲染時顯示 */
-  let saveFailed = false;
+  /**
+   * 保存狀態：saving／saved／failed／offline。寫入失敗要一直提示到離開結果畫面，
+   * 而且提供以同一個 operationId 重試，不會重複計入同一局。
+   */
+  let saveState = null;
+  let saveError = '';
+  let sessionOperationId = null;
+  /* 交易式學習儲存；未就緒或使用者選擇不保存時為 null */
+  let store = null;
+  let offline = false;
+  /* 範圍膠囊用的逐題紀錄快照，保存成功或回到設定畫面時重讀 */
+  let progressCache = emptyProgress();
   /* 目前所在的畫面，鍵盤快捷鍵只在作答時生效 */
   let phase = 'setup';
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
@@ -284,7 +285,19 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   }
 
   const scopeIds = (scope) =>
-    scope === 'all' ? null : scopeIdsFrom(loadProgress(storage()), scope);
+    scope === 'all' ? null : scopeIdsFrom(progressCache, scope);
+
+  /**
+   * 從交易儲存重讀逐題紀錄；讀不到時保留上一份快照，不拿空資料畫出「沒有到期」。
+   */
+  async function refreshProgress() {
+    if (!store) return;
+    try {
+      progressCache = (await store.legacyView()).progress;
+    } catch {
+      /* 保留舊快照，保存訊息另由結果畫面顯示 */
+    }
+  }
 
   /* 目前題源 ∩ 某個範圍有幾題 */
   function sizeWithin(source, ids, level = config.level) {
@@ -339,7 +352,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      * 三個範圍各自涵蓋目前這個題源的幾題。
      * 學習紀錄只讀一次、題庫只取一次——兩者都是這一頁最貴的操作。
      */
-    const progress = loadProgress(storage());
+    const progress = progressCache;
     const fullPool = poolOf(config.source, words, sentences, scenes, readings);
     const levelCounts = Object.fromEntries(
       levelsOf('ja').map(({ level }) => [level, fullPool.filter((item) => item.level === level).length])
@@ -610,7 +623,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         count,
       });
       recorded = false;
-      saveFailed = false;
+      saveState = null;
+      saveError = '';
+      sessionOperationId = newOperationId('quiz');
       phase = 'playing';
       renderQuestion();
     } catch (error) {
@@ -626,7 +641,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     session = null;
     resetPlayState();
     phase = 'setup';
-    renderSetup();
+    refreshProgress().then(() => { if (phase === 'setup') renderSetup(); });
   }
 
   /* ── 作答畫面 ─────────────────────────────────────────── */
@@ -1266,10 +1281,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      */
     if (!recorded && isComplete(session)) {
       recorded = true;
-      const store = storage();
-      const statsOk = saveStats(store, applySession(loadStats(store), lang, session.source, s));
-      const progressOk = saveProgress(store, recordSession(loadProgress(store), session, Date.now()));
-      saveFailed = !statsOk || !progressOk;
+      persistSession(session, s);
     }
 
     /**
@@ -1321,7 +1333,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
             : `<div class="wrong-list">${wrongItems}</div>`
         }
 
-        ${saveFailed ? '<div class="notice"><b>這次的成績無法保存。</b>瀏覽器的儲存空間被停用或已滿，測驗本身不受影響。</div>' : ''}
+        <div data-save-status role="status" aria-live="polite">${saveStatusHtml()}</div>
 
         <div class="actions">
           <button class="btn" type="button" data-again>再玩一局</button>
@@ -1330,6 +1342,55 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       </div>`;
 
     mount.querySelector('[data-again]').addEventListener('click', backToSetup);
+    bindSaveRetry(s);
+  }
+
+  /**
+   * 保存狀態的文字。只有交易真的完成才說「已保存」，保存中不先報成功。
+   */
+  function saveStatusHtml() {
+    if (saveState === 'saving') return '<p class="hint">正在保存這一局…</p>';
+    if (saveState === 'saved') return '<p class="hint">這一局已保存。</p>';
+    if (saveState === 'offline') return '<div class="notice"><b>這一局沒有保存。</b>學習紀錄目前無法使用，測驗本身不受影響。</div>';
+    if (saveState === 'failed') {
+      return `<div class="notice"><b>這一局還沒有保存。</b>${esc(saveError)}
+        <div class="actions"><button class="btn sm" type="button" data-save-retry>重試保存</button></div></div>`;
+    }
+    return '';
+  }
+
+  function updateSaveStatus(summary) {
+    const host = mount.querySelector('[data-save-status]');
+    if (!host) return;
+    host.innerHTML = saveStatusHtml();
+    bindSaveRetry(summary);
+  }
+
+  function bindSaveRetry(summary) {
+    mount.querySelector('[data-save-retry]')?.addEventListener('click', () => persistSession(session, summary));
+  }
+
+  /**
+   * 整局一次交易寫入統計與逐題紀錄；同一局重試沿用同一個 operationId。
+   */
+  async function persistSession(target, summary) {
+    if (!store || offline) {
+      saveState = 'offline';
+      updateSaveStatus(summary);
+      return;
+    }
+    saveState = 'saving';
+    updateSaveStatus(summary);
+    try {
+      await store.recordQuizSession({ lang, source: target.source, session: target, summary,
+        operationId: sessionOperationId });
+      saveState = 'saved';
+      await refreshProgress();
+    } catch (error) {
+      saveState = 'failed';
+      saveError = storageMessage(error);
+    }
+    if (session === target) updateSaveStatus(summary);
   }
 
   /* ── 鍵盤操作 ─────────────────────────────────────────── */
@@ -1409,5 +1470,13 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   applySpeechFallback(lang, noticeHost);
   bindSpeakButtons(mount, lang);
 
-  renderSetup();
+  /**
+   * 學習紀錄就緒後才畫設定畫面：範圍膠囊要用到逐題紀錄，未就緒時不能畫出假的 0。
+   * 儲存無法使用時可選擇先練習，但結果頁會明說這次不保存。
+   */
+  awaitLearningStore(mount, async (ready) => {
+    store = ready;
+    await refreshProgress();
+    renderSetup();
+  }, { onSkip: () => { offline = true; renderSetup(); } });
 }

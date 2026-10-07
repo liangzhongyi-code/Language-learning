@@ -17,10 +17,11 @@ function fail(code, message) {
 /**
  * 輸出欄位排序固定的 JSON，供平台雜湊；不依賴物件插入順序或自訂 toJSON。
  * 限制深度及輸出，並拒絕 undefined／getter／循環等非可攜資料，不靜默吞值。
+ * 一般逐題保存上限 1 MiB；整組還原可由呼叫端放寬到備份上限，不影響其他操作。
  */
-export function canonicalJson(value) {
+export function canonicalJson(value, { maxBytes = 1024 * 1024 } = {}) {
   const seen = new Set();
-  let budget = 1024 * 1024;
+  let budget = maxBytes;
   const take = (text) => {
     budget -= text.length;
     if (budget < 0) fail('INVALID_OPERATION', '單次保存內容過大。');
