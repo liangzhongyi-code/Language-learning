@@ -4,6 +4,9 @@
 > 設計已核准；2026-10-05 使用者明確回覆「核准任務清單，按順序實作至完成」，第二道核准通過，進入 TDD。
 > 本清單統一管理每日學習 D01–D24、單機功能 O01–O20、Google G01–G10、原生 S01–S22，共 76 個情境。未打勾不代表已實作。
 
+> 2026-10-08 進度：網站端工作包（F0–F4、F17、F60–F63）與 F50a 已實作並驗證，發布於 `04066a1`（Node 1121、隔離 Chromium 23 組、線上冒煙；證據見 docs/logic-changes/2026-10-08-006）。
+> 打勾只代表網站／本機可自動驗證的部分完成。F64、P00a–c、F50b–F54（原生 SQLite、三平台建置／安裝／更新）、F70–F74 收尾，以及真機語音、真 Google 帳號、15k／100k 壓測仍未完成。
+
 ## 1. 執行與完成規則
 
 - 順序：F0 資料安全 → F1 每日學習 → F2 個人教材 → F3 新題型 → F4 排程／回饋 → F5 Google／APP → F6 全面驗收。P0 原生可行性在最前段平行查證，不等全部網站寫完才發現平台障礙。
@@ -36,65 +39,65 @@ F00 的瀏覽器 runner 與工具驗證屬測試基礎設施：先用刻意壞�
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F00 R/G/V | T/browser/run.mjs、package.json：獨立 Chromium 測試入口、fixture origin 與退出碼；盤點舊測試意圖 | 任務核准 | WEB harness；刻意壞斷言失敗，正常頁通過，不操作使用者既有站台資料 |
-| [ ] F01 R/G/V | C/learning-schema.js、C/learning-errors.js、T/learning-schema.test.js：版本、有限數值、集合／關聯、prototype key 深驗證 | F00 | UNIT；合法舊資料保留，畸形／未來版本拒絕；無靜默空值覆寫 |
-| [ ] F02 R/G/V | C/learning-operations.js、T/learning-operations.test.js：epoch、revision、operationId＋payload hash、去重收據 | F01 | UNIT；同 ID 同內容取原結果，異內容拒絕；舊 epoch 不可重播 |
-| [ ] F03 R/G/V | P/web-repository.js、T/browser/repository.mjs：IndexedDB schema／索引／ready、有限更新交易 | F02 | WEB repository；故障全回滾，兩分頁衝突可察覺，15k states／100k events 不每題全庫解析 |
-| [ ] F04 R/G/V | C/learning-migration.js、P/web-repository.js、T/learning-migration.test.js、T/browser/migration.mjs：三把舊 key 匯入與禁止重遷移 | F03 | UNIT＋WEB migration；舊 due/n/w 不變，失敗保留來源，成功／清除後不復活 |
-| [ ] F05 R/G/V | C/backup.js、C/backup-code.js、T/backup.test.js、T/backup-code.test.js：v2 學習群組與 v1 明確替換、大小界線 | F01 | UNIT；10MiB raw／decoded、16MiB code 串流止損；prefs 可分開救，v2 群組不可各半 |
-| [ ] F06 R/G/V | P/web-repository.js、C/restore-controller.js、T/restore-controller.test.js、T/browser/restore.mjs：三點還原、固定預覽、請求世代 | F03 F05 | UNIT＋WEB restore；restore／clear 交易失敗原資料不變，晚到預覽不覆蓋新選擇 |
-| [ ] F07 R/G/V | P/bootstrap.js、P/index.js、U/prefs.js、U/appearance.js、各 HTML 啟動 script | F04 | WEB bootstrap；13 原頁及新增頁全經 ready；延遲不先寫預設值；失敗停寫可重試 |
-| [ ] F08 R/G/V | U/quiz-view.js、U/stats-view.js、U/backup-view.js：改 await 共用 repository，移除並行舊儲存寫入 | F06 F07 | WEB legacy-flows＋npm test；自由測驗／清除／備份同一真實來源，原 JLPT／ruby／回報／外觀保留 |
+| [x] F00 R/G/V | T/browser/run.mjs、package.json：獨立 Chromium 測試入口、fixture origin 與退出碼；盤點舊測試意圖 | 任務核准 | WEB harness；刻意壞斷言失敗，正常頁通過，不操作使用者既有站台資料 |
+| [x] F01 R/G/V | C/learning-schema.js、C/learning-errors.js、T/learning-schema.test.js：版本、有限數值、集合／關聯、prototype key 深驗證 | F00 | UNIT；合法舊資料保留，畸形／未來版本拒絕；無靜默空值覆寫 |
+| [x] F02 R/G/V | C/learning-operations.js、T/learning-operations.test.js：epoch、revision、operationId＋payload hash、去重收據 | F01 | UNIT；同 ID 同內容取原結果，異內容拒絕；舊 epoch 不可重播 |
+| [x] F03 R/G/V | P/web-repository.js、T/browser/repository.mjs：IndexedDB schema／索引／ready、有限更新交易 | F02 | WEB repository；故障全回滾，兩分頁衝突可察覺，15k states／100k events 不每題全庫解析 |
+| [x] F04 R/G/V | C/learning-migration.js、P/web-repository.js、T/learning-migration.test.js、T/browser/migration.mjs：三把舊 key 匯入與禁止重遷移 | F03 | UNIT＋WEB migration；舊 due/n/w 不變，失敗保留來源，成功／清除後不復活 |
+| [x] F05 R/G/V | C/backup.js、C/backup-code.js、T/backup.test.js、T/backup-code.test.js：v2 學習群組與 v1 明確替換、大小界線 | F01 | UNIT；10MiB raw／decoded、16MiB code 串流止損；prefs 可分開救，v2 群組不可各半 |
+| [x] F06 R/G/V | P/web-repository.js、C/restore-controller.js、T/restore-controller.test.js、T/browser/restore.mjs：三點還原、固定預覽、請求世代 | F03 F05 | UNIT＋WEB restore；restore／clear 交易失敗原資料不變，晚到預覽不覆蓋新選擇 |
+| [x] F07 R/G/V | P/bootstrap.js、P/index.js、U/prefs.js、U/appearance.js、各 HTML 啟動 script | F04 | WEB bootstrap；13 原頁及新增頁全經 ready；延遲不先寫預設值；失敗停寫可重試 |
+| [x] F08 R/G/V | U/quiz-view.js、U/stats-view.js、U/backup-view.js：改 await 共用 repository，移除並行舊儲存寫入 | F06 F07 | WEB legacy-flows＋npm test；自由測驗／清除／備份同一真實來源，原 JLPT／ruby／回報／外觀保留 |
 
 ## 4. F1 每日學習與續答
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F10 R/G/V | C/study-day.js、T/study-day.test.js：固定 IANA 日界與時間政策 | F01 | UNIT；午夜、DST、OS 時區改動與倒退時間均可預測 |
-| [ ] F11 R/G/V | C/daily-plan.js、T/daily-plan.test.js：固定清單、due 優先、分段及跨級共用 ledger | F10 F02 | UNIT；預設新字5／複習20，改級不增加額度，1–3題合法且不跨級補題 |
-| [ ] F12 R/G/V | C/review-events.js、C/scheduler.js、T/review-events.test.js：實際方向／能力映射、提示／重試／非到期評分 | F02 | UNIT；一事件一次升階，cloze 不把所有候選字當學會 |
-| [ ] F13 R/G/V | P/web-repository.js、T/browser/review-submit.mjs：submitReview 與 completeSession 交易 | F11 F12 F03 | WEB review-submit；題次、日誌、清單、統計同時保存，結果頁不重算 |
-| [ ] F14 R/G/V | C/study-session.js、T/study-session.test.js：題面快照、prepareEntry、續答、reinforcement／略過 | F11 F12 | UNIT；已提交可續，未提交不冒充已存；每字每段最多一次補強且保留間隔 |
-| [ ] F15 R/G/V | en/daily.html、ja/daily.html、U/daily-view.js、U/nav.js、語言首頁、theme.css | F13 F14 F07 | WEB daily；看過不等於作答，保存失敗可重送；今日入口顯示確定工作量 |
-| [ ] F16 R/G/V | U/quiz-view.js、U/stats-view.js、C/stats.js、T/browser/progress.mjs | F13 | WEB progress；自由測驗逐題保存，半局不算完成局，完成僅一次；所有模式共用能力紀錄 |
+| [x] F10 R/G/V | C/study-day.js、T/study-day.test.js：固定 IANA 日界與時間政策 | F01 | UNIT；午夜、DST、OS 時區改動與倒退時間均可預測 |
+| [x] F11 R/G/V | C/daily-plan.js、T/daily-plan.test.js：固定清單、due 優先、分段及跨級共用 ledger | F10 F02 | UNIT；預設新字5／複習20，改級不增加額度，1–3題合法且不跨級補題 |
+| [x] F12 R/G/V | C/review-events.js、C/scheduler.js、T/review-events.test.js：實際方向／能力映射、提示／重試／非到期評分 | F02 | UNIT；一事件一次升階，cloze 不把所有候選字當學會 |
+| [x] F13 R/G/V | P/web-repository.js、T/browser/review-submit.mjs：submitReview 與 completeSession 交易 | F11 F12 F03 | WEB review-submit；題次、日誌、清單、統計同時保存，結果頁不重算 |
+| [x] F14 R/G/V | C/study-session.js、T/study-session.test.js：題面快照、prepareEntry、續答、reinforcement／略過 | F11 F12 | UNIT；已提交可續，未提交不冒充已存；每字每段最多一次補強且保留間隔 |
+| [x] F15 R/G/V | en/daily.html、ja/daily.html、U/daily-view.js、U/nav.js、語言首頁、theme.css | F13 F14 F07 | WEB daily；看過不等於作答，保存失敗可重送；今日入口顯示確定工作量 |
+| [x] F16 R/G/V | U/quiz-view.js、U/stats-view.js、C/stats.js、T/browser/progress.mjs | F13 | WEB progress；自由測驗逐題保存，半局不算完成局，完成僅一次；所有模式共用能力紀錄 |
 
 ## 5. F2 收藏／單字簿／筆記／意向
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F20 R/G/V | C/library.js、T/library.test.js：系統收藏、自訂簿、字 id、筆記、刪除與 revision | F01 F02 | UNIT；100簿／60字名稱／每簿15000字／2000字筆記上限；刪簿不刪歷史，晚到筆記不復活簿 |
-| [ ] F21 R/G/V | C/library-exchange.js、T/library-exchange.test.js：独立交換格式與衝突預覽 | F20 | UNIT；未知 id 保留但不可出題，合併不覆蓋學習進度與偏好，XSS／原型污染拒絕 |
-| [ ] F22 R/G/V | C/learning-intents.js、C/daily-plan.js、T/learning-intents.test.js：想學／自評／今日略過 | F11 F20 | UNIT；只動未開始新字，不擠 due／不退已領額度，已會標未驗證且可撤回 |
-| [ ] F23 R/G/V | en/library.html、ja/library.html、U/library-view.js、U/vocab-view.js、P/web-repository.js | F20 F21 F22 F07 | WEB library；CRUD／筆記／匯出入／指定簿練習可鍵盤操作，未知字不偷偷補全庫 |
+| [x] F20 R/G/V | C/library.js、T/library.test.js：系統收藏、自訂簿、字 id、筆記、刪除與 revision | F01 F02 | UNIT；100簿／60字名稱／每簿15000字／2000字筆記上限；刪簿不刪歷史，晚到筆記不復活簿 |
+| [x] F21 R/G/V | C/library-exchange.js、T/library-exchange.test.js：独立交換格式與衝突預覽 | F20 | UNIT；未知 id 保留但不可出題，合併不覆蓋學習進度與偏好，XSS／原型污染拒絕 |
+| [x] F22 R/G/V | C/learning-intents.js、C/daily-plan.js、T/learning-intents.test.js：想學／自評／今日略過 | F11 F20 | UNIT；只動未開始新字，不擠 due／不退已領額度，已會標未驗證且可撤回 |
+| [x] F23 R/G/V | en/library.html、ja/library.html、U/library-view.js、U/vocab-view.js、P/web-repository.js | F20 F21 F22 F07 | WEB library；CRUD／筆記／匯出入／指定簿練習可鍵盤操作，未知字不偷偷補全庫 |
 
 ## 6. F3 新題型（共用事件及分級）
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F30 R/G/V | C/practice-answers.js、T/practice-answers.test.js：英文／假名政策、白名單答案 | F01 | UNIT；NFKC與空白依政策，重音標點／促音長音濁音不可消失 |
-| [ ] F31 R/G/V | assets/js/data/en/practice.js、ja/practice.js、C/schema.js、T/practice-dataset.test.js：人工核對 typing/listening/tiles/reorder/POS metadata | F30 | UNIT；每語言適用模式至少10題，日文先N5，替代語序／詞性依語境，不用中文唯一性冒充翻譯唯一答案 |
-| [ ] F32 R/G/V | C/practice-engine.js、T/practice-engine.test.js：新 modes、book／level資格、重複片段instance | F31 F12 | UNIT；空池有中文原因，同片段互換合法、未知語序不判對 |
-| [ ] F33 R/G/V | U/practice-view.js、U/quiz-view.js、theme.css、T/browser/practice-input.mjs：文字輸入、IME、點選／拖動、提交 | F32 F13 | WEB practice-input；組字Enter不送出，觸控不依赖drag，明確提交才判定 |
-| [ ] F34 R/G/V | P/web-speech.js、U/speech.js、U/voice-check.js、T/browser/listening.mjs：voice 探测、試聽、錯誤／停止／無音退路 | F32 F07 | WEB listening；播放失敗不計錯不消耗計畫；同音題核對／排除；aria/title不洩漏答案 |
+| [x] F30 R/G/V | C/practice-answers.js、T/practice-answers.test.js：英文／假名政策、白名單答案 | F01 | UNIT；NFKC與空白依政策，重音標點／促音長音濁音不可消失 |
+| [x] F31 R/G/V | assets/js/data/en/practice.js、ja/practice.js、C/schema.js、T/practice-dataset.test.js：人工核對 typing/listening/tiles/reorder/POS metadata | F30 | UNIT；每語言適用模式至少10題，日文先N5，替代語序／詞性依語境，不用中文唯一性冒充翻譯唯一答案 |
+| [x] F32 R/G/V | C/practice-engine.js、T/practice-engine.test.js：新 modes、book／level資格、重複片段instance | F31 F12 | UNIT；空池有中文原因，同片段互換合法、未知語序不判對 |
+| [x] F33 R/G/V | U/practice-view.js、U/quiz-view.js、theme.css、T/browser/practice-input.mjs：文字輸入、IME、點選／拖動、提交 | F32 F13 | WEB practice-input；組字Enter不送出，觸控不依赖drag，明確提交才判定 |
+| [x] F34 R/G/V | P/web-speech.js、U/speech.js、U/voice-check.js、T/browser/listening.mjs：voice 探测、試聽、錯誤／停止／無音退路 | F32 F07 | WEB listening；播放失敗不計錯不消耗計畫；同音題核對／排除；aria/title不洩漏答案 |
 
 ## 7. F4 排程、回饋與歷程
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F40 R/G/V | tools/build-fsrs.mjs、assets/js/vendor/fsrs.js、C/scheduler.js、T/fsrs.test.js：鎖定 ts-fsrs、本機bundle、預設policy | F12 F17 | UNIT golden fixtures；Again／Good 對照固定上游，舊 due 到真實複習才轉換，不做個人參數訓練 |
-| [ ] F17 R/G/V | package.json／lockfile、tools/third-party-notices、CREDITS.md：確認相容版本與授權，隔離建置依賴 | F00 | 套件鎖版本與授權可追溯；靜態HTML不新增網路執行期載入 |
-| [ ] F41 R/G/V | C/achievements.js、T/achievements.test.js、U/study-history-view.js、歷程頁 | F13 F10 | UNIT＋WEB history；實際事件才計數／固定日界／恢復不重播成就，斷簽不抹累計 |
-| [ ] F42 R/G/V | C/feedback-policy.js、U/feedback.js、U/prefs.js、T/feedback.test.js | F07 F33 | UNIT＋WEB feedback；語音／音效／震動各自保存，安靜模式停止非必要輸出，不影響評分 |
-| [ ] F43 R/G/V | C/reminders.js、P/web-reminders.js、U/reminder-view.js、T/reminders.test.js | F03 F10 | UNIT＋WEB reminders；web明說關頁不提醒；保存／權限／排程／送達分開，outbox去重與世代取消 |
+| [x] F40 R/G/V | tools/build-fsrs.mjs、assets/js/vendor/fsrs.js、C/scheduler.js、T/fsrs.test.js：鎖定 ts-fsrs、本機bundle、預設policy | F12 F17 | UNIT golden fixtures；Again／Good 對照固定上游，舊 due 到真實複習才轉換，不做個人參數訓練 |
+| [x] F17 R/G/V | package.json／lockfile、tools/third-party-notices、CREDITS.md：確認相容版本與授權，隔離建置依賴 | F00 | 套件鎖版本與授權可追溯；靜態HTML不新增網路執行期載入 |
+| [x] F41 R/G/V | C/achievements.js、T/achievements.test.js、U/study-history-view.js、歷程頁 | F13 F10 | UNIT＋WEB history；實際事件才計數／固定日界／恢復不重播成就，斷簽不抹累計 |
+| [x] F42 R/G/V | C/feedback-policy.js、U/feedback.js、U/prefs.js、T/feedback.test.js | F07 F33 | UNIT＋WEB feedback；語音／音效／震動各自保存，安靜模式停止非必要輸出，不影響評分 |
+| [x] F43 R/G/V | C/reminders.js、P/web-reminders.js、U/reminder-view.js、T/reminders.test.js | F03 F10 | UNIT＋WEB reminders；web明說關頁不提醒；保存／權限／排程／送達分開，outbox去重與世代取消 |
 
 ## 8. F5A Google 多份手動備份
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] F60 R/G/V | assets/js/config/google.js、P/google-web-auth.js、T/browser/google-auth.mjs | F07 | G01/G02/G05/G06；Client IDs 空白時零SDK請求；按連接才授權；scope／帳號／世代核對，token不持久化 |
-| [ ] F61 R/G/V | P/google-drive.js、T/google-drive.test.js：固定 endpoints、多頁清單、不可變upload、download串流 | F05 | G03/G04/G08/G09；保留多份、exportId查未知結果、401/429/離線不假成功，拒任意URL |
-| [ ] F62 R/G/V | U/google-backup-view.js、U/backup-view.js、C/restore-controller.js | F06 F60 F61 | WEB google-backup；檔案／代碼／Google共用preview；切帳號清preview、晚到請求無效、revision變化重預覽 |
-| [ ] F63 R/G/V | docs/google-backup-setup.md、help.html、README.md、T/browser/google-backup.mjs | F62 | mock故障全過；提供空ClientID設定位置、同Cloud專案設定說明，真帳號未測明示 |
+| [x] F60 R/G/V | assets/js/config/google.js、P/google-web-auth.js、T/browser/google-auth.mjs | F07 | G01/G02/G05/G06；Client IDs 空白時零SDK請求；按連接才授權；scope／帳號／世代核對，token不持久化 |
+| [x] F61 R/G/V | P/google-drive.js、T/google-drive.test.js：固定 endpoints、多頁清單、不可變upload、download串流 | F05 | G03/G04/G08/G09；保留多份、exportId查未知結果、401/429/離線不假成功，拒任意URL |
+| [x] F62 R/G/V | U/google-backup-view.js、U/backup-view.js、C/restore-controller.js | F06 F60 F61 | WEB google-backup；檔案／代碼／Google共用preview；切帳號清preview、晚到請求無效、revision變化重預覽 |
+| [x] F63 R/G/V | docs/google-backup-setup.md、help.html、README.md、T/browser/google-backup.mjs | F62 | mock故障全過；提供空ClientID設定位置、同Cloud專案設定說明，真帳號未測明示 |
 | [ ] F64 R/G/V | P/google-native-auth.js、A/src-tauri/src/auth/、mobile bridge、各平台設定 | P00b F61 F50f F51a F52a | G10；各平台受支援外部授權，PKCE/state/callback驗證；沒有真ClientID／Mac保持待驗 |
 
 ## 9. F5B APP 原型、交易與能力
@@ -104,7 +107,7 @@ F00 的瀏覽器 runner 與工具驗證屬測試基礎設施：先用刻意壞�
 | [ ] P00a | 查官方相容版本、安裝缺 Rust／MSVC 所需條件及權限；A/docs/toolchain.md | 任務核准 | 記錄版本／授權與安裝結果；系統安裝需工具核准，無Mac先列阻礙，不擅連遠端 |
 | [ ] P00b R/G/V | A/package.json、A/src-tauri/Cargo.toml、tauri.conf.json、src/main.rs／lib.rs：最小 MPA 外殼 | P00a | Windows載入本機两頁、SQLite能編譯；Android/iOS同測；失敗要回報架構風險，不能默換框架 |
 | [ ] P00c | A/docs/p0-evidence.md：離線 voice、MPA及Mac IPA產出原型驗證 | P00b | 每平台分開證據；工具缺席不等於通過，7日到期不可用短測取代 |
-| [ ] F50a R/G/V | A/scripts/stage-web.mjs、A/assets-manifest.json、T/app-assets.test.js：明確白名單与相對URL | F00 | ASSETS；必要檔缺失失敗，secret/.git/.idea/測試／報告均不進包 |
+| [x] F50a R/G/V | A/scripts/stage-web.mjs、A/assets-manifest.json、T/app-assets.test.js：明確白名單与相對URL | F00 | ASSETS；必要檔缺失失敗，secret/.git/.idea/測試／報告均不進包 |
 | [ ] F50b R/G/V | A/src-tauri/src/storage/schema.rs、migrations/、Rust fixture tests | P00b F01 | RUST schema；建表可重跑、固定私有目錄、索引集合非單一歷史JSON |
 | [ ] F50c R/G/V | A/src-tauri/src/storage/commit.rs、tests/transactions.rs：revision／epoch／收據／故障回滾 | F50b F02 | RUST transactions；各集合故障注入與子程序強制結束，完整新／舊狀態 |
 | [ ] F50d R/G/V | A/src-tauri/src/storage/migration.rs、restore.rs、tests/recovery.rs：一致性備援／三還原點／未來版本 | F50c F06 | RUST recovery；含WAL fixture的完整snapshot，備援失敗停止，舊APP不寫未來DB |
