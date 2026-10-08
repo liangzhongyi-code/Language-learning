@@ -3,7 +3,7 @@
 ## 基本資訊
 
 - 日期／時區：2026-10-08（Asia/Taipei）。類型：修復／交易／相容性／功能接線。
-- 狀態：已驗證（Node 全套＋全部隔離 Chromium suite）；提交與推送證據見 Git 歷史，Pages 部署另記。
+- 狀態：已驗證（Node 全套＋全部隔離 Chromium suite）；已發布 04066a1（見文末發布補記）。
 - 核准：使用者要求審查「這次變更＋工作區」，沒有阻擋問題後先推送再 QA；另明確選擇「每日清單補齊對應題型，依原能力複習」。
 - 審查基線：`2565338ad2bce2a8328e56f2a929eff15264b361` → `28eaeb73f2c4a447babddbd76a1f29b693af2dbc` 加工作區與本次功能未追蹤檔；不含 IDE 個人設定。
 - 規格：[每日學習](../../openspec/changes/add-daily-learning/design.md)、[單機學習與 Google 備份](../../openspec/changes/add-offline-study-suite/design.md)。
@@ -77,3 +77,11 @@
 ## 後續更正／取代
 
 2026-10-08：補記最終全套驗證結果，狀態由「實作中」改為「已驗證」；發布與 Pages 核對另行追加。
+
+## 發布補記（2026-10-08）
+
+- 程式與文件提交 `04066a1`（143 個檔案，不含 `.idea`／`.cursor` 個人設定）；正常快轉推送 `2565338 → 04066a1` 至 Pages 使用的 main，並推送 `feature/add-offline-study-suite`。沒有 force push。
+- [GitHub Pages 部署工作](https://github.com/liangzhongyi-code/Language-learning/actions/runs/37735355736)：head_sha `04066a10b31a26579a3935f9cee3d736e264eef7`，completed／success。
+- 線上資產比對：`index.html`、`ja/daily.html`、`en/practice.html`、`daily-practice-question.js`、`daily-service.js`、`ts-fsrs.js`、`fsrs-adapter.js`、`catalog/meta.js` 共 8 檔，正規化 CRLF 後與提交內容完全相同。
+- 線上冒煙（隔離 Playwright context，不碰使用者瀏覽器資料）：首頁、日文首頁、英日每日頁、日文練習、英文單字簿、日文歷程、日文測驗、使用教學 9 頁無頁面例外；日文每日頁實際作答一題顯示「已保存。」。
+- 仍未驗：真機（iOS／Android）、真 Google 帳號、原生 APP 編譯／安裝／更新、大量資料壓測。
