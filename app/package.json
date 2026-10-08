@@ -9,11 +9,15 @@
     "test": "node --test ../tests/app-assets.test.js",
     "tauri": "tauri",
     "dev:prototype": "tauri dev",
+    "dev:app": "tauri dev --config src-tauri/tauri.app.conf.json",
+    "build:windows": "tauri build --config src-tauri/tauri.app.conf.json",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.8.4"
+    "@tauri-apps/cli": "2.12.1"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

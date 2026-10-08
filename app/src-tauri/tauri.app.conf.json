@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "語言學習",
+  "mainBinaryName": "lang-learn",
+  "version": "0.1.0",
+  "identifier": "io.github.liangzhongyi-code.langlearn",
+  "build": {
+    "beforeDevCommand": "npm run stage",
+    "beforeBuildCommand": "npm run stage",
+    "frontendDist": "../dist-web"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "語言學習",
+        "url": "index.html",
+        "create": false,
+        "width": 1200,
+        "height": 860,
+        "minWidth": 360,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "publisher": "lang-learn",
+    "shortDescription": "英日文離線學習",
+    "copyright": "MIT",
+    "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller" },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["TradChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

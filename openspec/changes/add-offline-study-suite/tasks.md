@@ -5,7 +5,7 @@
 > 本清單統一管理每日學習 D01–D24、單機功能 O01–O20、Google G01–G10、原生 S01–S22，共 76 個情境。未打勾不代表已實作。
 
 > 2026-10-08 進度：網站端工作包（F0–F4、F17、F60–F63）與 F50a 已實作並驗證，發布於 `04066a1`（Node 1121、隔離 Chromium 23 組、線上冒煙；證據見 docs/logic-changes/2026-10-08-006）。
-> 打勾只代表網站／本機可自動驗證的部分完成。F64、P00a–c、F50b–F54（原生 SQLite、三平台建置／安裝／更新）、F70–F74 收尾，以及真機語音、真 Google 帳號、15k／100k 壓測仍未完成。
+> 打勾只代表網站／本機可自動驗證的部分完成。F64、P00b–c、F50b–F54（原生 SQLite、三平台建置／安裝／更新；Windows 已有首次建置，見 10-08-010）、F70–F74 收尾，以及真機語音、真 Google 帳號、15k／100k 壓測仍未完成。
 
 ## 1. 執行與完成規則
 
@@ -104,7 +104,7 @@ F00 的瀏覽器 runner 與工具驗證屬測試基礎設施：先用刻意壞�
 
 | 任務 | 內容與涉及檔案 | 相依 | 驗證／成功條件 |
 |---|---|---|---|
-| [ ] P00a | 查官方相容版本、安裝缺 Rust／MSVC 所需條件及權限；A/docs/toolchain.md | 任務核准 | 記錄版本／授權與安裝結果；系統安裝需工具核准，無Mac先列阻礙，不擅連遠端 |
+| [x] P00a | 查官方相容版本、安裝缺 Rust／MSVC 所需條件及權限；A/docs/toolchain.md | 任務核准 | 記錄版本／授權與安裝結果；系統安裝需工具核准，無Mac先列阻礙，不擅連遠端 |
 | [ ] P00b R/G/V | A/package.json、A/src-tauri/Cargo.toml、tauri.conf.json、src/main.rs／lib.rs：最小 MPA 外殼 | P00a | Windows載入本機两頁、SQLite能編譯；Android/iOS同測；失敗要回報架構風險，不能默換框架 |
 | [ ] P00c | A/docs/p0-evidence.md：離線 voice、MPA及Mac IPA產出原型驗證 | P00b | 每平台分開證據；工具缺席不等於通過，7日到期不可用短測取代 |
 | [x] F50a R/G/V | A/scripts/stage-web.mjs、A/assets-manifest.json、T/app-assets.test.js：明確白名單与相對URL | F00 | ASSETS；必要檔缺失失敗，secret/.git/.idea/測試／報告均不進包 |

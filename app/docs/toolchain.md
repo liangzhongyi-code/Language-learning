@@ -1,6 +1,6 @@
 # P00b 原型工具鏈與版本依據
 
-2026-10-08（Asia/Taipei）續做；狀態：原型來源與 Node 契約已驗證，原生編譯／執行待驗。
+2026-10-08（Asia/Taipei）續做；狀態：Windows 已實際編譯、打包並在本機 WebView2 執行驗證（見文末「2026-10-08 Windows 實際建置」）；Android／iOS 待驗。
 
 ## 精確直接依賴
 
@@ -55,3 +55,28 @@ Tauri hooks 會先呼叫 `stage:prototype`；沒有 devUrl，frontendDist 為本
 - [Tauri 官方前置條件](https://v2.tauri.app/start/prerequisites/)：供後續補工具時確認平台需求；本輪不執行安裝。
 
 全部來源於本輪查閱；來源存在與 API 對照不等於本機原生編譯、WebView 載入或安全實測已通過。
+
+
+## 2026-10-08 Windows 實際建置（更正上方版本）
+
+上方 2.8.5／2.4.1／2.8.4 這組釘選在真實解析時失敗：`tauri =2.8.5` 允許 Cargo 選到 `tauri-runtime-wry 2.9.3`，與 wry 0.53.5 引用兩個不同版本的 `webview2-com-sys`，`cargo test` 出現 11 個型別不符錯誤。改用同一發行批次的穩定 2.x：
+
+- Rust：`rustup 1.29.1`（winget `Rustlang.Rustup`）、`rustc 1.99.0`／`cargo 1.99.0`，toolchain `stable-x86_64-pc-windows-msvc`；Visual Studio Build Tools 2022（C++ workload）。
+- npm `@tauri-apps/cli`：`2.12.1`；Rust `tauri =2.12.1`、`tauri-build =2.7.1`、`serde =1.0.229`（tauri-build 2.7.1 需要 serde ≥1.0.228）、`sqlx =0.8.6` 不變。間接依賴由 cargo 產生的 `app/src-tauri/Cargo.lock` 鎖定，`app/package-lock.json` 由 npm 產生。
+- NSIS：Tauri 從官方 binary-releases 下載 `nsis-3.11.zip`（雜湊驗證通過），但在本機把解壓目錄改名為工具快取時出現 `os error 17`。處理方式：手動將 `%LOCALAPPDATA%	auri
+sis-3.11` 改名為 `NSIS`，並從 tauri-apps 官方 release 下載 `nsis_tauri_utils.dll` v0.5.3，SHA-1 `75197fee3c6a814fe035788d1c34ead39349b860` 與 CLI 內建值相同後放入 `Plugins/x86-unicode/additional/`。
+
+### 指令與結果
+
+```powershell
+npm --prefix app run test:rust      # 3 passed（原型兩頁、APP 頁面白名單、SQLite 回滾）
+npm --prefix app run build:windows  # tauri build --config src-tauri/tauri.app.conf.json
+node app/scripts/verify-windows.mjs <lang-learn.exe>
+```
+
+產物（`app/src-tauri/target/release/`，不進版控）：
+
+| 檔案 | 大小 | SHA-256 |
+|---|---|---|
+| `bundle/nsis/語言學習_0.1.0_x64-setup.exe` | 218,860,583 bytes（208.7 MiB，含離線 WebView2 安裝器） | `e63f7ac34379215efde1d36d568e146e08f4e4eeb4772fb5ce80b2488e379a6f` |
+| `lang-learn.exe` | 12,086,272 bytes | `0564f7e623f4294434c25036ff8799396d14e47ddae62cb472b2cdc7da6c6c1e` |
