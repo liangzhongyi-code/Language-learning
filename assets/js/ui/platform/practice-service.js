@@ -15,12 +15,13 @@ export const PRACTICE_ROUND = 10;
 export function createPracticeService({ store, lang, items, now = () => Date.now(), rng = Math.random }) {
   /**
    * 資格判斷：同語言、同題型、同級別；指定單字簿時只用簿內的字，不拿全題庫補。
+   * 網址帶入的 bookId 必須是自有項目；不能把 Object 原型屬性當成單字簿。
    */
   async function eligibility({ mode, level, bookId = null }) {
     let bookWordIds = null;
     if (bookId) {
       const { rows } = await store.read(['books']);
-      const book = rows.books[bookId];
+      const book = Object.prototype.hasOwnProperty.call(rows.books, bookId) ? rows.books[bookId] : null;
       if (!book) return { ok: false, reason: '找不到這本單字簿，可能已被刪除。', items: [] };
       bookWordIds = book.wordIds;
     }
@@ -29,6 +30,7 @@ export function createPracticeService({ store, lang, items, now = () => Date.now
 
   /**
    * 建立一局：題序與題面在開始時固定，session 先保存；題面在作答時才寫入 session。
+   * 新局不依賴舊 sessions，只讀交易 meta；仍經 store 的 revision 重試與 epoch 守衛。
    */
   async function start({ mode, level, bookId = null }) {
     const eligible = await eligibility({ mode, level, bookId });
@@ -39,7 +41,7 @@ export function createPracticeService({ store, lang, items, now = () => Date.now
     const session = { sessionId, lang, source: 'practice', mode, planId: null,
       orderedEntryIds: questions.map((_, i) => `${sessionId}:${i}`), submittedReviewIds: [], questionSnapshots: {},
       status: 'active', createdAt: now(), completedAt: null };
-    await store.commit({ stores: ['sessions'], operationId: newOperationId('practice-start', now()),
+    await store.commit({ stores: [], operationId: newOperationId('practice-start', now()),
       build: () => [{ store: 'sessions', key: sessionId, value: session }] });
     return { session, questions };
   }

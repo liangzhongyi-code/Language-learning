@@ -19,18 +19,6 @@
 <footer class="wrap">
   <p class="foot">純前端靜態網站，所有內容離線可讀；朗讀功能使用瀏覽器內建語音。</p>
 </footer>
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initGrammarPage } from '../assets/js/ui/grammar-view.js';
-  import { sentences } from '../assets/js/data/ja/sentences.js';
-
-  renderNav();
-  initGrammarPage({
-    lang: 'ja',
-    sentences,
-    mount: document.getElementById('app'),
-    noticeHost: document.getElementById('notice'),
-  });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

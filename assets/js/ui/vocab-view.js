@@ -21,6 +21,9 @@ import { CATEGORY_GROUPS } from '../data/shared/categories.js';
 import { levelLabel, SCALE_NAME, SCALE_NOTE } from '../data/shared/levels.js';
 import { speakTextOf } from '../core/speech-text.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { FAVORITES_BOOK_ID } from '../core/library.js';
+import { createLibraryService } from './platform/library-service.js';
+import { getLearningStore, storageMessage } from './platform/learning-store.js';
 
 /**
  * 詞性代碼對中文標籤。與 core/schema.js 的 POS_KEYS 對齊。
@@ -56,11 +59,26 @@ const esc = (s) =>
 
 
 /**
- * 一張單字卡。
- *
- * .word 是 div 不是 button，所以裡面放朗讀按鈕不會形成巢狀按鈕。
+ * 裝飾星號：以空心／實心同步表示已保存的收藏狀態。
  */
-function wordCard(word, lang) {
+function favoriteIcon(member) {
+  return `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+    fill="${member ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5">
+    <path d="m12 3 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9Z"/></svg>`;
+}
+
+/**
+ * 具體標示操作與單字；星號填色及 aria-pressed 都取自已讀回的收藏。
+ */
+function favoriteLabel(word, member) {
+  return `${member ? '取消收藏' : '收藏'}「${word.target}」（${word.zh}）`;
+}
+
+/**
+ * 收藏與朗讀共用卡片的控制欄，沿用既有按鈕樣式及 44px 點擊範圍。
+ * .word 使用 div，避免形成巢狀按鈕。
+ */
+function wordCard(word, lang, favorites, disabled, saving) {
   const reading = word.reading ? `<span class="word-reading">${esc(word.reading)}</span>` : '';
   const romaji = word.romaji ? `<span class="word-romaji">${esc(word.romaji)}</span>` : '';
 
@@ -77,8 +95,16 @@ function wordCard(word, lang) {
         <span class="tag">${esc(word.categoryLabel)}</span>
         <span class="tag">${esc(word.levelLabel)}</span>
       </div>
-      <button type="button" class="speak" data-speak="${esc(speakTextOf(word, lang))}"
-              data-speak-lang="${esc(lang)}" title="朗讀">🔊</button>
+      <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+        <button type="button" class="btn ghost" data-favorite="${esc(word.id)}"
+                style="width:44px;min-height:44px;padding:0;display:grid;place-items:center"
+                aria-pressed="${favorites.has(word.id)}" aria-busy="${saving}"
+                aria-label="${esc(favoriteLabel(word, favorites.has(word.id)))}"${disabled ? ' disabled' : ''}>
+          ${favoriteIcon(favorites.has(word.id))}
+        </button>
+        <button type="button" class="speak" data-speak="${esc(speakTextOf(word, lang))}"
+                data-speak-lang="${esc(lang)}" title="朗讀">🔊</button>
+      </div>
     </div>`;
 }
 
@@ -161,9 +187,11 @@ function groupCategories(categories) {
  *
  * mount 內部的結構由上而下是：搜尋框、分類膠囊、筆數行、單字清單、進測驗按鈕。
  * 只有筆數行與單字清單會重繪，其餘元素建立一次就固定住。
+ * store 可由呼叫端注入；只有 null／undefined 時才取得共用 store，維持 ES2020 語法。
  */
-export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
+export function initVocabPage({ lang, words, mount, noticeHost, store } = {}) {
   if (!mount) return;
+  store = store ?? getLearningStore();
 
   const all = words || [];
   const categories = listCategories(all);
@@ -201,6 +229,8 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
       })}
     </div>
     <p class="count-line"></p>
+    <p class="backup-msg" data-favorites-status role="status" aria-live="polite" aria-atomic="true">正在讀取收藏…</p>
+    <button type="button" class="btn ghost" data-favorites-retry hidden>重新讀取收藏</button>
     <div class="word-list"></div>
     <div class="actions">
       <a class="btn" href="./quiz.html?source=words">開始單字測驗</a>
@@ -209,6 +239,95 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
   const input = mount.querySelector('[type="search"]');
   const countLine = mount.querySelector('.count-line');
   const list = mount.querySelector('.word-list');
+  const favoritesStatus = mount.querySelector('[data-favorites-status]');
+  const favoritesRetry = mount.querySelector('[data-favorites-retry]');
+  const libraryService = createLibraryService({ store });
+  const wordById = new Map(items.map(word => [word.id, word]));
+  let favorites = new Set();
+  let favoritesReady = false;
+  let saving = false;
+  let loadPromise = null;
+  let savedButUnread = false;
+
+  /**
+   * 只更新收藏控制，保存不重建卡片，保留鍵盤焦點及朗讀控制。
+   * Set 是畫面快照，唯一持久來源仍是共用 store 的 IndexedDB 收藏簿。
+   */
+  function syncFavorites() {
+    for (const button of list.querySelectorAll('[data-favorite]')) {
+      const word = wordById.get(button.dataset.favorite);
+      const member = favorites.has(word.id);
+      button.disabled = !favoritesReady || saving;
+      button.setAttribute('aria-pressed', String(member));
+      button.setAttribute('aria-busy', String(saving));
+      button.setAttribute('aria-label', favoriteLabel(word, member));
+      button.innerHTML = favoriteIcon(member);
+    }
+  }
+
+  /**
+   * 初次／返回分頁／重試都重新讀取；合併同時讀取，保存期間不啟動舊快照。
+   * 讀取失敗維持停寫，不以空收藏覆蓋狀態；保存後重試只讀取。
+   */
+  function loadFavorites() {
+    if (loadPromise) return loadPromise;
+    if (saving) return;
+    favoritesReady = false;
+    favoritesRetry.hidden = true;
+    favoritesRetry.disabled = true;
+    syncFavorites();
+    loadPromise = (async () => {
+      try {
+        await store.ready();
+        const snapshot = await libraryService.snapshot();
+        const ids = snapshot.books?.[FAVORITES_BOOK_ID]?.wordIds;
+        if (!Array.isArray(ids)) throw { code: 'UNSUPPORTED_SCHEMA' };
+        favorites = new Set(ids);
+        favoritesReady = true;
+        favoritesStatus.textContent = savedButUnread ? '已保存，收藏已重新讀取。' : '收藏已讀取。';
+        savedButUnread = false;
+      } catch (error) {
+        favoritesStatus.textContent = `${savedButUnread ? '已保存，但' : ''}收藏讀取失敗。${storageMessage(error)} 請重新讀取收藏。`;
+        favoritesRetry.hidden = false;
+      } finally {
+        favoritesRetry.disabled = false;
+        loadPromise = null;
+        syncFavorites();
+      }
+    })();
+    return loadPromise;
+  }
+
+  /**
+   * 同一頁序列保存，搜尋重繪也沿用鎖；依畫面送明確意向，避免跨頁反向切換。
+   * 交易完成後才讀回並更新星號，寫入失敗保留原狀讓使用者重試。
+   */
+  async function saveFavorite(button) {
+    if (!favoritesReady || saving || !list.contains(button)) return;
+    const word = wordById.get(button.dataset.favorite);
+    if (!word) return;
+    const member = !favorites.has(word.id);
+    const hadFocus = document.activeElement === button;
+    saving = true;
+    syncFavorites();
+    favoritesStatus.textContent = `正在保存「${word.target}」的收藏…`;
+    try {
+      await libraryService.setMember(FAVORITES_BOOK_ID, word.id, member);
+      savedButUnread = true;
+      saving = false;
+      await loadFavorites();
+      if (favoritesReady) {
+        favoritesStatus.textContent = `${member ? '已收藏' : '已取消收藏'}「${word.target}」。`;
+      }
+    } catch (error) {
+      favoritesStatus.textContent = `「${word.target}」的收藏變更未保存。${storageMessage(error)} 請再按收藏按鈕重試。`;
+    } finally {
+      saving = false;
+      syncFavorites();
+      if (hadFocus && list.contains(button) && !button.disabled &&
+          (document.activeElement === button || document.activeElement === document.body)) button.focus();
+    }
+  }
 
   /**
    * 兩個篩選都是多選，預設全選——使用者是「取消不要的」而不是「一個一個挑」。
@@ -249,7 +368,7 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
       : `目前 ${shown.length} 筆`;
 
     list.innerHTML =
-      visible.map((w) => wordCard(w, lang)).join('') +
+      visible.map((w) => wordCard(w, lang, favorites, !favoritesReady || saving, saving)).join('') +
       (rest
         ? `<div class="actions"><button type="button" class="btn" data-more>` +
           `再顯示 ${Math.min(rest, PAGE_SIZE)} 筆（還有 ${rest} 筆）</button></div>`
@@ -348,6 +467,8 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
 
   /* 展開更多：每按一次多畫一頁，事件委派掛在清單上，重繪後照樣有效 */
   list.addEventListener('click', (event) => {
+    const favorite = event.target.closest('[data-favorite]');
+    if (favorite) return saveFavorite(favorite);
     if (!event.target.closest('[data-more]')) return;
     limit += PAGE_SIZE;
     render();
@@ -358,4 +479,10 @@ export function initVocabPage({ lang, words, mount, noticeHost } = {}) {
   /* 朗讀用事件委派掛在 mount 上，清單重繪後新卡片照樣可點 */
   applySpeechFallback(lang, noticeHost);
   bindSpeakButtons(mount, lang);
+  favoritesRetry.addEventListener('click', loadFavorites);
+  window.addEventListener('focus', loadFavorites);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') return loadFavorites();
+  });
+  return loadFavorites();
 }

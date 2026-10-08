@@ -7,3 +7,14 @@ Thumbs.db
 .gstack/qa-reports/screenshots/
 .gstack/browse-audit.jsonl
 .gstack/
+
+# Codex task staging files
+.codex-staging/
+
+# APP 建置產物（由 app/scripts 產生，不進版控）
+app/dist-web/
+app/node_modules/
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+*.keystore
+*.jks

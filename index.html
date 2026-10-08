@@ -75,13 +75,6 @@
   </p>
 </footer>
 
-<script type="module">
-  import { renderRootNav } from './assets/js/ui/nav.js';
-  import { initLearningBackupPanel } from './assets/js/ui/learning-backup-view.js';
-  import { initGoogleBackupPanel } from './assets/js/ui/google-backup-view.js';
-  renderRootNav('home');
-  const backupPanel = initLearningBackupPanel(document.getElementById('backup'));
-  initGoogleBackupPanel(document.getElementById('google-backup'), backupPanel);
-</script>
+<script type="module" src="./assets/js/ui/page-boot.js"></script>
 </body>
 </html>

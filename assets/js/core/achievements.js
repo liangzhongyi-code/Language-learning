@@ -167,7 +167,9 @@ function metrics(calendarRows, todayLocalDate) {
   let cursor = studied.has(today) ? today : today - 1;
   let current = 0;
   while (studied.has(cursor)) { current += 1; cursor -= 1; }
-  const lastStudyDate = byDate.size === 0 ? null : [...byDate.keys()].sort().at(-1);
+  // ES2020 環境沒有 Array.at；空日曆維持 null，不改學習日的排序與門檻。
+  const sortedDates = [...byDate.keys()].sort();
+  const lastStudyDate = sortedDates.length === 0 ? null : sortedDates[sortedDates.length - 1];
   const accurateDay = [...byDate.values()].some((sum) => sum.reviews >= 20 && sum.correct * 10 >= sum.reviews * 9);
   return { current, longest, totalDays: byDate.size, totalReviews, totalCorrect, lastStudyDate, langs, accurateDay };
 }

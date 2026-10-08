@@ -74,20 +74,6 @@
   </p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { renderLangStats } from '../assets/js/ui/stats-view.js';
-  import { renderTodayCard } from '../assets/js/ui/today-card.js';
-  import { words } from '../assets/js/data/ja/words.js';
-  import { sentences } from '../assets/js/data/ja/sentences.js';
-
-  renderNav();
-  renderTodayCard(document.getElementById('today'), { lang: 'ja', words });
-  renderLangStats(document.getElementById('stats'), 'ja');
-
-  /* 題庫筆數直接從資料檔數，寫死的數字遲早會跟實際內容脫節 */
-  document.querySelector('[data-count="words"]').textContent = words.length;
-  document.querySelector('[data-count="sentences"]').textContent = sentences.length;
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

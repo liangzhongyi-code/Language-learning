@@ -1,6 +1,6 @@
 /**
  * 網站學習資料的 IndexedDB 交易底座。只有完成事件才 resolve，不能把 put 成功
- * 誤當交易成功。正式 UI 尚須透過領域操作／migration 接入，不直接寫任意集合。
+ * 誤當交易成功。正式 UI 經 learning-store 的就緒屏障與領域操作接入，不直接寫任意集合。
  */
 import { canonicalJson, checkOperation, operationReceipt } from '../../core/learning-operations.js';
 import { migrateLegacy } from '../../core/learning-migration.js';
@@ -28,6 +28,52 @@ function failure(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+/**
+ * 查詢契約只接受純 selector map；在 await 前複製，拒絕繼承屬性、accessor 與未知欄位。
+ * prefix 固定語言邊界；key 僅接受非空字串或有限數字，不開放無範圍集合掃描。
+ * memory repository 共用此驗證，不以替身模擬 IndexedDB 的交易一致性。
+ */
+export function normalizeSnapshotQuery(input) {
+  const invalid = () => { throw failure('INVALID_QUERY', '讀取資料的範圍不正確。'); };
+  function fields(value) {
+    if (!value || typeof value !== 'object' ||
+        ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return invalid();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).some(key => typeof key !== 'string' ||
+        !descriptors[key].enumerable || !Object.prototype.hasOwnProperty.call(descriptors[key], 'value'))) return invalid();
+    return descriptors;
+  }
+  const query = {};
+  for (const [store, descriptor] of Object.entries(fields(input))) {
+    if (!COLLECTIONS.includes(store)) invalid();
+    const selector = descriptor.value;
+    const entries = Object.entries(fields(selector));
+    const names = entries.map(([key]) => key).sort().join(',');
+    const values = Object.fromEntries(entries.map(([key, value]) => [key, value.value]));
+    if (names === 'prefix') {
+      const allowed = store === 'stats' ? ['ja:', 'en:']
+        : ['progress', 'itemStates', 'intents'].includes(store) ? ['ja-', 'en-'] : [];
+      if (!allowed.includes(values.prefix)) invalid();
+    } else if (names === 'key' || names === 'index,key') {
+      if (!isSnapshotKey(values.key)) invalid();
+      if (names === 'index,key' && (!(INDEXES[store] || []).includes(values.index) ||
+          values.index === 'lang' && !['ja', 'en'].includes(values.key))) invalid();
+    } else if (names === 'planRefs') {
+      if (store !== 'sessions' || values.planRefs !== 'dailyPlans') invalid();
+    } else invalid();
+    query[store] = Object.freeze(values);
+  }
+  if (query.sessions?.planRefs && (query.dailyPlans?.index !== 'lang' ||
+      !['ja', 'en'].includes(query.dailyPlans.key))) invalid();
+  return Object.freeze(query);
+}
+
+function isSnapshotKey(key) {
+  return typeof key === 'number' ? Number.isFinite(key)
+    : typeof key === 'string' && key.length > 0 && key.length <= 256 &&
+      !['__proto__', 'constructor', 'prototype'].includes(key);
 }
 
 function storageFailure(error) {
@@ -281,7 +327,8 @@ export function createWebRepository({
     /**
      * 複製並雜湊固定內容在 await 前後都不讀呼叫者可變物件。
      * 不能在 IndexedDB 活動交易內 await crypto，否則交易可能提前自動提交。
-     * large 只給整批匯入使用：放寬筆數與大小上限，但仍是單一交易、全有全無。
+     * large 用於整批單字簿匯入與含完整題面快照的測驗保存：放寬筆數與大小上限，
+     * 但仍是單一交易、全有全無，且不略過集合與資料驗證。
      */
     const maxBytes = large ? 24 * 1024 * 1024 : 1024 * 1024;
     const operation = JSON.parse(canonicalJson(input, { maxBytes }));
@@ -362,7 +409,8 @@ export function createWebRepository({
 
   /**
    * 同一個唯讀交易讀取多個集合，回傳 { 集合: { key: value } } 與 meta；
-   * 首頁摘要、匯出及每日計畫都用這份一致快照，不拼接不同時間點的讀取。
+   * 完整備份、單字簿及未指定 bounded query 的讀取／提交使用此入口；
+   * 語言統計與每日計畫改用 querySnapshot，在同交易內依範圍讀取。
    */
   async function readAll(stores) {
     if (!Array.isArray(stores) || stores.some((store) => !COLLECTIONS.includes(store))) {
@@ -383,6 +431,79 @@ export function createWebRepository({
         catch (error) { problem = storageFailure(error); tx.abort(); }
       };
       for (const store of stores) readStore(tx, store, (values) => { rows[store] = values; });
+    });
+  }
+
+  /**
+   * 回傳 { meta, rows }：meta、bounded ranges 與 plan.sessionId 引用皆在同一 readonly tx。
+   * prefix 用下一個字元作排他上界，連 prefix + \uffff + suffix 都包含。
+   * session get 在計畫 cursor 的同步 onsuccess 內排入；不 await、不跨 revision 拼資料。
+   */
+  async function querySnapshot(input) {
+    const query = normalizeSnapshotQuery(input);
+    const db = await open();
+    return new Promise((resolveRead, reject) => {
+      let tx;
+      try { tx = db.transaction(['meta', ...Object.keys(query)], 'readonly'); }
+      catch (error) { reject(storageFailure(error)); return; }
+      const rows = Object.fromEntries(Object.keys(query).map(store => [store, {}]));
+      let meta;
+      let problem;
+      const abort = error => { problem = storageFailure(error); tx.abort(); };
+      const save = (store, key, value) => {
+        Object.defineProperty(rows[store], key, { value, enumerable: true, configurable: true, writable: true });
+      };
+      tx.oncomplete = () => resolveRead({ meta, rows });
+      tx.onabort = () => reject(problem || storageFailure(tx.error));
+      tx.onerror = () => {};
+      const requestedSessions = new Set();
+      const enqueueSession = plan => {
+        const key = plan?.sessionId;
+        if (key === null || key === undefined || requestedSessions.has(key)) return;
+        if (typeof key !== 'string' || !isSnapshotKey(key)) {
+          throw failure('UNSUPPORTED_SCHEMA', '每日清單的 session 引用不合法，請保留原資料。');
+        }
+        requestedSessions.add(key);
+        const request = tx.objectStore('sessions').get(key);
+        request.onsuccess = () => {
+          try { if (request.result !== undefined) save('sessions', key, request.result); }
+          catch (error) { abort(error); }
+        };
+      };
+      try {
+        const metaRequest = tx.objectStore('meta').get('current');
+        metaRequest.onsuccess = () => {
+          try { meta = validateMeta(metaRequest.result); }
+          catch (error) { abort(error); }
+        };
+        for (const [store, selector] of Object.entries(query)) {
+          if (selector.planRefs) continue;
+          const target = tx.objectStore(store);
+          if (Object.prototype.hasOwnProperty.call(selector, 'key') && !selector.index) {
+            const request = target.get(selector.key);
+            request.onsuccess = () => {
+              try { if (request.result !== undefined) save(store, selector.key, request.result); }
+              catch (error) { abort(error); }
+            };
+          } else {
+            const prefix = selector.prefix;
+            const range = prefix !== undefined
+              ? IDBKeyRange.bound(prefix, prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1), false, true)
+              : IDBKeyRange.only(selector.key);
+            const source = selector.index ? target.index(selector.index) : target;
+            const request = source.openCursor(range);
+            request.onsuccess = () => {
+              try {
+                const cursor = request.result;
+                if (!cursor) return;
+                save(store, cursor.primaryKey, cursor.value);
+                if (store === 'dailyPlans' && query.sessions?.planRefs) enqueueSession(cursor.value);
+                cursor.continue();
+              } catch (error) { abort(error); }
+            };
+          }
+        }
+      } catch (error) { abort(error); }
     });
   }
 
@@ -511,7 +632,7 @@ export function createWebRepository({
   }
 
   return {
-    ready, get, list, readAll, getAllByIndex, migrateFromLegacy, restoreLearning,
+    ready, get, list, readAll, querySnapshot, getAllByIndex, migrateFromLegacy, restoreLearning,
     commit: (operation, options) => transact(operation, false, options),
     clearLearning: (operation) => transact(operation, true),
     close() {

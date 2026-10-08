@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson, checkOperation, operationReceipt } from '../../assets/js/core/learning-operations.js';
 import { emptyLearning } from '../../assets/js/core/learning-schema.js';
+import { normalizeSnapshotQuery } from '../../assets/js/ui/platform/web-repository.js';
 
 const COLLECTIONS = ['stats', 'progress', 'itemStates', 'reviewEvents', 'dailyPlans', 'dailyLedger',
   'sessions', 'operations', 'restorePoints', 'books', 'notes', 'intents', 'achievements', 'reminders', 'outbox'];
@@ -36,6 +37,30 @@ export function createMemoryRepository({ timeZone = 'Asia/Taipei', now = () => 1
     async readAll(stores) {
       await tick();
       return { meta: clone(meta), rows: Object.fromEntries(stores.map((store) => [store, Object.fromEntries(clone([...data[store].entries()]))])) };
+    },
+    async querySnapshot(input) {
+      const query = normalizeSnapshotQuery(input);
+      await tick();
+      const rows = {};
+      for (const [store, selector] of Object.entries(query)) {
+        rows[store] = {};
+        if (selector.planRefs) continue;
+        const entries = [...data[store].entries()].filter(([key, value]) => selector.prefix !== undefined
+          ? typeof key === 'string' && key.startsWith(selector.prefix)
+          : selector.index ? value?.[selector.index] === selector.key : key === selector.key);
+        rows[store] = Object.fromEntries(entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => [key, clone(value)]));
+      }
+      if (query.sessions?.planRefs) {
+        const refs = new Set(Object.values(rows.dailyPlans).map(plan => plan?.sessionId).filter(key => key !== null && key !== undefined));
+        for (const key of refs) {
+          if (typeof key !== 'string' || !key || key.length > 256 || ['__proto__', 'constructor', 'prototype'].includes(key)) {
+            throw Object.assign(new Error('每日清單的 session 引用不合法'), { code: 'UNSUPPORTED_SCHEMA' });
+          }
+          if (data.sessions.has(key)) Object.defineProperty(rows.sessions, key,
+            { value: clone(data.sessions.get(key)), enumerable: true, configurable: true, writable: true });
+        }
+      }
+      return { meta: clone(meta), rows };
     },
     async getAllByIndex(store, index, key) {
       await tick();

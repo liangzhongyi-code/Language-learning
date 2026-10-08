@@ -2,9 +2,10 @@
  * 頁面使用的學習資料入口：就緒屏障、舊資料遷移、一致快照讀取與交易提交。
  * 所有學習寫入都經過這裡；偏好仍由 prefs.js 存 localStorage，不宣稱跨儲存原子性。
  */
-import { createWebRepository } from './web-repository.js';
+import { createWebRepository, normalizeSnapshotQuery } from './web-repository.js';
 import { applySession } from '../../core/stats.js';
 import { recordSession } from '../../core/progress.js';
+import { projectLearningProgress } from '../../core/learning-progress.js';
 import { PORTABLE_STORES, portableFromRows } from '../../core/learning-snapshot.js';
 import { exportLearningBackup } from '../../core/learning-backup.js';
 import { isStudyTimeZone } from '../../core/study-zone.js';
@@ -46,7 +47,8 @@ export function storageMessage(error) {
     REVISION_CONFLICT: '其他分頁剛更新了紀錄，請重試。',
     STALE_EPOCH: '紀錄已在其他分頁清除或還原，請重新整理頁面。',
   };
-  return known[error?.code] || error?.message || '紀錄保存未完成，原資料保持不變；請重試。';
+  return Object.prototype.hasOwnProperty.call(known, error?.code)
+    ? known[error.code] : '紀錄保存未完成，原資料保持不變；請重試。';
 }
 
 /**
@@ -77,12 +79,22 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
     return repository.readAll(stores);
   }
 
+  async function querySnapshot(input) {
+    const query = normalizeSnapshotQuery(input);
+    await ready();
+    return repository.querySnapshot(query);
+  }
+
   /**
    * build(rows, meta) 回傳 changes；遇到其他分頁先寫入（REVISION_CONFLICT）時重讀重算。
    * 同一 operationId 在衝突重試間沿用：衝突代表前一次沒有落盤，不會產生重複收據。
+   * query 為 bounded selector map；未指定時保留 stores/readAll，不能與自訂 load 併用。
    */
-  async function commit({ stores, operationId, build, load, large = false }) {
+  async function commit({ stores, query: input, operationId, build, load, large = false }) {
+    const query = input === undefined ? undefined : normalizeSnapshotQuery(input);
+    if (query && load) throw Object.assign(new Error('查詢快照與自訂 load 不可同時指定。'), { code: 'INVALID_QUERY' });
     await ready();
+    let operationEpoch;
     for (let attempt = 0; ; attempt++) {
       /**
        * 自訂 load 必須先取 meta 再讀資料：之後任何其他寫入都會提高 revision，
@@ -90,7 +102,14 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
        */
       const { meta, rows } = load
         ? await (async () => { const fresh = await repository.ready(); return { meta: fresh, rows: await load(repository, fresh) }; })()
-        : await repository.readAll(stores);
+        : query ? await repository.querySnapshot(query) : await repository.readAll(stores);
+      /**
+       * 同一操作的衝突重試只能沿用原 epoch；清除／還原發生在重讀前也不能復活舊意圖。
+       */
+      if (operationEpoch === undefined) operationEpoch = meta.dataEpoch;
+      else if (meta.dataEpoch !== operationEpoch) {
+        throw Object.assign(new Error('紀錄已在其他分頁清除或還原，請重新整理頁面。'), { code: 'STALE_EPOCH' });
+      }
       const built = build(rows, meta);
       const changes = Array.isArray(built) ? built : built?.changes;
       if (!changes || !changes.length) return { revision: meta.revision, unchanged: true, value: built?.value };
@@ -124,11 +143,18 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
   }
 
   /**
-   * 首頁與測驗設定使用的 v1 相容視圖；資料來源已改為交易儲存。
+   * 首頁與測驗設定的瞬時 v1 相容視圖；lang 限 ja/en，只查該語言三集合。
+   * 無參數保留既有全語言測試 API；ready 遷移屏障與 FSRS 投影兩條路徑一致。
+   * FSRS 的畢業／due 共用純投影，不回寫摘要，也不加入逐題提交路徑。
    */
-  async function legacyView() {
-    const { meta, rows } = await read(['stats', 'progress']);
-    return { meta, stats: { schemaVersion: 1, byScope: rows.stats }, progress: { schemaVersion: 1, items: rows.progress } };
+  async function legacyView(lang) {
+    if (lang !== undefined && !['ja', 'en'].includes(lang)) {
+      throw Object.assign(new Error('不支援的學習語言。'), { code: 'INVALID_QUERY' });
+    }
+    const { meta, rows } = lang === undefined ? await read(['stats', 'progress', 'itemStates'])
+      : await querySnapshot({ stats: { prefix: `${lang}:` }, progress: { prefix: `${lang}-` }, itemStates: { prefix: `${lang}-` } });
+    return { meta, stats: { schemaVersion: 1, byScope: rows.stats },
+      progress: projectLearningProgress({ progress: { schemaVersion: 1, items: rows.progress }, itemStates: rows.itemStates }) };
   }
 
   /**
@@ -180,7 +206,7 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
   }
 
   return {
-    repository, ready, read, commit, legacyView, recordQuizSession, clearAll, startFresh, exportBackup,
+    repository, ready, read, querySnapshot, commit, legacyView, recordQuizSession, clearAll, startFresh, exportBackup,
     restorePoints, revertToRestorePoint, now,
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   };

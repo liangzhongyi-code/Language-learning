@@ -1,0 +1,7 @@
+{
+  "identifier": "prototype",
+  "description": "僅供本機 main 原型視窗執行記憶體 SQLite 探針；命令端另檢查兩頁路徑。",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-prototype-probe"]
+}

@@ -22,13 +22,6 @@
   <p class="foot">只有按下答案並顯示「已保存」的題目才算完成；還沒作答的題目重開後會從同一題繼續。</p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initDailyPage } from '../assets/js/ui/daily-view.js';
-  import { words } from '../assets/js/data/en/words.js';
-
-  renderNav();
-  initDailyPage({ lang: 'en', words, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

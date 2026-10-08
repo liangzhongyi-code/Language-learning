@@ -165,11 +165,17 @@ export function initGoogleBackupPanel(mount, backupPanel, { config = GOOGLE_CONF
     });
   }
 
+  /**
+   * 點選時先取得共用預覽世代，下載也在 readText 內；較新的檔案／代碼或取消能淘汰晚到結果。
+   * 只有仍有效的預覽才顯示下載成功，確認仍使用共用面板已驗證的固定內容。
+   */
   function restore(fileId) {
     return guarded(async () => {
-      const { text } = await drive.downloadSnapshot(fileId);
-      message = '已下載，請在上方「學習紀錄」面板檢查預覽後再確認；目前還沒有變更任何資料。';
-      await backupPanel.previewFrom(async () => text, 'google');
+      const preview = await backupPanel.previewFrom(async () => {
+        const { text } = await drive.downloadSnapshot(fileId);
+        return text;
+      }, 'google');
+      if (preview) message = '已下載，請在上方「學習紀錄」面板檢查預覽後再確認；目前還沒有變更任何資料。';
     });
   }
 

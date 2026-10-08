@@ -17,12 +17,6 @@
   <div id="app"></div>
 </main>
 <footer class="wrap"><p class="foot">純前端靜態網站 · 發音使用瀏覽器內建語音，不夾帶任何音檔</p></footer>
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initAlphabetPage } from '../assets/js/ui/kana-view.js';
-  import { letters } from '../assets/js/data/en/alphabet.js';
-  renderNav();
-  initAlphabetPage({ letters, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

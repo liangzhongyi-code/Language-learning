@@ -47,7 +47,7 @@ export function renderLangStats(mount, lang) {
   async function draw(store) {
     let view;
     try {
-      view = await store.legacyView();
+      view = await store.legacyView(lang);
     } catch (error) {
       mount.innerHTML = `<p class="stats-due" role="alert">${storageMessage(error)}</p>`;
       return;

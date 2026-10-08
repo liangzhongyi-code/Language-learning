@@ -67,8 +67,8 @@ export function appearanceHtml() {
         ${BACKGROUNDS.map((b) => `<label class="appearance-choice"><input type="radio" name="appearance-background" data-appearance="background" value="${b.value}"><span class="appearance-preview preview-${b.value}" aria-hidden="true"></span><span>${b.label}</span><small>${b.note}</small></label>`).join('')}
       </div></fieldset>
       <label class="appearance-effects"><input type="checkbox" data-appearance="reducedEffects">降低特效</label>
-      <p class="appearance-note">關閉動態、微塵與磨砂模糊。系統設定「減少動態」時也會自動降低特效；測驗卡片一律使用實心底色。</p>
-      <p class="appearance-note" data-system-effects hidden>系統目前已啟用「減少動態」，即使未勾選，仍會降低特效。</p>
+      <p class="appearance-note">勾選後關閉動態、微塵與磨砂模糊，並降低柔光強度；測驗卡片一律使用實心底色。</p>
+      <p class="appearance-note" data-system-effects hidden>系統目前已啟用「減少動態」：停止動畫、關閉磨砂模糊並降低柔光強度，保留靜態微塵；勾選「降低特效」仍會關閉微塵。</p>
       <p class="appearance-status" data-appearance-status role="status" aria-live="polite">選擇會自動保存，也會跟著備份匯出。</p>
     </section>
   </details>`;

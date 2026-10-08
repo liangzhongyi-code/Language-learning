@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P00b 本機原型 — 第二頁</title>
+  <link rel="stylesheet" href="./prototype.css">
+  <script type="module" src="./ui.js"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">P00b · 本機原型 · 第二頁</p>
+    <h1>換頁後重新檢查</h1>
+    <p>這是獨立 HTML 頁面，共用本機外部模組。第一頁的探針結果不會被當成這一頁的成功證據。</p>
+    <nav aria-label="原型導覽"><a href="./index.html">返回第一頁</a></nav>
+    <section aria-labelledby="probe-title">
+      <h2 id="probe-title">檢查原生探針</h2>
+      <p>學習 repository 尚未實作；此探針不保存或讀取學習紀錄。</p>
+      <button id="run-probe" type="button">執行記憶體 SQLite 探針</button>
+      <p id="probe-status" role="status" aria-live="polite">尚未執行；目前沒有原生成功證據。</p>
+      <pre id="probe-proof" hidden></pre>
+    </section>
+  </main>
+</body>
+</html>

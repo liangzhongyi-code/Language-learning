@@ -1,0 +1,13 @@
+{
+  "description": "APP 安裝包只收這裡明列的網站資源；不在清單內的一律不打包（S02）。",
+  "pages": [
+    "index.html", "help.html",
+    "en/index.html", "en/daily.html", "en/alphabet.html", "en/vocabulary.html", "en/grammar.html",
+    "en/quiz.html", "en/practice.html", "en/library.html", "en/history.html",
+    "ja/index.html", "ja/guide.html", "ja/daily.html", "ja/kana.html", "ja/vocabulary.html", "ja/grammar.html",
+    "ja/quiz.html", "ja/practice.html", "ja/library.html", "ja/history.html"
+  ],
+  "directories": ["assets/css", "assets/js"],
+  "files": ["CREDITS.md"],
+  "allowedExtensions": [".html", ".css", ".js", ".md", ".svg", ".png", ".ico", ".woff2"]
+}

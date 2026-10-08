@@ -1,14 +1,20 @@
 /**
  * 首頁「備份與還原」面板（v2 完整學習群組）。
  *
- * 帶走：下載檔案、複製代碼、系統分享，內容是一次唯讀交易取得的完整學習群組加偏好。
+ * 帶走：下載檔案、複製代碼、系統分享；完整學習群組由一次唯讀交易取得，另帶可攜偏好。
  * 帶回：檔案、代碼（以及 Google 面板）共用同一個 restore controller——先深驗證、
- * 預覽內容與影響，確認時才以一次交易替換，並自動保存還原點（最多三份）。
+ * 預覽內容與影響，確認還原學習群組時才以一次交易替換並保存還原點（最多三份）；
+ * 偏好另行保存，純偏好還原不建立學習還原點。
  */
 import { createRestoreController } from '../core/restore-controller.js';
 import { encodeBackupCode, decodeBackupCode, codeSizeHint } from '../core/backup-code.js';
 import { BACKUP_JSON_MAX_BYTES } from '../core/backup-limits.js';
-import { loadPrefs, savePrefs, PREFS_IMPORTED_EVENT } from './prefs.js';
+import { FAVORITES_BOOK_ID } from '../core/library.js';
+import { PORTABLE_STORES, REMINDER_KEY } from '../core/learning-snapshot.js';
+import { normalizeAppearance } from '../core/appearance.js';
+import { defaultFeedbackPrefs } from '../core/feedback-policy.js';
+import { loadPrefs, savePrefs, migratePrefs, PREFS_IMPORTED_EVENT } from './prefs.js';
+import { APPEARANCE_EVENT } from './appearance.js';
 import { awaitLearningStore } from './storage-gate.js';
 import { newOperationId, storageMessage } from './platform/learning-store.js';
 
@@ -18,8 +24,18 @@ const esc = (s) =>
 const COUNT_LABEL = [
   ['stats', '測驗統計', '組'], ['progress', '逐題紀錄', '筆'], ['learning', '能力排程', '筆'],
   ['events', '作答歷程', '筆'], ['plans', '每日清單', '份'], ['books', '單字簿', '本'],
-  ['notes', '筆記', '則'], ['prefs', '偏好設定', '項'],
+  ['notes', '筆記', '則'], ['prefs', '偏好設定', '項'], ['favorites', '收藏', '字'],
+  ['intents', '學習意向', '筆'], ['changedPrefs', '自訂偏好', '項'], ['reminders', '提醒設定', '組'],
+  ['sessions', '學習場次', '局'], ['ledger', '每日帳本', '份'],
+  ['unlocks', '成就解鎖', '項'], ['calendar', '學習日曆', '筆'],
 ];
+
+/**
+ * 只以偏離預設的可攜偏好啟用匯出；外觀與回饋沿用各自的預設政策。
+ * 其餘 UI 偏好對應 prefs.js 的預設值，hideKanji 已由 loadPrefs 遷移，不重複計數。
+ */
+const DEFAULT_PORTABLE_PREFS = { ...normalizeAppearance({}), ...defaultFeedbackPrefs(),
+  grammarLines: true, keyboardSeen: false, kanaMode: 'both', readingAskIn: 'zh', kanjiMode: 'show' };
 
 const REASON_LABEL = { restore: '匯入備份前', 'before-revert': '回到還原點前', google: 'Google 還原前' };
 
@@ -54,9 +70,14 @@ function portablePrefs() {
     && (typeof value === 'boolean' || (typeof value === 'string' && value.length <= 80))));
 }
 
+function changedPreferenceCount() {
+  return Object.entries(portablePrefs()).filter(([key, value]) => key !== 'hideKanji'
+    && value !== DEFAULT_PORTABLE_PREFS[key]).length;
+}
+
 /**
- * 掛上面板；extraSources 讓 Google 面板把「讀取雲端快照」接進同一個預覽流程。
- * 回傳 { previewFrom(readText, source), refresh() } 供其他面板使用。
+ * 掛上面板；Google 面板透過回傳的 previewFrom(readText, source) 接入共用預覽流程。
+ * 回傳 API 另含 dismissPreview(source)、refresh() 與唯讀 store getter。
  */
 export function initLearningBackupPanel(mount) {
   if (!mount) return null;
@@ -83,10 +104,19 @@ export function initLearningBackupPanel(mount) {
 
   async function loadCounts() {
     try {
-      const { rows } = await store.read(['stats', 'progress', 'itemStates', 'dailyPlans', 'books', 'notes']);
+      const { meta, rows } = await store.read([...PORTABLE_STORES]);
+      const reminder = rows.reminders[REMINDER_KEY];
       counts = { stats: Object.keys(rows.stats).length, progress: Object.keys(rows.progress).length,
         learning: Object.keys(rows.itemStates).length, plans: Object.keys(rows.dailyPlans).length,
-        books: Object.keys(rows.books).length, notes: Object.keys(rows.notes).length };
+        events: Object.keys(rows.reviewEvents).length, sessions: Object.keys(rows.sessions).length,
+        ledger: Object.keys(rows.dailyLedger).length,
+        unlocks: Object.keys(rows.achievements).filter((key) => key.startsWith('unlock:')).length,
+        calendar: Object.keys(rows.achievements).filter((key) => key.startsWith('calendar:')).length,
+        books: Object.keys(rows.books).length, notes: Object.keys(rows.notes).length,
+        favorites: rows.books[FAVORITES_BOOK_ID]?.wordIds.length ?? 0,
+        intents: Object.keys(rows.intents).length, changedPrefs: changedPreferenceCount(),
+        reminders: reminder && (reminder.enabled || reminder.generation > 0
+          || reminder.localTime !== '20:00' || reminder.timeZone !== meta.timeZone) ? 1 : 0 };
       points = await store.restorePoints();
     } catch (error) {
       message = storageMessage(error);
@@ -94,7 +124,22 @@ export function initLearningBackupPanel(mount) {
   }
 
   function hasData() {
-    return ['stats', 'progress', 'learning', 'plans', 'notes'].some((key) => counts[key] > 0) || counts.books > 1;
+    // 預設空收藏簿不算使用者內容；政策列不計數，預設偏好／提醒也已在摘要取值時排除。
+    return Object.entries(counts).some(([key, count]) => count > (key === 'books' ? 1 : 0));
+  }
+
+  /**
+   * 首頁外觀切換及偏好重新載入後只更新摘要／匯出開關，不重建待確認的匯入選擇或輸入焦點。
+   */
+  function refreshPreferences() {
+    if (!store || !mount.isConnected) return;
+    counts.changedPrefs = changedPreferenceCount();
+    const any = hasData();
+    const summary = shell.querySelector('.backup-now');
+    if (summary) summary.textContent = `目前：${any ? summaryOf(counts) : '還沒有任何紀錄'}`;
+    for (const button of shell.querySelectorAll('[data-export], [data-copy-code]')) button.disabled = !any;
+    const share = shell.querySelector('[data-share]');
+    if (share) share.hidden = !any;
   }
 
   function canShareFile() {
@@ -114,13 +159,13 @@ export function initLearningBackupPanel(mount) {
         <p class="backup-note">
           紀錄存在這個瀏覽器裡，關掉視窗或重開機都還在。
           但<b>清除網站資料、無痕模式、換一台裝置或換一個瀏覽器</b>都會看不到——想留著就先帶走一份。
-          備份包含統計、逐題紀錄、每日清單、作答歷程、單字簿、筆記與偏好。
+          備份包含統計、逐題紀錄、每日清單、作答歷程、單字簿與收藏、筆記、學習意向、提醒與偏好。
         </p>
         <p class="backup-now">目前：${any ? esc(summaryOf(counts)) : '還沒有任何紀錄'}</p>
         <div class="backup-actions">
           <button class="btn ghost sm" type="button" data-export ${any ? '' : 'disabled'}>下載檔案</button>
           <button class="btn ghost sm" type="button" data-copy-code ${any ? '' : 'disabled'}>複製代碼</button>
-          ${any && canShareFile() ? '<button class="btn ghost sm" type="button" data-share>分享…</button>' : ''}
+          ${canShareFile() ? `<button class="btn ghost sm" type="button" data-share ${any ? '' : 'hidden'}>分享…</button>` : ''}
           <label class="btn ghost sm file-btn">
             選擇備份檔
             <input type="file" accept="application/json,.json,text/plain,.txt" data-file class="file-input">
@@ -151,7 +196,7 @@ export function initLearningBackupPanel(mount) {
         ${p.canRestoreLearning ? '<label><input type="checkbox" data-pick="learning" checked> 學習紀錄（整組替換，不合併）</label>' : ''}
         ${p.canRestorePreferences ? '<label><input type="checkbox" data-pick="preferences" checked> 偏好設定</label>' : ''}
       </fieldset>
-      <p class="backup-note">確認後會先把目前的紀錄存成還原點，之後可在下方回到確認前的狀態。</p>
+      <p class="backup-note">還原學習紀錄時會先把目前的紀錄存成還原點，之後可在下方回到確認前的狀態；只還原偏好不建立還原點。</p>
       <div class="backup-actions">
         <button class="btn sm" type="button" data-confirm>確認還原</button>
         <button class="btn ghost sm" type="button" data-cancel>取消</button>
@@ -384,10 +429,11 @@ export function initLearningBackupPanel(mount) {
       now: () => Date.now(),
       timeZone: () => meta.timeZone,
       nextOperationId: () => newOperationId('restore'),
-      savePreferences: async (prefs) => savePrefs({ ...loadPrefs(), ...prefs }),
+      savePreferences: async (prefs) => savePrefs({ ...loadPrefs(), ...migratePrefs(prefs) }),
     });
     await loadCounts();
     draw();
   });
+  window.addEventListener(APPEARANCE_EVENT, refreshPreferences);
   return api;
 }

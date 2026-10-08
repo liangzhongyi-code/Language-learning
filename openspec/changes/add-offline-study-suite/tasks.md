@@ -216,3 +216,13 @@ F00 的瀏覽器 runner 與工具驗證屬測試基礎設施：先用刻意壞�
 Google Client IDs 依要求留空。mock測試與官方設定手冊可先交付；真授權／跨平台還原待填合法設定。使用者不需在聊天提供密碼、token、keystore密碼或Apple帳密。
 
 需要使用者／設備的地方以選項請示；架構不變的小修不反覆詢問。外部缺項不縮減本清單，也不把「尚未驗證」當成功。
+
+## 2026-10-08 續作驗證追加
+
+以下是本日可追溯的局部進度，既有工作包仍須逐項核對，不以全套綠燈批量勾選原生或外部授權情境。前述 Rust／MSVC 盤點是 10-05 當時狀態，後續盤點見 app/docs/toolchain.md，不改寫成當時已具備。
+
+- F16：自由測驗已接 `quiz-service` 逐題交易、半局固定題序續答、完成局一次入帳。服務與接線測試 9/9；Chromium `quiz-progress`、`quiz-conflict` PASS。跨分頁同題衝突與清除後舊世代提供同步入口，暫時故障維持原提交重試。見 docs/logic-changes/2026-10-07-008-quiz-progress.md。
+- F40／F17：ts-fsrs 5.4.2 固定版本、完整 MIT notice、本機 ES2020 vendor 與唯讀可重現建置檢查通過。26 項 FSRS／投影／下游定向驗證通過；不做個人參數訓練，不偽造舊能力，原生 WebView 仍未驗。見 10-07-005 與 009。
+- F50a／P00b：資源安全測試與兩頁原型的 JS 契約通過，實際整理 169 個資源到 app/dist-web。安裝包關閉、prototype 身份獨立，只提供記憶體 SQLite 探針；不是原生學習 repository。P00b 的 Rust 編譯與 Windows／Android／iOS 真載入條件仍未滿足，不勾選整項完成。
+- F70／F71：邏輯索引、歷史更正與本日結果已留存。Node 1063/1063、10 組隔離 Chromium PASS。15k states／100k events 效能、真機語音、Google 真授權、安裝／更新／續簽仍待驗；F72 全範圍最終審查未完成。
+- 本日未執行 commit／push／merge，未歸檔完整規格，也沒有將本機成果標為已發布。詳細證據與限制見 docs/logic-changes/2026-10-08-001-continue-verification.md。

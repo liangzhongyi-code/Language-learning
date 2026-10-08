@@ -10,7 +10,7 @@
 export const PREFS_KEY = 'lang-learn.prefs.v1';
 
 /**
- * 整份偏好由匯入功能覆寫後，用這個事件通知同頁的 UI 立即重讀。
+ * 偏好由匯入功能保存後，用這個事件通知同頁的 UI 立即重讀。
  */
 export const PREFS_IMPORTED_EVENT = 'lang-learn:prefs-imported';
 
@@ -40,7 +40,7 @@ const DEFAULTS = {
    * 跟出題方向一樣是「我要用哪種方式練」的長期選擇，所以記在偏好裡。
    *
    * 舊版存的是布林的 hideKanji，那個鍵會留在使用者的 localStorage 裡，
-   * 由 quiz-view 的 storedKanjiMode() 讀成對應的模式。
+   * 由 migratePrefs 在合併預設值或本機偏好前轉成對應的模式。
    */
   kanjiMode: 'show',
   /**
@@ -57,11 +57,11 @@ const DEFAULTS = {
 /**
  * 把舊版存下來的形狀轉成現在的。
  *
- * 這件事一定要在合併預設值「之前」做。合併之後每一個鍵都有值了，
+ * 這件事一定要在合併預設值或本機偏好「之前」做。合併之後每一個鍵都有值了，
  * 分不出「使用者沒設定過」與「使用者選的剛好等於預設」——
- * 於是 kanjiMode 永遠讀到預設的 show，遷移那一行永遠不會執行。
+ * 於是 kanjiMode 只會讀到預設或本機模式，舊 hideKanji 的遷移永遠不會執行。
  */
-function migrate(stored) {
+export function migratePrefs(stored) {
   /* 漢字顯示最早是布林的 hideKanji，加了「標在假名上」之後改成三選一 */
   if (stored.kanjiMode === undefined && stored.hideKanji !== undefined) {
     return { ...stored, kanjiMode: stored.hideKanji === true ? 'kana' : 'show' };
@@ -78,7 +78,7 @@ export function loadPrefs() {
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return { ...DEFAULTS };
-    return { ...DEFAULTS, ...migrate(parsed) };
+    return { ...DEFAULTS, ...migratePrefs(parsed) };
   } catch {
     return { ...DEFAULTS };
   }

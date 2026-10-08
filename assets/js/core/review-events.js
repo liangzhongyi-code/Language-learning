@@ -119,7 +119,7 @@ export function createReviewEvent({ sessionId, entryId, planId = null, question,
  * 完成局數完全不動，completeSession 必須另行去重。
  */
 export function applyReview({ event, previousState = null, sourceProgress = null, initialization,
-  statsScope = null, sessionEvents = [], ...other }) {
+  statsScope = null, sessionEvents = [], policy = 'leitner', ...other }) {
   if (Object.keys(other).length) invalid('作答參數不合法；累計使用 sourceProgress，舊摘要必須明確指定 initialization。');
   if (previousState !== null && initialization !== undefined) invalid('已有能力狀態不能再次初始化。');
   checkedEvent(event);
@@ -138,11 +138,14 @@ export function applyReview({ event, previousState = null, sourceProgress = null
     ability: context.ability, direction: context.actualDirection, initialization }) : previousState;
   if (previousState === null && initialization.kind === 'legacy' && (sourceProgress === null
     || sourceProgress.n < initial.legacySummary.n || sourceProgress.w < initial.legacySummary.w)) invalid('舊摘要初始化必須保留原有累計次數。');
-  const scheduled = scheduleReview({ event, previousState: initial, sessionEvents });
+  const scheduled = scheduleReview({ event, previousState: initial, sessionEvents, policy });
   const progress = { ...clone(previousProgress), n: previousProgress.n + 1,
     w: previousProgress.w + (event.correct ? 0 : 1), last: event.answeredAt };
   if (scheduled.scheduleEligible) {
-    progress.box = scheduled.itemState.schedulerState.box;
+    /**
+     * FSRS 沒有 Leitner 盒號：只同步 due，舊盒號保留給舊版摘要與測驗範圍使用。
+     */
+    if (scheduled.itemState.schedulerName === 'leitner') progress.box = scheduled.itemState.schedulerState.box;
     progress.due = scheduled.itemState.due;
   }
   const nextStats = { answered: previousStats.answered + 1, correct: previousStats.correct + (event.correct ? 1 : 0), sessions: previousStats.sessions };

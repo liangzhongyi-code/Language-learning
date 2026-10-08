@@ -22,13 +22,6 @@
   <p class="foot">單字簿與筆記存在這台裝置；完整備份請到首頁的「備份與還原」。</p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initLibraryPage } from '../assets/js/ui/library-view.js';
-  import { words } from '../assets/js/data/en/words.js';
-
-  renderNav();
-  initLibraryPage({ lang: 'en', words, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

@@ -47,11 +47,52 @@ NGSL 與 TSL 採 CC BY-SA 4.0，衍生作品必須以相同條款釋出並標註
 本專案匯入的英文單字資料（`assets/js/data/en/words/` 底下標明來源為
 NGSL 或 TSL 的批次檔）因此同樣以 **CC BY-SA 4.0** 釋出。
 
-**不受此條款約束的部分**（全部是本專案自行撰寫，與 NGSL／TSL 無衍生關係）：
+以下與 NGSL／TSL 無衍生關係；自行撰寫部分採本專案授權，第三方程式各遵守下方授權：
 
-- 程式碼
+- 程式碼（第三方排程程式另見下方 ts-fsrs 授權）
 - 句型題庫（`{en,ja}/sentences/`）
 - 情境題（`ja/scenes.js`）
 - 閱讀短文與題目（`{en,ja}/readings.js`，含 16 篇原創短文與中譯）
 - 假名表（`ja/kana.js`）與英文字母表
 - 手寫的生活單字（`words/core.js`）
+
+---
+
+## 第三方程式：ts-fsrs 5.4.2
+
+- 名稱／版本：`ts-fsrs` **5.4.2**，套件與 lockfile 均鎖定此版本。
+- 來源：[open-spaced-repetition/ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)；本次授權查證依已安裝 5.4.2 套件的 `package.json`、`dist/index.mjs` 與 `LICENSE`，不是依上游最新分支推定。
+- 著作權：`Copyright (c) 2026 Open Spaced Repetition`。
+- 授權：**MIT License**，完整原文保留如下，亦包含在 `assets/js/vendor/ts-fsrs.js` 檔頭。
+- 本機來源：`node_modules/ts-fsrs/dist/index.mjs`；執行期使用專案內 `assets/js/vendor/ts-fsrs.js`，不透過 CDN 載入。
+- 本專案轉換：`tools/build-fsrs.mjs` 對固定來源的 class fields 做 ES2020 DefineProperty 初始化轉換、移除 sourceMappingURL，並加入授權與來源／輸出雜湊。來源版本、授權或 SHA-256 不符即拒絕建置。
+- 固定來源 SHA-256：`ad4a4b3b7e259fcbf02764454c8f9db4ea3bf5aae2f473198129ecb7728f1a19`；目前轉換後主體 SHA-256：`8e826625db368a195b8eef907235fdb5063775daf93e81fa7857fd3a177212d2`（不含檔頭）。
+- 查證日期：2026-10-08。`node tools/build-fsrs.mjs --check` 本次退出碼 0，確認 vendor 可重現且保留完整 MIT 授權；未重新輸出 vendor。
+
+ts-fsrs 是第三方程式，不能列為本站自行撰寫的程式碼；其 MIT 授權與英文題庫的 CC BY-SA 4.0 分別標示。本批 FSRS 與文件尚未提交／推送／發布；原生平台與完整大資料效能未驗證，不能由授權或 ES2020 檢查推定已完成平台驗收。
+
+### MIT 授權原文（ts-fsrs 5.4.2）
+
+```text
+MIT License
+
+Copyright (c) 2026 Open Spaced Repetition
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

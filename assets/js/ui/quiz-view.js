@@ -4,8 +4,8 @@
  * 這一層刻意做得很薄：抽題、干擾選項、計分全部在 core/quiz-engine.js，
  * 統計在 core/stats.js。這裡只負責把資料畫出來、把點擊轉成函式呼叫。
  *
- * 一局的狀態只活在記憶體裡，不寫進 localStorage——重新整理就回到設定畫面。
- * 這是刻意的：允許中途離開再回來，正確率就失去意義了。
+ * 固定題面與已提交答案保存至交易儲存；重開可續答，未提交的填空草稿不保存。
+ * 答題數逐題累計，全部完成才增加一局，結果畫面不再重算。
  */
 
 import {
@@ -18,7 +18,7 @@ import {
   KANJI_MODES,
   MIN_POOL,
 } from '../core/quiz-engine.js';
-import { summarize, isComplete } from '../core/stats.js';
+import { summarize } from '../core/stats.js';
 import { emptyProgress, weakest, dueIds } from '../core/progress.js';
 import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../core/quiz-setup.js';
 import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
@@ -27,6 +27,7 @@ import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { awaitLearningStore } from './storage-gate.js';
 import { newOperationId, storageMessage } from './platform/learning-store.js';
+import { createQuizService } from './platform/quiz-service.js';
 
 const DIRECTION_LABEL = {
   zh2target: { en: '中翻英', ja: '中翻日' },
@@ -87,8 +88,8 @@ function strandedNote(stranded, scopeTotals, scopeSizes, sourceLabel) {
 
 const SCOPE_NOTE = {
   all: '',
-  weak: '只出你錯過、而且還沒練熟的題目，錯得最兇的優先。連續答對三次就會離開這份清單，再錯又會回來。干擾選項仍然從完整題庫抽，不會因為範圍變小就變好猜。',
-  due: '照間隔重複排程，只出今天（含之前）到期的題目。答對會拉長下次出現的間隔，答錯則打回隔天。',
+  weak: '只出你錯過、而且還沒練熟的題目，錯得最兇的優先。FSRS 依能力是否練熟判斷，不承諾固定答對次數。干擾選項仍然從完整題庫抽。',
+  due: '依能力排程，只出今天（含之前）到期的題目。FSRS 依實際作答安排下一次複習，未到期答對不把日期往後推。',
 };
 
 const KANJI_MODE_LABEL = {
@@ -136,7 +137,13 @@ function rubyHtml(pairs, fallback) {
   return `<span class="rb">${inner}</span>`;
 }
 
-export function initQuizPage({ lang, words, sentences, scenes = [], readings = [], mount, noticeHost }) {
+export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
+  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'] };
+  const loadedKeys = new Set(typeof dataProvider === 'function' ? [] : ['words', 'sentences', 'scenes', 'readings']);
+  let sourceGeneration = 0;
+  let sourceLoading = false;
+  let sourceError = '';
+  const sourceReady = (source) => sourceKeys[source].every((key) => loadedKeys.has(key));
   /**
    * 設定值。題源可由網址參數預選，供單字頁與文法頁的捷徑使用。
    */
@@ -184,15 +191,17 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   };
 
   let session = null;
-  /* 統計只在進入結果畫面時寫入一次，避免重複累加 */
-  let recorded = false;
   /**
-   * 保存狀態：saving／saved／failed／offline。寫入失敗要一直提示到離開結果畫面，
-   * 而且提供以同一個 operationId 重試，不會重複計入同一局。
+   * 保存狀態：saving／saved／failed／offline。每题落盤前不能換題，
+   * 失敗保留同一個 reviewId 供重試，不重複計數。
    */
   let saveState = null;
   let saveError = '';
-  let sessionOperationId = null;
+  let saveErrorCode = '';
+  let quizService = null;
+  let savedSessionId = null;
+  let pendingReview = null;
+  let resumable = [];
   /* 交易式學習儲存；未就緒或使用者選擇不保存時為 null */
   let store = null;
   let offline = false;
@@ -232,18 +241,65 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   }
 
   /**
-   * 題源筆數一律問 core，避免設定畫面顯示的數字與實際出題的池子分家。
-   *
-   * 題庫在這一頁的生命週期裡不會變，所以只算一次。
-   * poolOf 每次呼叫都複製一份陣列（單字 7608 筆、混合 7755 筆），
-   * 而設定畫面光是畫題型那一排就要問五次，每點一顆膠囊重畫一次。
+   * 未載入的題源使用 metadata，載入後以 core 實際題池為準；每次接收資料清除衍生快取。
    */
   const poolSizeCache = new Map();
   function poolSize(source) {
     if (!poolSizeCache.has(source)) {
-      poolSizeCache.set(source, poolOf(source, words, sentences, scenes, readings).length);
+      const counts = { words: dataMeta.words, sentences: dataMeta.sentences,
+        cloze: dataMeta.cloze ?? dataMeta.sentences, scene: dataMeta.scenes, reading: dataMeta.readingQuestions,
+        mixed: source === 'mixed' ? poolSize('words') + poolSize('sentences') : 0 };
+      poolSizeCache.set(source, sourceReady(source)
+        ? poolOf(source, words, sentences, scenes, readings).length : counts[source] || 0);
     }
     return poolSizeCache.get(source);
+  }
+
+  function countsAtLevels(source) {
+    if (sourceReady(source)) {
+      const pool = poolOf(source, words, sentences, scenes, readings);
+      return Object.fromEntries(levelsOf('ja').map(({ level }) => [level, pool.filter((item) => item.level === level).length]));
+    }
+    const maps = { words: dataMeta.wordsByLevel, sentences: dataMeta.sentencesByLevel,
+      cloze: dataMeta.clozeByLevel ?? dataMeta.sentencesByLevel, scene: dataMeta.scenesByLevel,
+      reading: dataMeta.readingQuestionsByLevel };
+    if (source !== 'mixed') return maps[source] || {};
+    const wordCounts = countsAtLevels('words');
+    const sentenceCounts = countsAtLevels('sentences');
+    return Object.fromEntries(levelsOf('ja').map(({ level }) => [level,
+      (wordCounts[level] || 0) + (sentenceCounts[level] || 0)]));
+  }
+
+  /**
+   * 每次選源或重試增加世代；晚到成功／失敗都不修改題庫、設定或已恢復的題面。
+   */
+  async function loadSource() {
+    const generation = ++sourceGeneration;
+    const source = config.source;
+    sourceLoading = !sourceReady(source);
+    sourceError = '';
+    lastSetup = null;
+    renderSetup();
+    if (!sourceLoading) return;
+    try {
+      const dataset = await dataProvider(source);
+      if (generation !== sourceGeneration || phase !== 'setup' || config.source !== source) return;
+      if (!dataset || sourceKeys[source].some((key) => !Array.isArray(dataset[key]))) {
+        throw new Error('題庫資料格式不完整');
+      }
+      if (sourceKeys[source].includes('words')) words = dataset.words;
+      if (sourceKeys[source].includes('sentences')) sentences = dataset.sentences;
+      if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
+      if (sourceKeys[source].includes('readings')) readings = dataset.readings;
+      sourceKeys[source].forEach((key) => loadedKeys.add(key));
+      poolSizeCache.clear();
+      levelIdCache.clear();
+    } catch {
+      if (generation !== sourceGeneration || phase !== 'setup' || config.source !== source) return;
+      sourceError = `${SOURCE_LABEL[source]}題庫載入失敗，請重試。${typeof onDataRetry === 'function' ? '重試會重新載入頁面；已存紀錄保留，臨時測驗設定會重設。' : ''}`;
+    }
+    sourceLoading = false;
+    renderSetup();
   }
 
   /**
@@ -293,7 +349,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   async function refreshProgress() {
     if (!store) return;
     try {
-      progressCache = (await store.legacyView()).progress;
+      progressCache = (await store.legacyView(lang)).progress;
+      if (quizService) resumable = await quizService.listActive();
     } catch {
       /* 保留舊快照，保存訊息另由結果畫面顯示 */
     }
@@ -354,9 +411,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
      */
     const progress = progressCache;
     const fullPool = poolOf(config.source, words, sentences, scenes, readings);
-    const levelCounts = Object.fromEntries(
-      levelsOf('ja').map(({ level }) => [level, fullPool.filter((item) => item.level === level).length])
-    );
+    const levelCounts = countsAtLevels(config.source);
 
     /**
      * 切換題型後，原本的級別可能不足四題。
@@ -382,7 +437,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       const set = new Set(ids);
       return pool.filter((item) => set.has(item.id)).length;
     };
-    const scopeSizes = { all: pool.length, weak: sizeOf('weak'), due: sizeOf('due') };
+    const scopeSizes = { all: sourceReady(config.source) ? pool.length
+      : config.level === 'all' ? poolSize(config.source) : levelCounts[config.level] || 0,
+      weak: sizeOf('weak'), due: sizeOf('due') };
 
     /**
      * 哪幾顆膠囊該出現、選著的那顆還算不算數、哪些範圍被卡住——
@@ -399,11 +456,15 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       scope: config.scope,
       minPool: MIN_POOL,
     });
-    config.scope = scope;
-    lastSetup = { idsByScope, limit: total, level: config.level };
+    // 冷載入的空池不代表範圍不足；等題源就緒後才套用 fallback，避免吃掉使用者的選擇。
+    if (sourceReady(config.source)) {
+      config.scope = scope;
+      lastSetup = { idsByScope, limit: total, level: config.level };
+    }
 
     mount.innerHTML = `
       <div class="card">
+        ${resumable.length ? `<div class="notice"><b>有尚未完成的測驗</b><p>已提交答案可接續，未提交輸入不保留。</p><div class="actions">${resumable.slice(0, 5).map((round) => `<button type="button" class="btn ghost" data-resume-quiz="${esc(round.sessionId)}">繼續${esc(SOURCE_LABEL[round.source])}（${round.answered}/${round.total}）</button>`).join('')}</div></div>` : ''}
         <div class="setting">
           <label>題型</label>
           <div class="chips">${chips('source', [
@@ -416,9 +477,9 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
              * 英文沒有對應的東西可考。沒有資料時整顆膠囊不出現，
              * 而不是出現一顆按了會說「題庫不足」的死按鈕。
              */
-            ...(scenes.length ? [['scene', `情境（${scenes.length}）`]] : []),
+            ...(poolSize('scene') ? [['scene', `情境（${poolSize('scene')}）`]] : []),
             /* 閱讀題顯示的是題數不是篇數——使用者選的是這一局要作答幾題 */
-            ...(readings.length ? [['reading', `閱讀（${poolSize('reading')}）`]] : []),
+            ...(poolSize('reading') ? [['reading', `閱讀（${poolSize('reading')}）`]] : []),
           ], config.source)}</div>
         </div>
 
@@ -428,7 +489,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           <label>JLPT 難度</label>
           <div class="chips">${chips(
             'level',
-            [['all', `全部（${fullPool.length}）`]].concat(
+            [['all', `全部（${poolSize(config.source)}）`]].concat(
               levelsOf('ja').map(({ level, label }) => [
                 level,
                 `${label}（${levelCounts[level] || 0}）`,
@@ -440,7 +501,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           <p class="setting-note">${
             config.level === 'all'
               ? '不分級，題目與自動抽出的干擾選項可能來自 N5 到 N1。'
-              : `只使用 ${levelsOf('ja').find((item) => item.level === Number(config.level))?.label} 題庫；題目、干擾選項與填空候選詞都不會跨級。`
+              : `只出 ${levelsOf('ja').find((item) => item.level === Number(config.level))?.label} 題目；干擾選項與填空候選詞仍取自完整題源，可能跨級。`
           }　灰色級別表示目前題型不足 ${MIN_POOL} 題。</p>
         </div>`
             : ''
@@ -557,9 +618,10 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         </div>
 
         ${errorMessage ? `<div class="notice"><b>無法開始：</b>${esc(errorMessage)}</div>` : ''}
+        ${sourceLoading || sourceError ? `<div class="notice" role="status" aria-live="polite">${sourceLoading ? '正在載入題庫…' : esc(sourceError)}${sourceError ? '<button class="btn ghost" type="button" data-source-retry>重試載入</button>' : ''}</div>` : ''}
 
         <div class="actions">
-          <button class="btn" type="button" data-start>開始測驗</button>
+          <button class="btn" type="button" data-start ${sourceLoading || sourceError || !sourceReady(config.source) ? 'disabled' : ''}>開始測驗</button>
         </div>
         <p class="setting-note quiz-backup-link">測驗紀錄會自動保存在這個瀏覽器；要匯出請到<a href="../index.html#backup">全站首頁的「備份與還原」</a>。</p>
       </div>`;
@@ -586,14 +648,23 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
          * 在每次重畫時當場算——寫回 config 的話就會黏住，切一次小範圍
          * 再切回來，使用者選的 10 題會變成整個題庫。
          */
-        renderSetup();
+        if (set === 'source') loadSource();
+        else renderSetup();
       });
     });
 
     mount.querySelector('[data-start]').addEventListener('click', start);
+    mount.querySelector('[data-source-retry]')?.addEventListener('click', () => {
+      if (typeof onDataRetry === 'function') onDataRetry(config.source);
+      else loadSource();
+    });
+    mount.querySelectorAll('[data-resume-quiz]').forEach((button) => button.addEventListener('click', () => resumeQuiz(button.dataset.resumeQuiz)));
   }
 
-  function start() {
+  async function start() {
+    if (phase !== 'setup' || sourceLoading || sourceError || !sourceReady(config.source)) return;
+    phase = 'starting';
+    mount.querySelectorAll('button').forEach((button) => { button.disabled = true; });
     try {
       resetPlayState();
       /**
@@ -604,9 +675,14 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
        * 使用者按下去的就是他看到的那個數字——所見即所得比「最新」重要。
        * 上一局的結果仍會反映：backToSetup 一定會重畫，重畫就會重讀。
        */
-      const onlyIds = lastSetup?.idsByScope[config.scope] ?? scopeIds(config.scope);
+      let onlyIds = lastSetup?.idsByScope[config.scope] ?? scopeIds(config.scope);
       const limit = lastSetup?.limit ?? sizeWithin(config.source, onlyIds);
       const selectedLevel = lastSetup?.level ?? config.level;
+      if (lang === 'ja' && selectedLevel !== 'all') {
+        const scopeSet = onlyIds ? new Set(onlyIds) : null;
+        onlyIds = poolAtLevel(config.source, selectedLevel)
+          .filter((item) => !scopeSet || scopeSet.has(item.id)).map((item) => item.id);
+      }
       const count = countWithin(limit);
       session = buildSession({
         lang,
@@ -618,14 +694,19 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         direction: config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
-        level: selectedLevel === 'all' ? null : Number(selectedLevel),
+        level: null,
         onlyIds,
         count,
       });
-      recorded = false;
+      session.level = selectedLevel === 'all' ? null : Number(selectedLevel);
       saveState = null;
       saveError = '';
-      sessionOperationId = newOperationId('quiz');
+      pendingReview = null;
+      savedSessionId = null;
+      if (quizService && !offline) {
+        const created = await quizService.start(session, { kanjiMode: hasKanaVersion(session.source) ? config.kanjiMode : 'show' });
+        savedSessionId = created.sessionId;
+      }
       phase = 'playing';
       renderQuestion();
     } catch (error) {
@@ -635,13 +716,51 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
   }
 
   /**
-   * 回到設定畫面。session 與填空暫存一律丟掉——半局狀態不保留是刻意的設計。
+   * 從儲存題面接續，不重抽題、不重算已提交答案；所有設定以保存的那局為準。
+   */
+  async function resumeQuiz(id) {
+    if (phase !== 'setup' || !quizService) return;
+    ++sourceGeneration;
+    sourceLoading = false;
+    sourceError = '';
+    lastSetup = null;
+    phase = 'starting';
+    mount.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+    try {
+      const saved = await quizService.resume(id);
+      session = saved.quiz;
+      savedSessionId = saved.sessionId;
+      config.source = session.source;
+      config.direction = session.direction;
+      config.level = session.level ?? 'all';
+      config.kanjiMode = saved.kanjiMode;
+      config.count = session.questions.length;
+      config.useAll = false;
+      if (session.source === 'reading') config.readingAskIn = session.questions[0]?.promptLang === lang ? 'target' : 'zh';
+      pendingReview = null;
+      saveState = saved.done ? 'saved' : null;
+      saveError = '';
+      resetPlayState();
+      phase = 'playing';
+      if (saved.done) renderResult();
+      else renderQuestion();
+    } catch (error) {
+      phase = 'setup';
+      loadSource();
+    }
+  }
+
+  /**
+   * 暫停這局：丟掉未提交輸入，已保存題面與答案仍可從設定畫面續答。
    */
   function backToSetup() {
+    if (phase === 'playing' && ['saving', 'failed'].includes(saveState)) return;
     session = null;
+    pendingReview = null;
+    saveState = null;
     resetPlayState();
     phase = 'setup';
-    refreshProgress().then(() => { if (phase === 'setup') renderSetup(); });
+    refreshProgress().then(() => { if (phase === 'setup') loadSource(); });
   }
 
   /* ── 作答畫面 ─────────────────────────────────────────── */
@@ -910,14 +1029,15 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
           q.options.some((o) => o.ruby?.some((p) => p.ruby)) ? ' has-ruby' : ''
         }">${options}</div>
         ${feedback}
+        <div data-question-save role="status" aria-live="polite">${questionSaveHtml()}</div>
         ${translation}
         ${issueReportHtml(q, index)}
 
         <div class="actions">
-          <button class="btn" type="button" data-next ${answered ? '' : 'disabled'}>${
+          <button class="btn" type="button" data-next ${answered && canAdvance() ? '' : 'disabled'}>${
             isLast ? '看結果' : '下一題 →'
           }</button>
-          <button class="btn ghost" type="button" data-quit>結束這局</button>
+          <button class="btn ghost" type="button" data-quit ${['saving', 'failed'].includes(saveState) ? 'disabled' : ''}>暫停這局</button>
         </div>
       </div>`;
 
@@ -931,6 +1051,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     mount.querySelector('[data-next]').addEventListener('click', next);
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
     bindIssueReport(q, index);
+    bindQuestionRetry();
   }
 
   /* ── 填空題 ───────────────────────────────────────────── */
@@ -1112,17 +1233,18 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
         ${bank}
         ${errorMessage ? `<div class="notice">${esc(errorMessage)}</div>` : ''}
         ${feedback}
+        <div data-question-save role="status" aria-live="polite">${questionSaveHtml()}</div>
         ${issueReportHtml(q, index)}
 
         <div class="actions">
           ${
             answered
-              ? `<button class="btn" type="button" data-next>${isLast ? '看結果' : '下一題 →'}</button>`
+              ? `<button class="btn" type="button" data-next ${canAdvance() ? '' : 'disabled'}>${isLast ? '看結果' : '下一題 →'}</button>`
               : `<button class="btn" type="button" data-submit ${allFilled ? '' : 'disabled'}>${
                   allFilled ? '提交' : `還有 ${state.assign.filter((v) => v === null).length} 格沒填`
                 }</button>`
           }
-          <button class="btn ghost" type="button" data-quit>結束這局</button>
+          <button class="btn ghost" type="button" data-quit ${['saving', 'failed'].includes(saveState) ? 'disabled' : ''}>暫停這局</button>
         </div>
       </div>`;
 
@@ -1131,6 +1253,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     mount.querySelector('[data-next]')?.addEventListener('click', next);
     mount.querySelector('[data-quit]').addEventListener('click', backToSetup);
     bindIssueReport(q, index);
+    bindQuestionRetry();
 
     /**
      * 剛好填滿最後一格時把提交鍵帶進視野。
@@ -1235,6 +1358,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       return;
     }
     renderQuestion();
+    persistAnswer(state.assign.map((i) => q.bank[i]));
     mount.querySelector('[data-next]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
@@ -1243,6 +1367,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     if (q.answeredIndex !== null) return;
     answer(session, session.cursor, optionIndex);
     renderQuestion();
+    persistAnswer(optionIndex);
 
     /**
      * 作答後把「下一題」帶進視野。
@@ -1257,9 +1382,11 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
 
   function next() {
     const q = session.questions[session.cursor];
-    if (!isAnswered(q)) return;
+    if (!isAnswered(q) || !canAdvance()) return;
     if (session.cursor < session.questions.length - 1) {
       session.cursor += 1;
+      saveState = null;
+      pendingReview = null;
       renderQuestion();
     } else {
       renderResult();
@@ -1272,17 +1399,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     phase = 'result';
     const s = summarize(session);
 
-    /**
-     * 只有完整跑完的一局才計入，而且只寫一次。
-     *
-     * 兩份資料一起寫：統計是「我練得怎麼樣」，逐題紀錄是「我該練哪些」。
-     * 紀錄的時間戳只取一次並共用，同一局的每一題排程才不會差幾毫秒——
-     * 那個差距會讓同一天答完的題目落在不同的「今天」邊界上。
-     */
-    if (!recorded && isComplete(session)) {
-      recorded = true;
-      persistSession(session, s);
-    }
+    /* 最後一題交易已完成局數；結果畫面只畫檢討，不再重算。 */
 
     /**
      * 錯題的朗讀一律用 speakText（目標語言，日文為假名），不分出題方向。
@@ -1342,7 +1459,6 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
       </div>`;
 
     mount.querySelector('[data-again]').addEventListener('click', backToSetup);
-    bindSaveRetry(s);
   }
 
   /**
@@ -1352,45 +1468,65 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     if (saveState === 'saving') return '<p class="hint">正在保存這一局…</p>';
     if (saveState === 'saved') return '<p class="hint">這一局已保存。</p>';
     if (saveState === 'offline') return '<div class="notice"><b>這一局沒有保存。</b>學習紀錄目前無法使用，測驗本身不受影響。</div>';
+    if (saveState === 'failed') return `<div class="notice">尚未保存：${esc(saveError)}</div>`;
+    return '';
+  }
+
+  function canAdvance() {
+    return offline || saveState === 'saved';
+  }
+
+  function questionSaveHtml() {
+    if (saveState === 'saving') return '<p class="hint">正在保存這一題…</p>';
+    if (saveState === 'saved') return '<p class="hint">已保存。</p>';
+    if (saveState === 'offline') return '<p class="hint">這次練習不保存，關頁後無法續答。</p>';
     if (saveState === 'failed') {
-      return `<div class="notice"><b>這一局還沒有保存。</b>${esc(saveError)}
-        <div class="actions"><button class="btn sm" type="button" data-save-retry>重試保存</button></div></div>`;
+      const needsReload = ['ENTRY_CONFLICT', 'STALE_EPOCH', 'STALE_PLAN', 'OPERATION_MISMATCH', 'INVALID_DATA', 'UNSUPPORTED', 'UNSUPPORTED_VERSION'].includes(saveErrorCode);
+      return `<div class="notice">這題尚未保存：${esc(saveError)}<div class="actions">${needsReload
+        ? '<button class="btn" type="button" data-question-reload>重新載入並同步紀錄</button>'
+        : '<button class="btn" type="button" data-question-retry>重試保存</button>'}</div></div>`;
     }
     return '';
   }
 
-  function updateSaveStatus(summary) {
-    const host = mount.querySelector('[data-save-status]');
-    if (!host) return;
-    host.innerHTML = saveStatusHtml();
-    bindSaveRetry(summary);
+  function bindQuestionRetry() {
+    mount.querySelector('[data-question-retry]')?.addEventListener('click', () => persistAnswer());
+    mount.querySelector('[data-question-reload]')?.addEventListener('click', () => window.location.reload());
   }
 
-  function bindSaveRetry(summary) {
-    mount.querySelector('[data-save-retry]')?.addEventListener('click', () => persistSession(session, summary));
+  function updateQuestionSave() {
+    const host = mount.querySelector('[data-question-save]');
+    if (host) { host.innerHTML = questionSaveHtml(); bindQuestionRetry(); }
+    const nextButton = mount.querySelector('[data-next]');
+    if (nextButton) nextButton.disabled = !canAdvance();
+    const quitButton = mount.querySelector('[data-quit]');
+    if (quitButton) quitButton.disabled = ['saving', 'failed'].includes(saveState);
   }
 
   /**
-   * 整局一次交易寫入統計與逐題紀錄；同一局重試沿用同一個 operationId。
+   * 每題保存，重試保留答案、reviewId 與時間，不再重判或整局重算。
    */
-  async function persistSession(target, summary) {
-    if (!store || offline) {
+  async function persistAnswer(response) {
+    if (saveState === 'saving') return;
+    const target = session;
+    if (!quizService || offline) {
       saveState = 'offline';
-      updateSaveStatus(summary);
+      updateQuestionSave();
       return;
     }
+    if (!pendingReview) pendingReview = { sessionId: savedSessionId, index: target.cursor, response,
+      reviewId: newOperationId('quiz-rv'), answeredAt: Date.now() };
     saveState = 'saving';
-    updateSaveStatus(summary);
+    updateQuestionSave();
     try {
-      await store.recordQuizSession({ lang, source: target.source, session: target, summary,
-        operationId: sessionOperationId });
+      await quizService.submit(pendingReview);
       saveState = 'saved';
-      await refreshProgress();
     } catch (error) {
       saveState = 'failed';
+      saveErrorCode = error?.code ?? '';
       saveError = storageMessage(error);
     }
-    if (session === target) updateSaveStatus(summary);
+    if (session === target) updateQuestionSave();
   }
 
   /* ── 鍵盤操作 ─────────────────────────────────────────── */
@@ -1408,6 +1544,7 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
     /* 手機在回報欄位叫出的虛擬鍵盤不算實體鍵盤，不能因此放出數字快捷鍵提示 */
     if (!event.target.closest?.(TEXT_ENTRY)) noticeKeyboard(event);
     if (phase !== 'playing' || !session) return;
+    if (['saving', 'failed'].includes(saveState)) return;
     if (event.target.closest?.(INTERACTIVE)) return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
 
@@ -1476,7 +1613,8 @@ export function initQuizPage({ lang, words, sentences, scenes = [], readings = [
    */
   awaitLearningStore(mount, async (ready) => {
     store = ready;
+    quizService = createQuizService({ store, lang });
     await refreshProgress();
-    renderSetup();
-  }, { onSkip: () => { offline = true; renderSetup(); } });
+    await loadSource();
+  }, { onSkip: () => { offline = true; loadSource(); } });
 }

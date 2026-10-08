@@ -1,0 +1,14 @@
+{
+  "description": "P00b 本機原型：保留網站 21 頁，另加入兩個原型頁面及外部模組。",
+  "pages": [
+    "index.html", "help.html",
+    "en/index.html", "en/daily.html", "en/alphabet.html", "en/vocabulary.html", "en/grammar.html",
+    "en/quiz.html", "en/practice.html", "en/library.html", "en/history.html",
+    "ja/index.html", "ja/guide.html", "ja/daily.html", "ja/kana.html", "ja/vocabulary.html", "ja/grammar.html",
+    "ja/quiz.html", "ja/practice.html", "ja/library.html", "ja/history.html",
+    "app/prototype/index.html", "app/prototype/second.html"
+  ],
+  "directories": ["assets/css", "assets/js", "app/prototype"],
+  "files": ["CREDITS.md"],
+  "allowedExtensions": [".html", ".css", ".js", ".md", ".svg", ".png", ".ico", ".woff2"]
+}

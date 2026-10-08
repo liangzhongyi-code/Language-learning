@@ -1,11 +1,12 @@
 /**
- * A 階段純排程 adapter，沿用既有 Leitner 規則；沒有現在時間、儲存或亂數來源。
- * 單筆能力状态與當局有限事件由 repository 注入，這裡不讀取全部歷史。
+ * 純排程 adapter，同時支援舊 Leitner 與 FSRS；時間、狀態與事件由呼叫端注入。
+ * 網站提交採用 FSRS；保留 Leitner 預設供舊呼叫相容，這裡不自行讀取儲存或全部歷史。
  */
 import { nextBox, dueAfter, GRADUATED_BOX } from './srs.js';
 import { validatePlainJson, validateLearningRecord, validateProgress } from './learning-schema.js';
 import { LearningError } from './learning-errors.js';
 import { skillKeyFor } from './learning-identity.js';
+import { scheduleFsrs, validateFsrsState } from './fsrs-adapter.js';
 export { skillKeyFor } from './learning-identity.js';
 
 export const LEITNER_VERSION = 'leitner-a1';
@@ -58,15 +59,19 @@ export function initializeItemState({ sourceId, ability, direction, initializati
  * sessionEvents 必須來自同交易所讀的當局已存事件，可包含其他能力；只對本能力套政策。
  * 同局 Good 最多升階一次、Again 最多重設一次；明確補強一律不改長期排程。
  * 重送收據應由 repository 先處理，這裡拒絕再次對同題次計數。
+ * policy：'leitner'（相容預設）或 'fsrs'（網站提交使用）。資格規則兩者相同，只有間隔計算不同；
+ * 舊 Leitner／legacy 狀態在第一次合格複習時才轉成 FSRS，不全庫重排。
  */
-export function scheduleReview({ event, previousState, sessionEvents = [] }) {
+export function scheduleReview({ event, previousState, sessionEvents = [], policy = 'leitner' }) {
   checked('reviewEvents', event);
   checked('itemStates', previousState);
+  if (!['leitner', 'fsrs'].includes(policy)) invalid('未知的排程政策。');
   const context = event.assistance.context;
   if (!context || previousState.skillKey !== event.skillKey || previousState.sourceId !== event.sourceId
     || previousState.ability !== context.ability || previousState.direction !== context.actualDirection
     || event.skillKey !== skillKeyFor({ sourceId: event.sourceId, ability: context.ability, direction: context.actualDirection })) invalid('事件與能力狀態不一致。');
-  if (previousState.schedulerName === 'fsrs') throw new LearningError('UNSUPPORTED', 'FSRS 狀態必須交由對應 adapter，不能改回 Leitner。');
+  if (previousState.schedulerName === 'fsrs' && policy !== 'fsrs') throw new LearningError('UNSUPPORTED', 'FSRS 狀態必須交由對應 adapter，不能改回 Leitner。');
+  if (policy === 'fsrs') validateFsrsState(previousState, event.answeredAt);
   if (previousState.schedulerName === 'leitner' && previousState.schedulerVersion !== LEITNER_VERSION) throw new LearningError('UNSUPPORTED_VERSION', '不支援這個 Leitner 排程版本。');
   if (!Array.isArray(sessionEvents)) invalid('當局已存事件必須是陣列。');
   const relevant = [];
@@ -86,7 +91,9 @@ export function scheduleReview({ event, previousState, sessionEvents = [] }) {
     ? !resetAlready
     : !reviewedAlready && previousState.due <= event.answeredAt);
   const itemState = clone(previousState);
-  if (scheduleEligible) {
+  if (scheduleEligible && policy === 'fsrs') {
+    Object.assign(itemState, scheduleFsrs({ previousState, rating, at: event.answeredAt }));
+  } else if (scheduleEligible) {
     const previousBox = previousState.schedulerName === 'legacy'
       ? previousState.legacySummary.box ?? 1 : previousState.schedulerState.box;
     const box = nextBox(previousBox, rating === 'Good');

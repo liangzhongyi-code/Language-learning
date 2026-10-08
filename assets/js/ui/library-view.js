@@ -40,7 +40,7 @@ export function initLibraryPage({ lang, words, mount, noticeHost }) {
       say(storageMessage(error));
       return;
     }
-    if (!data.books[selected]) selected = FAVORITES_BOOK_ID;
+    if (!Object.prototype.hasOwnProperty.call(data.books, selected)) selected = FAVORITES_BOOK_ID;
     render();
   }
 
@@ -183,7 +183,12 @@ export function initLibraryPage({ lang, words, mount, noticeHost }) {
       </div>`;
     for (const node of shell.querySelectorAll('[data-note-text]')) node.textContent = data.notes[node.dataset.noteText]?.text ?? '';
     const input = shell.querySelector('[data-note-input]');
-    if (input && editing) { input.value = editing.text; input.focus(); }
+    if (input && editing) {
+      const draft = editing;
+      input.value = draft.text;
+      input.addEventListener('input', () => { if (editing === draft) draft.text = input.value; });
+      input.focus();
+    }
     bind();
   }
 

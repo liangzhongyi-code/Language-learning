@@ -19,25 +19,9 @@
 </main>
 
 <footer class="wrap">
-  <p class="foot">作答到一半重新整理會回到設定畫面，未完成的局不計入統計。</p>
+  <p class="foot">每題提交後即保存作答紀錄；重新整理可續答尚未完成的局，全部答完才增加完成局數。</p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initQuizPage } from '../assets/js/ui/quiz-view.js';
-  import { words } from '../assets/js/data/en/words.js';
-  import { sentences } from '../assets/js/data/en/sentences.js';
-  import { readings } from '../assets/js/data/en/readings.js';
-
-  renderNav();
-  initQuizPage({
-    lang: 'en',
-    words,
-    sentences,
-    readings,
-    mount: document.getElementById('app'),
-    noticeHost: document.getElementById('notice'),
-  });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

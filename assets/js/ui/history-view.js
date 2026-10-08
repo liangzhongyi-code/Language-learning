@@ -14,7 +14,7 @@ import { feedbackPrefs, setFeedbackPref } from './feedback.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const DAY = 86_400_000;
+const DAY = 86400000;
 
 function permissionState() {
   if (typeof window === 'undefined' || typeof window.Notification !== 'function') return 'unsupported';
@@ -168,7 +168,7 @@ export function initHistoryPage({ lang, mount }) {
     if (!reminder?.enabled || permissionState() !== 'granted') return;
     const at = nextFireTime({ localTime: reminder.localTime, timeZone: reminder.timeZone, now: Date.now() });
     const wait = at - Date.now();
-    if (wait > 2_147_000_000) return;
+    if (wait > 2147000000) return;
     timer = setTimeout(() => {
       try { new Notification('語言學習', { body: '今天的學習清單在等你。' }); } catch { /* 無法顯示就略過 */ }
       armReminder();

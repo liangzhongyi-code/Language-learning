@@ -22,13 +22,6 @@
   <p class="foot">日曆依固定學習時區計算；只打開網頁不算學習。</p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initHistoryPage } from '../assets/js/ui/history-view.js';
-  import { words } from '../assets/js/data/ja/words.js';
-
-  renderNav();
-  initHistoryPage({ lang: 'ja', words, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

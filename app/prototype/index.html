@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P00b 本機原型 — 第一頁</title>
+  <link rel="stylesheet" href="./prototype.css">
+  <script type="module" src="./ui.js"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">P00b · 本機原型 · 第一頁</p>
+    <h1>多頁載入與 SQLite 探針</h1>
+    <p>此原型只測試兩頁導覽與一次記憶體資料庫交易回滾。學習資料儲存尚未實作。</p>
+    <nav aria-label="原型導覽"><a href="./second.html">前往第二頁</a></nav>
+    <section aria-labelledby="probe-title">
+      <h2 id="probe-title">檢查原生探針</h2>
+      <p>每次執行只使用全新的記憶體資料庫；換頁後需重新執行。</p>
+      <button id="run-probe" type="button">執行記憶體 SQLite 探針</button>
+      <p id="probe-status" role="status" aria-live="polite">尚未執行；目前沒有原生成功證據。</p>
+      <pre id="probe-proof" hidden></pre>
+    </section>
+  </main>
+</body>
+</html>

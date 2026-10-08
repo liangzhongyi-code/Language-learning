@@ -22,15 +22,6 @@
   <p class="foot">每題作答後立即保存；聽力需要裝置的離線語音，沒有語音時不會計錯。</p>
 </footer>
 
-<script type="module">
-  import { renderNav } from '../assets/js/ui/nav.js';
-  import { initPracticePage } from '../assets/js/ui/practice-view.js';
-  import { words } from '../assets/js/data/ja/words.js';
-  import { practice } from '../assets/js/data/ja/practice.js';
-  import { sentences } from '../assets/js/data/ja/sentences.js';
-
-  renderNav();
-  initPracticePage({ lang: 'ja', words, practice, sentences, mount: document.getElementById('app'), noticeHost: document.getElementById('notice') });
-</script>
+<script type="module" src="../assets/js/ui/page-boot.js"></script>
 </body>
 </html>

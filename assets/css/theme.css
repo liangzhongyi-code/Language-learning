@@ -4,12 +4,12 @@
  * 分成兩層：
  *   1. 尺度 token（間距、字級、動畫曲線）
  *   2. 語意 token（顏色、圓角、字體）
- * 元件只吃 token，不寫死任何值。色碼集中在 :root 基底與配色色票，
+ * 共用尺度優先使用 token。色碼集中在 :root 基底與配色色票，
  * 其他檔案一律用 var()；配色覆寫也要同時照顧深色與淺色。
  *
  * 尺度採用 Open Props（MIT）的比例。原本是整包 import 進來，
  * 但實測全站只用到它 607 個變數裡的 13 個，其中還夾帶 344 個用不到的色碼，
- * 反而違反了「色碼集中」與「零第三方套件」兩條規格。
+ * 反而增加不必要的樣式來源，並違反「色碼集中」的規格。
  * 所以改成直接採用那幾個值，不再引入整個檔案。
  */
 
@@ -62,7 +62,7 @@
   --accent-ink: #0e1116;
   --glow: rgba(122, 162, 247, 0.14);
   --glow-secondary: rgba(169, 140, 216, 0.10);
-  --dust: rgba(228, 232, 239, 0.18);
+  --dust: rgba(228, 232, 239, 0.38);
   --preview-classic: #7aa2f7;
   --preview-midnight: #8fc6ed;
   --preview-forest: #8dcebb;
@@ -125,7 +125,7 @@
   --accent-ink: #ffffff;
   --glow: rgba(36, 87, 214, 0.07);
   --glow-secondary: rgba(105, 66, 154, 0.05);
-  --dust: rgba(23, 32, 51, 0.13);
+  --dust: rgba(23, 32, 51, 0.28);
   --ok: #116b49;
   --ok-soft: rgba(17, 107, 73, 0.11);
   --bad: #9f2632;
@@ -236,13 +236,16 @@ body::before {
 :root[data-background='plain'] body::before,
 :root:not([data-background='dust']) body::after { display: none; }
 :root[data-background='dust'] body::after {
-  background-image: radial-gradient(circle, var(--dust) 1px, transparent 1.6px),
-    radial-gradient(circle, var(--dust) 1px, transparent 1.6px);
-  background-size: 137px 173px, 233px 251px;
-  background-position: 21px 43px, 88px 117px;
+  /**
+   * 光點從窄螢幕兩側留白開始重複，避免最淡相位太弱或全部被實心卡片遮住。
+   */
+  background-image: radial-gradient(circle at 8px 25px, var(--dust) 1px, transparent 1.6px),
+    radial-gradient(circle at 11px 79px, var(--dust) 1px, transparent 1.6px);
+  background-size: 103px 139px, 181px 227px;
+  background-position: 0 0, 0 0;
   animation: ambient-breathe 12s ease-in-out infinite alternate;
 }
-@keyframes ambient-breathe { from { opacity: 0.25; } to { opacity: 0.65; } }
+@keyframes ambient-breathe { from { opacity: 0.72; } to { opacity: 0.96; } }
 
 h1, h2, h3 {
   font-family: var(--font-display);
@@ -1676,7 +1679,7 @@ html.has-keyboard .cz-word .key { display: inline-flex; }
 .opts.has-ruby .opt { line-height: 2; }
 
 /**
- * 使用者與系統任一方要求降低特效即生效。保留靜態柔光，但移除微塵、模糊和動態。
+ * 手動降低特效會移除微塵、模糊和動態，並降低柔光；此選擇優先於系統偏好。
  */
 :root[data-reduced-effects='true'] *,
 :root[data-reduced-effects='true'] *::before,
@@ -1687,10 +1690,15 @@ html.has-keyboard .cz-word .key { display: inline-flex; }
   -webkit-backdrop-filter: none !important;
 }
 :root[data-reduced-effects='true'] body::after { display: none; }
+:root[data-reduced-effects='true'] body::before { opacity: 0.35; }
 :root[data-reduced-effects='true'] .topbar,
 :root[data-reduced-effects='true'] .entry { background: var(--surface); }
 @media (prefers-reduced-motion: reduce) {
-  body::after { display: none !important; }
+  /**
+   * 系統減少動態保留靜態光點，只停止動畫、移除模糊並降低柔光。
+   */
+  body::after { opacity: 0.72; }
+  body::before { opacity: 0.35; }
   *, *::before, *::after {
     animation: none !important;
     backdrop-filter: none !important;
