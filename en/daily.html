@@ -4,9 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>英文今日學習 · 語言學習</title>
-<script src="../assets/js/ui/theme-boot.js"></script>
-<link rel="stylesheet" href="../assets/css/theme.css">
 <!-- build-preload：由 tools/build-preload.mjs 產生，勿手改；讓頁面需要的模組平行下載 -->
+<script data-lang="en" data-page="daily" data-base="../assets/js/data/catalog/">
+(() => {
+  const { lang, page, base } = document.currentScript.dataset;
+  let prefs = {};
+  try {
+    prefs = JSON.parse(window.localStorage.getItem('lang-learn.prefs.v1')) || {};
+  } catch {
+    /* 儲存被停用或內容損壞時，各頁同樣回到預設級別 */
+  }
+  const level = [1, 2, 3, 4, 5].includes(prefs[`daily.${lang}.level`]) ? prefs[`daily.${lang}.level`] : 1;
+  let files = [`${lang}-words-${level}`];
+  if (page === 'quiz') {
+    /* 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題），否則單字全庫 */
+    const source = new URLSearchParams(window.location.search).get('source');
+    const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
+      scene: lang === 'ja' ? ['scenes'] : ['words'] };
+    const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
+    files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`) : [`${lang}-${field}`]);
+  }
+  for (const name of files) {
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = new URL(`${base}${name}.js`, document.baseURI).href;
+    document.head.appendChild(link);
+  }
+})();
+</script>
 <link rel="modulepreload" href="../assets/js/ui/page-boot.js">
 <link rel="modulepreload" href="../assets/js/data/catalog.js">
 <link rel="modulepreload" href="../assets/js/ui/daily-view.js">
@@ -58,6 +83,8 @@
 <link rel="modulepreload" href="../assets/js/core/fsrs-adapter.js">
 <link rel="modulepreload" href="../assets/js/vendor/ts-fsrs.js">
 <!-- /build-preload -->
+<script src="../assets/js/ui/theme-boot.js"></script>
+<link rel="stylesheet" href="../assets/css/theme.css">
 </head>
 <body data-lang="en" data-page="daily">
 

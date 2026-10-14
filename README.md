@@ -64,7 +64,7 @@ repo 叫什麼名字都可以——全站使用相對路徑，放在子路徑底
 編寫來源仍是 `assets/js/data/en/` 與 `assets/js/data/ja/` 的原始批次；網頁按需載入的 `assets/js/data/catalog/` 是已納入專案的生成檔，不要手改。
 修改來源後先執行 `npm run build:catalog`，再執行 `npm run check:catalog` 和 `npm test`。發布不需額外建置服務，但生成檔必須與來源一起更新。
 
-每頁 `<head>` 的 `modulepreload` 區塊由 `npm run build:preload` 產生，讓頁面需要的程式模組一次平行下載（線上不必逐層等待）。新增頁面、改動 import 或 `page-boot.js` 的動態載入後，先執行它再跑 `npm test`；`npm run check:preload` 只核對不寫入。
+每頁 `<head>` 最前面的預載區塊由 `npm run build:preload` 產生，讓頁面需要的程式模組與這次要讀的題庫一次平行下載（線上不必逐層等待）。首頁／今日／測驗頁要讀哪份題庫依已存級別或網址題源而定，判斷寫在 `assets/js/ui/data-preload.js`，由工具內嵌到頁面。新增頁面、改動 import、`page-boot.js` 的動態載入或題庫選擇規則後，先執行它再跑 `npm test`；`npm run check:preload` 只核對不寫入。
 
 導覽先顯示，首頁用小型索引顯示筆數、今日卡只讀目前級別；每日頁切級才抓該級字庫。自由測驗只讀所選題源，但為保留干擾選項與填空候選池，級別只篩問題，不縮減該題源的選項池。單字頁選「全部」仍會載完整字庫；歷程頁不載題庫。題庫失敗不刪除紀錄，頁面提供重新載入。
 
