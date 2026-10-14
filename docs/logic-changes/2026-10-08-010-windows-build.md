@@ -63,3 +63,13 @@
 ## 後續更正／取代
 
 無。
+
+2026-10-08 更正：Android 套件名稱不允許連字號，識別碼在任何正式發布前改為 `io.github.liangzhongyicode.langlearn`（全平台共用）。本紀錄上方的舊識別碼與 `%LOCALAPPDATA%` 資料夾名稱僅代表當時驗證的版本；舊識別碼沒有對外發布，也沒有使用者資料需要搬移。見 [011 Android 建置](2026-10-08-011-android-build.md)。
+
+## 2026-10-14 新識別碼重建與重驗
+
+| 日期 | 指令／操作 | 實際結果 | 未覆蓋 |
+|---|---|---|---|
+| 2026-10-14 | `npm --prefix app run test:rust` | 5/5（另含 blob 本機來源兩項） | — |
+| 2026-10-14 | `npm --prefix app run build:windows`（識別碼 `io.github.liangzhongyicode.langlearn`） | `語言學習_0.1.0_x64-setup.exe` 220,615,588 bytes（210.4 MiB），SHA-256 `f525b71d0ecb0bc504ca2f609c57e87dbbb4a937c7dd1fb8992cf48c24dae066` | 未簽章 |
+| 2026-10-14 | `/S` 安裝 → `verify-windows.mjs` 對已安裝 exe → `uninstall.exe /S` | 安裝 exit 0；26/26；資料目錄為 `%LOCALAPPDATA%\io.github.liangzhongyicode.langlearn`；解除安裝 exit 0、程式與項目移除、資料保留；測試資料已刪除 | S16 乾淨機離線安裝、S19 舊版覆蓋更新 |

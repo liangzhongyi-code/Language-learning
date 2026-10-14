@@ -3,7 +3,7 @@
   "productName": "語言學習",
   "mainBinaryName": "lang-learn",
   "version": "0.1.0",
-  "identifier": "io.github.liangzhongyi-code.langlearn",
+  "identifier": "io.github.liangzhongyicode.langlearn",
   "build": {
     "beforeDevCommand": "npm run stage",
     "beforeBuildCommand": "npm run stage",

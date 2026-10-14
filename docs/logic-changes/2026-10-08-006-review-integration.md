@@ -1,5 +1,7 @@
 # 2026-10-08-006：整批接線審查與回歸修復
 
+> 閱讀提示（2026-10-08 追加）：本文保留各階段歷史；目前發布與原生進度請併讀文末「文件交叉核對更正」，不要將早期「尚未提交」或「三平台未編譯」視為目前狀態。
+
 ## 基本資訊
 
 - 日期／時區：2026-10-08（Asia/Taipei）。類型：修復／交易／相容性／功能接線。
@@ -85,3 +87,36 @@
 - 線上資產比對：`index.html`、`ja/daily.html`、`en/practice.html`、`daily-practice-question.js`、`daily-service.js`、`ts-fsrs.js`、`fsrs-adapter.js`、`catalog/meta.js` 共 8 檔，正規化 CRLF 後與提交內容完全相同。
 - 線上冒煙（隔離 Playwright context，不碰使用者瀏覽器資料）：首頁、日文首頁、英日每日頁、日文練習、英文單字簿、日文歷程、日文測驗、使用教學 9 頁無頁面例外；日文每日頁實際作答一題顯示「已保存。」。
 - 仍未驗：真機（iOS／Android）、真 Google 帳號、原生 APP 編譯／安裝／更新、大量資料壓測。
+
+## 文件交叉核對更正（2026-10-08）
+
+狀態：文件核對完成；僅更正文義，不影響執行行為。本次依 006、[010 Windows 建置紀錄](2026-10-08-010-windows-build.md)、[專案 README](../../README.md)、[工具鏈紀錄](../../app/docs/toolchain.md)、[native 任務入口](../../openspec/changes/add-native-app-packaging/tasks.md) 與 [offline 整合 tasks](../../openspec/changes/add-offline-study-suite/tasks.md) 核對。
+
+### 發布與平台證據的適用範圍
+
+- 「最終版本尚未提交／推送」是發布前快照，已被上方 `04066a1` 的發布補記取代；1121 項 Node、23 組 Chromium 與 Pages 冒煙結果只引用既有紀錄，本次未重跑或重新查驗線上部署。
+- 「原生 APP 編譯／安裝／更新仍未驗」須按平台拆開：010 已記錄 Windows 首次 Rust 測試 3/3、建置、本機執行 26/26、安裝後 26/26 與解除安裝；不能再總稱 Windows 從未編譯／安裝。S16 乾淨機離線安裝、S19 舊版覆蓋更新仍未驗，解除安裝保留資料不能代替覆蓋更新驗收。
+- Windows 目前以 WebView2 IndexedDB 儲存學習資料；記憶體 SQLite 探針不是持久原生 repository。Windows 局部成功不足以勾選 P00b、P00c 或 F50g 整包完成。
+- 核對時 `tauri.app.conf.json` 的識別碼已為 `io.github.liangzhongyicode.langlearn`；010 的首次 Windows 驗證使用舊識別碼 `io.github.liangzhongyi-code.langlearn`。舊產物雜湊與驗證不能直接證明新識別碼的安裝、資料目錄或更新相容性。
+- 核對時 Android 已出現生成工程與打包／驗證腳本，僅證明有工作區內容；尚無足以確認整包驗收完成的紀錄。010 所指的 `2026-10-08-011-android-build.md` 此時不存在，不能當作 Android 建置、簽署、安裝或更新成功的證據。
+- README「完整離線 APP 仍在規劃」已不足以表達進度：應區分「網站沒有 Service Worker，離線重開不保證可用」與「Windows 已有本機驗證的初版，完整三平台原生能力與驗收仍在進行」。本次不修改 README、010、索引或 tasks，由主代理整合。
+- native tasks 是整合 tasks 的入口，並非另一套完成清單。整合 tasks 開頭已承認 Windows 首次建置；末尾較早的「找不到工具／Rust 未編譯」等追加紀錄只代表當時狀態，以後續工具鏈與 010 證據補充，不刪除歷史。
+
+### 原生尚未完成的工作
+
+| 工作包 | 尚缺的實作／驗收 |
+|---|---|
+| P00b／P00c | Android、iOS 原型載入與 SQLite 編譯／呼叫證據；三平台離線語音、iOS IPA 與真實到期觀察。Windows 正式 APP 冒煙不能代替原型全部條件 |
+| F50b–F50e | 持久 SQLite schema／遷移、revision／epoch／收據交易、崩潰與故障回滾、一致性備援與三還原點、窄命令橋接及 web↔native 備份契約 |
+| F50f／F53 | 原生檔案／分享／剪貼簿與 TTS；ready、返回與保存中導覽控制、安全邊界。現況封鎖外部網址，尚非規格要求的系統瀏覽器開啟 |
+| F50g | Windows 新識別碼對應產物重驗、S16 乾淨機完整離線安裝、S19 舊版 fixture 覆蓋升級與全部資料／半局保留 |
+| F51a／F51b | Android 返回／安全區／TTS／分享／提醒與權限、固定 package／key 簽署及 S17 覆蓋更新／錯簽章拒絕 |
+| F52a／F52b | Mac／Xcode 可用性、Apple 工程與 Swift 能力、IPA、iPhone 安裝與 S18 同身份更新／續簽／真實到期恢復 |
+| F64 | 三平台真實 Google Client ID 與外部授權、PKCE／state／callback 及同帳號還原；網站 mock 成功不等於原生授權完成 |
+| F54／F70–F74 | 平台交付清單、雜湊與更新／回滾手冊、最終審查回歸及情境逐項驗收；真機 a11y／語音、15k states／100k events 壓測仍待證據，安裝包未公開發布 |
+
+### iOS 準備與本次限制
+
+先確認可用 Mac／完整 Xcode／iPhone 與固定簽署身份，準備隔離學習 fixture、合併設定與驗收欄位，再在獲授權環境驗證原型、IPA 及續簽。具體準備步驟與官方依據見 [工具鏈文件的 iOS 準備建議](../../app/docs/toolchain.md#ios-可執行準備建議尚未執行)。Mac 尚未確認可用，不能宣稱 iOS 已建置。
+
+本次只追加本文件及 `app/docs/toolchain.md`；未修改資料、程式、010、索引或 tasks，無遷移需求。驗證限於讀取文件／設定、`git status`／`git log`、檔案存在檢查及差異檢查；沒有編譯、安裝、裝置操作或 commit／push。本次文件修正仍在本機，先前發布狀態不代表此次更正已發布。

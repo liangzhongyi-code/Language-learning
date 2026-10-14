@@ -24,7 +24,9 @@ const PROTOTYPE_IDENTIFIER: &str = "io.github.lang-learn.prototype";
 /// 不接受埠號、帳密、遠端網域或目錄穿越；blob: 僅供備份檔下載。
 fn allowed_app_url(url: &tauri::Url) -> bool {
     if url.scheme() == "blob" {
-        return url.path().starts_with("http://tauri.localhost/") || url.path().starts_with("tauri://localhost/");
+        return url.path().starts_with("http://tauri.localhost/")
+            || url.path().starts_with("https://tauri.localhost/")
+            || url.path().starts_with("tauri://localhost/");
     }
     let local = matches!(
         (url.scheme(), url.host_str()),
@@ -81,6 +83,37 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{allowed_app_url, allowed_prototype_url};
+
+    #[test]
+    fn app_blob_url_allows_exact_local_origins() {
+        for value in [
+            "blob:http://tauri.localhost/uuid",
+            "blob:tauri://localhost/uuid",
+            "blob:https://tauri.localhost/uuid",
+        ] {
+            assert!(allowed_app_url(&value.parse().unwrap()), "{value}");
+        }
+    }
+
+    #[test]
+    fn app_blob_url_rejects_similar_hosts_credentials_and_ports() {
+        for scheme in ["http", "https", "tauri"] {
+            let host = if scheme == "tauri" { "localhost" } else { "tauri.localhost" };
+            for authority in [
+                format!("{host}.example.invalid"),
+                format!("evil-{host}"),
+                format!("{host}@example.invalid"),
+                format!("user@{host}"),
+                format!("user:password@{host}"),
+                format!("{host}:8080"),
+                format!("{host}:80"),
+                format!("{host}:443"),
+            ] {
+                let value = format!("blob:{scheme}://{authority}/uuid");
+                assert!(!allowed_app_url(&value.parse().unwrap()), "{value}");
+            }
+        }
+    }
 
     #[test]
     fn app_url_allows_only_packaged_site_pages() {
