@@ -7,6 +7,8 @@
   "scripts": {
     "build:catalog": "node tools/build-catalog.mjs",
     "check:catalog": "node tools/build-catalog.mjs --check",
+    "build:preload": "node tools/build-preload.mjs",
+    "check:preload": "node tools/build-preload.mjs --check",
     "test": "node --test",
     "test:browser": "node --test tests/browser/runner-checks.mjs && node tests/browser/run.mjs --suite all",
     "serve": "npx -y serve ."
