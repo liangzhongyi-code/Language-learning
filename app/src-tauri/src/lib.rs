@@ -1,4 +1,6 @@
+mod commands;
 mod probe;
+mod storage;
 
 fn allowed_prototype_url(url: &tauri::Url) -> bool {
     let local = matches!(
@@ -63,7 +65,20 @@ async fn prototype_probe(window: tauri::WebviewWindow) -> Result<probe::ProbePro
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![prototype_probe])
+        .manage(commands::StorageState::default())
+        .invoke_handler(tauri::generate_handler![
+            prototype_probe,
+            commands::storage_open,
+            commands::storage_get,
+            commands::storage_read_all,
+            commands::storage_query,
+            commands::storage_by_index,
+            commands::storage_list,
+            commands::storage_commit,
+            commands::storage_clear,
+            commands::storage_restore,
+            commands::storage_migrate,
+        ])
         .setup(|app| {
             let config = app.config().app.windows.iter()
                 .find(|config| config.label == "main")
@@ -77,7 +92,7 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("無法啟動 P00b 本機原型");
+        .expect("無法啟動語言學習 APP");
 }
 
 #[cfg(test)]

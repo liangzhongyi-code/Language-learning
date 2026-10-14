@@ -56,31 +56,18 @@ async function launch() {
 const stop = async () => { adb('shell', 'am', 'force-stop', PKG); await sleep(1500); };
 
 /**
- * 比對測試 APP 的全部 IndexedDB 集合與偏好；不只比較畫面上的完成題數。
+ * 透過 APP 自己的 learning-store 讀出儲存種類與完整可攜集合（鍵排序固定），連同偏好一起比對；
+ * 不只比較畫面上的完成題數。
  */
 const snapshot = (page) => page.evaluate(async () => {
-  const records = {};
-  for (const info of (await indexedDB.databases()).sort((a, b) => a.name.localeCompare(b.name))) {
-    const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open(info.name);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    try {
-      const names = [...db.objectStoreNames].sort();
-      records[info.name] = await new Promise((resolve, reject) => {
-        const transaction = db.transaction(names, 'readonly');
-        const rows = {};
-        for (const name of names) {
-          const request = transaction.objectStore(name).getAll();
-          request.onsuccess = () => { rows[name] = request.result; };
-        }
-        transaction.oncomplete = () => resolve(Object.fromEntries(names.map((name) => [name, rows[name]])));
-        transaction.onabort = () => reject(transaction.error);
-      });
-    } finally { db.close(); }
-  }
-  return JSON.stringify({ records, prefs: Object.fromEntries(Object.keys(localStorage).sort().map((key) => [key, localStorage.getItem(key)])) });
+  const store = (await import('/assets/js/ui/platform/learning-store.js')).getLearningStore();
+  const { PORTABLE_STORES } = await import('/assets/js/core/learning-snapshot.js');
+  const { canonicalJson } = await import('/assets/js/core/learning-operations.js');
+  const { rows } = await store.read([...PORTABLE_STORES]);
+  const names = typeof indexedDB.databases === 'function' ? (await indexedDB.databases()).map((d) => d.name).sort() : null;
+  const prefs = Object.fromEntries(Object.keys(localStorage).sort().map((key) => [key, localStorage.getItem(key)]));
+  return { kind: store.storageKind || 'indexeddb', indexedDbNames: names,
+    data: canonicalJson({ rows, prefs }, { maxBytes: 64 * 1024 * 1024 }) };
 });
 
 assertVerificationTarget({ serial, emulator: adb('shell', 'getprop', 'ro.kernel.qemu'),
@@ -123,6 +110,11 @@ await page.locator('[data-opt]').first().click();
 await page.waitForFunction(() => document.querySelector('[data-next]')?.disabled === false, null, { timeout: 20000 });
 check('每日頁作答一題並保存', await page.locator('main').innerText().then((text) => text.includes('已保存')));
 const saved = await snapshot(page);
+check('學習資料使用原生 SQLite', saved.kind === 'native-sqlite', saved.kind);
+check('沒有建立 WebView IndexedDB 學習資料庫', Array.isArray(saved.indexedDbNames) && !saved.indexedDbNames.includes('lang-learn.learning'),
+  JSON.stringify(saved.indexedDbNames));
+const sqliteFile = adb('shell', 'run-as', PKG, 'find', '.', '-name', 'learning.sqlite3');
+check('SQLite 檔位於 APP 私有資料目錄', /learning\.sqlite3/.test(sqliteFile), sqliteFile);
 const outbound = await page.evaluate(() => fetch('https://example.invalid/').then(() => 'reachable', () => 'blocked'));
 check('CSP 擋下對外連線', outbound === 'blocked', outbound);
 await page.evaluate(() => { location.href = 'https://example.invalid/'; });
@@ -131,7 +123,7 @@ check('導覽白名單擋下外部網址', isApp(page.url()), page.url());
 
 await stop(browser);
 ({ browser, page } = await launch());
-check('強制結束重開後全部集合與偏好一致', await snapshot(page) === saved);
+check('強制結束重開後全部集合與偏好一致', (await snapshot(page)).data === saved.data);
 await page.goto(`${origin}/ja/daily.html`);
 await page.locator('.daily-summary').waitFor({ timeout: 20000 });
 let summary = await page.locator('.daily-summary').innerText();
@@ -141,7 +133,7 @@ const beforeUpdate = await snapshot(page);
 await stop();
 check('同簽章覆蓋安裝（更新）', /Success/.test(adb('install', '-r', apk)));
 ({ browser, page } = await launch());
-check('同版本覆蓋安裝後全部集合與偏好一致', await snapshot(page) === beforeUpdate);
+check('同版本覆蓋安裝後全部集合與偏好一致', (await snapshot(page)).data === beforeUpdate.data);
 await page.goto(`${origin}/ja/daily.html`);
 await page.locator('.daily-summary').waitFor({ timeout: 20000 });
 summary = await page.locator('.daily-summary').innerText();

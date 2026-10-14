@@ -3,6 +3,7 @@
  * 所有學習寫入都經過這裡；偏好仍由 prefs.js 存 localStorage，不宣稱跨儲存原子性。
  */
 import { createWebRepository, normalizeSnapshotQuery } from './web-repository.js';
+import { createNativeRepository, nativeInvoke } from './native-repository.js';
 import { applySession } from '../../core/stats.js';
 import { recordSession } from '../../core/progress.js';
 import { projectLearningProgress } from '../../core/learning-progress.js';
@@ -216,15 +217,20 @@ let shared = null;
 
 /**
  * 網站頁面共用的單例；第一次呼叫才開資料庫，靜態頁面不在模組載入時就寫入。
+ * 在 APP（有 Tauri 原生命令）內改用原生 SQLite；網站一律使用 IndexedDB。
  */
 export function getLearningStore() {
   if (!shared) {
     let legacyStorage;
     try { legacyStorage = window.localStorage; } catch { legacyStorage = undefined; }
+    const native = nativeInvoke();
     shared = createLearningStore({
-      repository: createWebRepository({ timeZone: deviceTimeZone() }),
+      repository: native
+        ? createNativeRepository({ invoke: native, timeZone: deviceTimeZone() })
+        : createWebRepository({ timeZone: deviceTimeZone() }),
       legacyStorage,
     });
+    shared.storageKind = native ? 'native-sqlite' : 'indexeddb';
   }
   return shared;
 }

@@ -108,10 +108,10 @@ F00 的瀏覽器 runner 與工具驗證屬測試基礎設施：先用刻意壞�
 | [ ] P00b R/G/V | A/package.json、A/src-tauri/Cargo.toml、tauri.conf.json、src/main.rs／lib.rs：最小 MPA 外殼 | P00a | Windows載入本機两頁、SQLite能編譯；Android/iOS同測；失敗要回報架構風險，不能默換框架 |
 | [ ] P00c | A/docs/p0-evidence.md：離線 voice、MPA及Mac IPA產出原型驗證 | P00b | 每平台分開證據；工具缺席不等於通過，7日到期不可用短測取代 |
 | [x] F50a R/G/V | A/scripts/stage-web.mjs、A/assets-manifest.json、T/app-assets.test.js：明確白名單与相對URL | F00 | ASSETS；必要檔缺失失敗，secret/.git/.idea/測試／報告均不進包 |
-| [ ] F50b R/G/V | A/src-tauri/src/storage/schema.rs、migrations/、Rust fixture tests | P00b F01 | RUST schema；建表可重跑、固定私有目錄、索引集合非單一歷史JSON |
-| [ ] F50c R/G/V | A/src-tauri/src/storage/commit.rs、tests/transactions.rs：revision／epoch／收據／故障回滾 | F50b F02 | RUST transactions；各集合故障注入與子程序強制結束，完整新／舊狀態 |
+| [x] F50b R/G/V | A/src-tauri/src/storage/schema.rs、migrations/、Rust fixture tests | P00b F01 | RUST schema；建表可重跑、固定私有目錄、索引集合非單一歷史JSON |
+| [x] F50c R/G/V | A/src-tauri/src/storage/commit.rs、tests/transactions.rs：revision／epoch／收據／故障回滾 | F50b F02 | RUST transactions；各集合故障注入與子程序強制結束，完整新／舊狀態 |
 | [ ] F50d R/G/V | A/src-tauri/src/storage/migration.rs、restore.rs、tests/recovery.rs：一致性備援／三還原點／未來版本 | F50c F06 | RUST recovery；含WAL fixture的完整snapshot，備援失敗停止，舊APP不寫未來DB |
-| [ ] F50e R/G/V | A/src-tauri/src/commands/、capabilities/、P/native-repository.js：窄bridge | F50c F07 | RUST＋WEB native-contract；拒任意SQL/路徑/遠端invoke，Web無bare import |
+| [x] F50e R/G/V | A/src-tauri/src/commands/、capabilities/、P/native-repository.js：窄bridge | F50c F07 | RUST＋WEB native-contract；拒任意SQL/路徑/遠端invoke，Web無bare import |
 | [ ] F50f R/G/V | A/native-bridge/、P/native-files.js、P/native-speech.js：共用協定與Windows能力 | F50e F34 | S13–S15；success/cancel/unsupported/error分開，離線語音需實際發聲證據 |
 | [ ] F50g R/G/V | A/src-tauri/tauri.conf.json、installer設定、A/scripts/build-windows.mjs | F50a F50f F50d | WIN；離線WebView2完整包、固定身份／資料目錄；乾淨VM安裝及舊版覆蓋更新資料比對 |
 | [ ] F51a R/G/V | A/src-tauri/gen/android/、Android Kotlin voice/share/reminder bridge | F50e P00b F43 | ANDROID smoke；返回／安全區／TTS／權限/outbox，缺語音明示 |

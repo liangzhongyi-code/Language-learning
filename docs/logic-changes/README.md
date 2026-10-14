@@ -41,6 +41,7 @@
 | 2026-10-08 | [009 練習單字簿自有項目守衛](2026-10-08-009-practice-book-own.md) | 題源／修復 | 原型 ID 與合法自有 ID 回歸通過；未發布 |
 | 2026-10-08 | [010 Windows 版首次實際建置](2026-10-08-010-windows-build.md) | 平台／打包 | 10-14 以新識別碼重建，安裝版 26/26、解除安裝通過；安裝包未發布 |
 | 2026-10-08 | [011 Android 建置與隔離驗證](2026-10-08-011-android-build.md) | 平台／打包／測試保護 | 已驗證：Debug 測試 APK 於空白模擬器 32/32；正式簽章待辦 |
+| 2026-10-14 | [001 APP 學習資料改存原生 SQLite](2026-10-14-001-native-sqlite.md) | 資料契約／儲存／平台 | 已驗證：Rust 14、Windows 30＋升級 9、Android 35＋升級 8；未發布 |
 
 每新增一筆就追加一列；修復或反轉舊邏輯，也要連回原紀錄。相同日期以三碼流水號區分，不重複使用檔名。
 
@@ -51,7 +52,7 @@
 | 功能 | 原始規格 | 本次留存時狀態 |
 |---|---|---|
 | 每日學習、逐題保存、續答與排程 | [每日學習設計](../../openspec/changes/add-daily-learning/design.md) | 正式網頁已接線、自由測驗逐題保存、FSRS 已驗證；大資料與真機待驗 |
-| Windows／Android／iOS 封裝及更新保留資料 | [APP 設計](../../openspec/changes/add-native-app-packaging/design.md) | Windows 已實際編譯與安裝驗證（資料存 WebView2 IndexedDB）；原生 SQLite、乾淨機／更新保留、Android／iOS 待驗 |
+| Windows／Android／iOS 封裝及更新保留資料 | [APP 設計](../../openspec/changes/add-native-app-packaging/design.md) | Windows／Android 已驗證，學習資料存原生 SQLite，舊版覆蓋更新保留資料；乾淨機離線安裝、正式簽章、iOS 待驗 |
 | 個人單字簿、新題型、成就與提醒 | [整合設計](../../openspec/changes/add-offline-study-suite/design.md) | 網頁已接線與隔離驗證；提醒僅關頁前可用，真機語音／原生部分未完成 |
 | Google 多份備份、手動還原 | [Google 規格](../../openspec/changes/add-offline-study-suite/specs/google-backup.md) | 網頁面板及模擬流程已驗證；Client IDs 留空、真帳號及原生授權未驗 |
 

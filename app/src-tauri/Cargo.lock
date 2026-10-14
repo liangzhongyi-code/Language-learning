@@ -1764,6 +1764,8 @@ name = "lang-learn-native-prototype"
 version = "0.0.0"
 dependencies = [
  "serde",
+ "serde_json",
+ "sha2",
  "sqlx",
  "tauri",
  "tauri-build",

@@ -1,0 +1,11 @@
+{
+  "identifier": "app-storage",
+  "description": "正式 APP 的本機 main 視窗可呼叫學習資料命令；命令端另核對頁面來源。",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "allow-storage-open", "allow-storage-get", "allow-storage-read-all", "allow-storage-query",
+    "allow-storage-by-index", "allow-storage-list", "allow-storage-commit", "allow-storage-clear",
+    "allow-storage-restore", "allow-storage-migrate"
+  ]
+}
