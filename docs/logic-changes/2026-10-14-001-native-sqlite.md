@@ -50,7 +50,7 @@ APP 先前沿用網站的 WebView IndexedDB。設計要求 APP 以原生 SQLite 
 |---|---|---|---|
 | 2026-10-14 | `npm --prefix app run test:rust` | 14/14（新增 9 項：S05／S06 提交、重送、異內容、衝突、舊 epoch；S05／S07 注入故障全集合回滾且無收據；S07 重開資料仍在；S08 未來版本與損毀檔拒絕且原檔不變；S09 遷移只做一次；S11 還原保留三點並換 epoch；O18 清除；S20 拒絕不合法集合／key／超量；查詢契約） | 子程序強制結束的原生測試 |
 | 2026-10-14 | `node --test tests/native-repository.test.js` | 7/7 | — |
-| 2026-10-14 | `node --test`（全套） | 見提交時結果 | — |
+| 2026-10-14 | `node --test`（全套）＋ `tests/browser/run.mjs` 全部套件 | Node 1162/1162；瀏覽器 23/23；GitHub Pages 部署後線上 `storageKind=indexeddb`、0 錯誤 | — |
 | 2026-10-14 | `npm --prefix app run build:windows` → `verify-windows.mjs target/release/lang-learn.exe` | 30/30：21 頁、作答保存、`storageKind=native-sqlite`、`learning.sqlite3` 在私有目錄、未建立 IndexedDB 學習庫、CSP／導覽阻擋、重開後全部集合完全相同 | 未簽章 |
 | 2026-10-14 | `verify-upgrade-windows.mjs <舊版 IndexedDB 安裝檔 f525b71d…> <新版>` | 9/9：舊版作答（IndexedDB）→ 新版覆蓋安裝 → 改用 SQLite、全部集合原樣搬入、舊 IndexedDB 保留、今日進度仍在、可繼續作答；結束後解除安裝並刪除測試資料 | 乾淨機離線安裝 |
 | 2026-10-14 | `node app/scripts/package-android.mjs` → `verify-android.mjs <apk> emulator-5554`（空白 `LangLearn_QA_20261008`） | 35/35：含飛航模式、`native-sqlite`、私有目錄 `./learning.sqlite3`、未建立 IndexedDB、強制結束重開與同 APK 覆蓋安裝後全部集合與偏好完全相同 | 真機、正式簽章 |
