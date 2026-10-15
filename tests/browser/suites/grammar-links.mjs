@@ -46,8 +46,12 @@ export async function run({ page, origin }) {
     }
     return result;
   };
+  /* 先畫第一個畫面的卡片，其餘分批補上；補完前清單標 aria-busy */
+  const total = await page.evaluate(() => Number(document.querySelector('[data-role="count"]').textContent.match(/\d+/)[0]));
+  await page.waitForFunction(() => !document.querySelector('.gram-list').hasAttribute('aria-busy'));
   const cardCount = await page.locator('.gram-list .card').count();
-  assert.ok(cardCount > 100, `文法頁應列出全部句子（實際 ${cardCount}）`);
+  assert.ok(total > 100 && cardCount === total, `文法頁應補齊全部句子（${cardCount}/${total}）`);
+  assert.equal(await page.evaluate(() => new Set([...document.querySelectorAll('.gram-list .card .meta')].map((m) => m.textContent)).size), total, '分批補上的卡片不重複');
 
   await page.waitForFunction(() => document.querySelector('.gram-list .card .gap-mid path'));
   let first = await inspect(0);
@@ -99,6 +103,28 @@ export async function run({ page, origin }) {
   await page.waitForFunction(() => document.querySelector('.gram-list .card .gap-mid path'));
   first = await inspect(0);
   assert.ok(first.drawn === first.expected && first.drift < 1 && first.colorsMatch, `篩選後第一張卡正確：${JSON.stringify(first)}`);
+
+  /* 分批補卡途中換篩選：舊批次作廢，只留新篩選的卡片且不重複 */
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+  await page.reload();
+  await page.locator('.gram-list .card').first().waitFor();
+  const chip = page.locator('.chips .chip').nth(2);
+  const expected = Number(await chip.locator('.n').innerText());
+  /* 在同一段頁面腳本內確認仍在補卡並點擊，避免自動化工具等待期間批次已補完 */
+  const clickedWhileBusy = await page.evaluate(() => {
+    const busy = document.querySelector('.gram-list').getAttribute('aria-busy') === 'true';
+    document.querySelectorAll('.chips .chip')[2].click();
+    return busy;
+  });
+  assert.ok(clickedWhileBusy, '前置條件：點擊時仍在分批補卡');
+  await page.waitForFunction(() => !document.querySelector('.gram-list').hasAttribute('aria-busy'), null, { timeout: 30000 });
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  await page.waitForTimeout(300);
+  const filtered = await page.evaluate(() => [...document.querySelectorAll('.gram-list .card .meta')].map((m) => m.textContent));
+  assert.equal(filtered.length, expected, `換篩選後卡片數 ${filtered.length}/${expected}`);
+  assert.equal(new Set(filtered).size, expected, '換篩選後卡片不重複');
+  assert.equal(new Set(filtered.map((text) => text.split(' · ')[1])).size, 1, '只留下所選句型的卡片');
 
   /* 教學頁示範句：同一套 CSS 上色 */
   await page.goto(`${origin}/help.html`);

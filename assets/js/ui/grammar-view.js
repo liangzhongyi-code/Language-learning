@@ -19,6 +19,12 @@ import { loadPrefs, setPref } from './prefs.js';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
+ * 第一次繪製的卡片數：卡片高約 440～550px，6 張足以填滿直式大螢幕；其餘每批補 15 張
+ */
+const FIRST_BATCH = 6;
+const LATER_BATCH = 15;
+
+/**
  * 語言代碼對應的顯示名稱
  */
 const LANG_LABEL = { en: '英文', ja: '日文' };
@@ -215,10 +221,17 @@ function createLinkPainter() {
      * 清單重畫後換一批卡片觀察
      */
     track(cards) {
-      all = cards;
+      all = [];
       visible.clear();
+      if (observer) observer.disconnect();
+      this.add(cards);
+    },
+    /**
+     * 分批加入的卡片接著觀察
+     */
+    add(cards) {
+      all = all.concat(cards);
       if (!observer) { generation += 1; paint(all); return; }
-      observer.disconnect();
       cards.forEach((card) => observer.observe(card));
     },
     /**
@@ -285,24 +298,53 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
   const linesToggle = mount.querySelector('[data-role="lines"]');
   const painter = createLinkPainter();
 
+  let renderSeq = 0;
+
   /**
-   * 依目前的篩選重畫整份清單；連接線由 painter 在卡片進入畫面附近時補上
+   * 依目前的篩選重畫整份清單；連接線由 painter 在卡片進入畫面附近時補上。
+   *
+   * 先放滿第一個畫面的卡片，其餘等第一次繪製之後分批補上：一次建立上百張卡的 DOM 與樣式，
+   * 在低階手機上會讓畫面卡住約 0.3 秒。補完前清單標 aria-busy；換篩選時未補完的批次直接作廢。
    */
   function render() {
     const shown = filterSentences(all, activeId);
+    const seq = ++renderSeq;
 
     countHost.textContent =
       activeId === 'all'
         ? `共 ${all.length} 個句子`
         : `顯示 ${shown.length} 個句子（全部 ${all.length} 個）`;
 
-    listHost.innerHTML = shown.length
-      ? shown
-          .map((s) => cardHtml(s, { lang, patternName: patternNames.get(s.patternId) || s.patternId }))
-          .join('')
-      : '<p class="empty">這個句型目前沒有例句。</p>';
+    if (!shown.length) {
+      listHost.innerHTML = '<p class="empty">這個句型目前沒有例句。</p>';
+      listHost.removeAttribute('aria-busy');
+      painter.track([]);
+      return;
+    }
 
-    painter.track([...listHost.querySelectorAll('.card')]);
+    const html = (from, to) => shown.slice(from, to)
+      .map((s) => cardHtml(s, { lang, patternName: patternNames.get(s.patternId) || s.patternId }))
+      .join('');
+    listHost.innerHTML = html(0, FIRST_BATCH);
+    painter.track([...listHost.children]);
+    if (shown.length <= FIRST_BATCH) {
+      listHost.removeAttribute('aria-busy');
+      return;
+    }
+    listHost.setAttribute('aria-busy', 'true');
+
+    let next = FIRST_BATCH;
+    const appendBatch = () => {
+      if (seq !== renderSeq) return;
+      const before = listHost.children.length;
+      listHost.insertAdjacentHTML('beforeend', html(next, next + LATER_BATCH));
+      painter.add([...listHost.children].slice(before));
+      next += LATER_BATCH;
+      if (next < shown.length) window.setTimeout(appendBatch, 0);
+      else listHost.removeAttribute('aria-busy');
+    };
+    /* 等第一批真的畫上螢幕再開始補：rAF 在繪製前執行，裡面再排 setTimeout 才會落在繪製之後 */
+    window.requestAnimationFrame(() => window.setTimeout(appendBatch, 0));
   }
 
   /* ── 篩選 ── */
