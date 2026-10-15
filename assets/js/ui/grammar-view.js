@@ -107,34 +107,34 @@ function cardHtml(sentence, { lang, patternName }) {
 }
 
 /**
- * 把上下兩排 data-k 相同的區塊用貝茲曲線接起來。
+ * 把一批卡片上下兩排 data-k 相同的區塊用貝茲曲線接起來。
  *
  * 座標一律用 getBoundingClientRect 現算：色塊會隨寬度換行，
  * 任何「記住上次算過的位置」都會在換行後失準。
+ * 只畫呼叫端給的卡片（畫面附近那幾張）：一次量完全部 147 張會逼瀏覽器把整份清單排版，
+ * 在手機上是上千毫秒的卡頓。回傳實際畫好的卡片。
  */
-function drawLinks(scope) {
+function drawLinks(cards) {
   /* 連接線關掉時 CSS 會把 svg 藏起來，這時算座標純屬浪費 */
-  if (document.documentElement.classList.contains('no-lines')) return;
+  if (document.documentElement.classList.contains('no-lines')) return [];
 
   /**
-   * 分兩階段跑：先把所有卡片的座標量完，再一次性動 DOM。
-   *
-   * 原本是「量一條、畫一條」交錯進行，而寫入 DOM 會讓下一次
-   * getBoundingClientRect 被迫重新排版。文法頁一次渲染 28-31 張卡、
-   * 每張 4-6 條線，等於每次重畫觸發上百次強制 layout——手機轉向時會明顯卡頓。
+   * 分兩階段跑：先把這批卡片的座標量完，再一次性動 DOM。
+   * 「量一條、畫一條」交錯進行時，寫入 DOM 會讓下一次 getBoundingClientRect 被迫重新排版。
    */
   const plans = [];
 
-  scope.querySelectorAll('.gram').forEach((gram) => {
-    const gap = gram.querySelector('.gap-mid');
+  for (const card of cards) {
+    const gram = card.querySelector('.gram');
+    const gap = gram && gram.querySelector('.gap-mid');
     const svg = gap && gap.querySelector('svg');
-    const zhRow = gram.querySelector('.row[data-row="zh"]');
-    const targetRow = gram.querySelector('.row[data-row="target"]');
-    if (!svg || !zhRow || !targetRow) return;
+    const zhRow = gram && gram.querySelector('.row[data-row="zh"]');
+    const targetRow = gram && gram.querySelector('.row[data-row="target"]');
+    if (!svg || !zhRow || !targetRow) continue;
 
     const box = gap.getBoundingClientRect();
     /* 卡片還沒有版面（例如被隱藏）時不畫，等下一次觸發 */
-    if (!box.height) return;
+    if (!box.height) continue;
 
     const segments = [];
     zhRow.querySelectorAll('.blk').forEach((topBlock) => {
@@ -145,12 +145,6 @@ function drawLinks(scope) {
 
       const ra = topBlock.getBoundingClientRect();
       const rb = bottomBlock.getBoundingClientRect();
-
-      /*
-       * 線的顏色跟著色塊走，才看得出是同一個角色。
-       * --blk 在少數瀏覽器讀不到已代換的值，退回用邊框色（一定是解析過的 rgb）。
-       */
-      const style = getComputedStyle(topBlock);
 
       segments.push({
         x1: ra.left + ra.width / 2 - box.left,
@@ -163,13 +157,17 @@ function drawLinks(scope) {
          */
         y1: ra.bottom - box.top,
         y2: rb.top - box.top,
-        color: style.getPropertyValue('--blk').trim() || style.borderTopColor,
+        /*
+         * 線的顏色跟著色塊走，才看得出是同一個角色：直接沿用色塊的角色 class，
+         * 由 CSS 以 var(--blk) 上色。不再逐塊 getComputedStyle，切換配色時線也會跟著變。
+         */
+        role: [...topBlock.classList].find((name) => name.startsWith('r-')) || 'r-other',
         moved: topBlock.classList.contains('moved'),
       });
     });
 
-    if (segments.length) plans.push({ svg, segments });
-  });
+    plans.push({ card, svg, segments });
+  }
 
   /* 第二階段：量測全部結束，現在才動 DOM */
   for (const { svg, segments } of plans) {
@@ -178,13 +176,59 @@ function drawLinks(scope) {
       const path = document.createElementNS(SVG_NS, 'path');
       const mid = seg.y1 + (seg.y2 - seg.y1) / 2;
       path.setAttribute('d', `M${seg.x1},${seg.y1} C${seg.x1},${mid} ${seg.x2},${mid} ${seg.x2},${seg.y2}`);
-      path.setAttribute('stroke', seg.color);
-      if (seg.moved) path.setAttribute('stroke-dasharray', '4 3');
+      path.setAttribute('class', seg.moved ? `${seg.role} moved` : seg.role);
       frag.appendChild(path);
     }
     svg.textContent = '';
     svg.appendChild(frag);
   }
+  return plans.map((plan) => plan.card);
+}
+
+/**
+ * 只替畫面附近的卡片畫線。
+ *
+ * 卡片進入畫面附近才畫；版面變動（換寬度、字型載入、開關連接線）時只重畫目前看得到的，
+ * 其餘卡片標成過期，捲到時再畫。沒有 IntersectionObserver 的舊瀏覽器退回全部重畫。
+ */
+function createLinkPainter() {
+  const visible = new Set();
+  const drawnAt = new WeakMap();
+  let generation = 0;
+  const paint = (cards) => {
+    const stale = cards.filter((card) => drawnAt.get(card) !== generation);
+    if (!stale.length || document.documentElement.classList.contains('no-lines')) return;
+    drawLinks(stale).forEach((card) => drawnAt.set(card, generation));
+  };
+  const observer = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) visible.add(entry.target);
+        else visible.delete(entry.target);
+      }
+      paint(entries.filter((entry) => entry.isIntersecting).map((entry) => entry.target));
+    }, { rootMargin: '300px 0px' })
+    : null;
+  let all = [];
+  return {
+    /**
+     * 清單重畫後換一批卡片觀察
+     */
+    track(cards) {
+      all = cards;
+      visible.clear();
+      if (!observer) { generation += 1; paint(all); return; }
+      observer.disconnect();
+      cards.forEach((card) => observer.observe(card));
+    },
+    /**
+     * 版面變了：全部標成過期，只立即重畫看得到的
+     */
+    invalidate() {
+      generation += 1;
+      paint(observer ? [...visible] : all);
+    },
+  };
 }
 
 /**
@@ -231,7 +275,7 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
       </label>
     </div>
     <p class="count-line" data-role="count"></p>
-    <div data-role="list"></div>
+    <div class="gram-list" data-role="list"></div>
     <div class="actions">
       <a class="btn" href="./quiz.html?source=sentences">用這些句子做測驗</a>
     </div>`;
@@ -239,9 +283,10 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
   const listHost = mount.querySelector('[data-role="list"]');
   const countHost = mount.querySelector('[data-role="count"]');
   const linesToggle = mount.querySelector('[data-role="lines"]');
+  const painter = createLinkPainter();
 
   /**
-   * 依目前的篩選重畫整份清單，畫完立刻補上連接線
+   * 依目前的篩選重畫整份清單；連接線由 painter 在卡片進入畫面附近時補上
    */
   function render() {
     const shown = filterSentences(all, activeId);
@@ -257,7 +302,7 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
           .join('')
       : '<p class="empty">這個句型目前沒有例句。</p>';
 
-    drawLinks(listHost);
+    painter.track([...listHost.querySelectorAll('.card')]);
   }
 
   /* ── 篩選 ── */
@@ -276,7 +321,7 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
     const on = linesToggle.checked;
     document.documentElement.classList.toggle('no-lines', !on);
     setPref('grammarLines', on);
-    drawLinks(listHost);
+    painter.invalidate();
   });
 
   /* ── 鍵盤操作：色塊是 div，Enter / Space 要自己轉成點擊 ── */
@@ -288,7 +333,7 @@ export function initGrammarPage({ lang, sentences, mount, noticeHost }) {
     blk.click();
   });
 
-  const redraw = debounce(() => drawLinks(listHost), 120);
+  const redraw = debounce(() => painter.invalidate(), 120);
 
   /*
    * 重畫時機：色塊換行、字體換掉、視窗轉向，座標全都會變。

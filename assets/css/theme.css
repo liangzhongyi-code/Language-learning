@@ -1030,7 +1030,15 @@ html.no-speech .speak { display: none !important; }
 /* 兩排之間的連接線，可由使用者關閉 */
 .gap-mid { height: 46px; position: relative; }
 .gap-mid svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.gap-mid path { fill: none; stroke-width: 1.6; opacity: 0.55; }
+.gap-mid path { fill: none; stroke: var(--blk, var(--r-other)); stroke-width: 1.6; opacity: 0.55; }
+.gap-mid path.moved { stroke-dasharray: 4 3; }
+
+/*
+ * 文法頁一次列出上百張卡：畫面外的卡片交給瀏覽器略過排版與繪製，捲到附近才算。
+ * auto 會記住卡片實際高度；預估值只影響尚未顯示過的卡片，取實測中間值（桌面約 440px、手機寬度約 550px）。
+ * 刻意不依寬度換預估值：手機轉向跨過斷點時，上百張未顯示卡片會一起變高，捲動位置會跑掉。
+ */
+.gram-list > .card { content-visibility: auto; contain-intrinsic-size: auto 480px; }
 html.no-lines .gap-mid { height: 22px; }
 html.no-lines .gap-mid svg { display: none; }
 

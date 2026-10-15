@@ -393,8 +393,9 @@
       const mid = y1 + (y2 - y1) / 2;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`);
-      path.setAttribute('stroke', getComputedStyle(a).getPropertyValue('--blk').trim() || 'currentColor');
-      if (a.classList.contains('moved')) path.setAttribute('stroke-dasharray', '4 3');
+      /* 顏色與虛線同文法頁：沿用色塊的角色 class，由 CSS 以 var(--blk) 上色 */
+      const role = [...a.classList].find((name) => name.startsWith('r-')) || 'r-other';
+      path.setAttribute('class', a.classList.contains('moved') ? `${role} moved` : role);
       svg.appendChild(path);
     }
   }
