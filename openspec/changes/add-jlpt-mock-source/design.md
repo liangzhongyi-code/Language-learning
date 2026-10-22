@@ -37,7 +37,7 @@ quiz-service（題源、問題號篩選）→ quiz-engine buildJlptQuestion → 
 - **資料檔** `assets/js/data/ja/jlpt/n5-moji.js`、`n5-goi.js`、`n5-bunpou.js`，加上 barrel `ja/jlpt.js`。物件字面值，id 自己連號（`ja-j-0001` 起），一批一個檔，可單獨 revert。
 - **共用定義** `assets/js/data/shared/jlpt-mondai.js`：區段（moji／goi／bunpou）與問題號的合法組合、題型名稱、題面形式（底線或括號空格），以及自寫的日文問法和中文對照。
 - **schema** `validateJlpt`：J01、J02 的規則；接進 `schema.js` 的驗證表。
-- **匯入對照工具** `tools/import-jlptsuccess.mjs`：讀本機下載的上游檔，先驗每個檔的 SHA-256，不符就拒絕。`--draft` 產生草稿（題面、選項、正解、上游英文解說放註解供撰寫 note 參考）；`--check` 比對已進版控的資料與上游，列出差異、核對修改與排除清單。
+- **匯入對照工具** `tools/import-jlptsuccess.mjs`：讀本機下載的上游檔，先驗每個檔的 SHA-256，不符就拒絕。`--draft` 產生草稿（題面、選項、正解、上游英文解說放註解供撰寫 note 參考）；`--check` 比對已進版控的資料與上游，列出差異、核對修改與排除清單（排除清單在各批次檔，見 TD6）。
 - **目錄建置** `tools/build-catalog.mjs`：輸出 `catalog/ja-jlpt.js`，`meta.js` 加 `jlpt`、`jlptByLevel`、`jlptByMondai`，`sourceHash` 一併納入。`tools/build-preload.mjs` 的預載表同步。
 - **題源** `quiz-engine.js`：`SOURCE_KIND.jlpt = 'choice'`、`poolOf('jlpt')`、`buildJlptQuestion`。`quiz-service.js`／`quiz-view.js`：題源清單、標籤、筆數、問題號篩選、題面呈現。
 - **問題回報** `issue-code.js`：題面快照帶 `underline` 與 `mondai`，題目能被完整重現。
@@ -106,7 +106,9 @@ quiz-service（題源、問題號篩選）→ quiz-engine buildJlptQuestion → 
 3. 選項彼此不重複（`moji-6.12` 須改掉重複的「画きます」）。
 4. note 的說法與題面一致。
 
-與上游不同時（修題面、換選項、改正解）在該題 `edited` 寫原因；整題不收的放進匯入工具的排除表並寫原因，`--check` 會列出。不默默修改上游內容。
+與上游不同時（修題面、換選項、改正解）在該題 `edited` 寫原因；整題不收的放進該批次檔的 `excluded` 並寫原因，`--check` 會列出。不默默修改上游內容。
+
+2026-10-22 實作時調整：排除表原寫「放在匯入工具裡」，改為每個批次檔各自匯出 `excluded`，由 `ja/jlpt.js` 匯總成 `jlptExcluded`。原因：三個區段分開撰寫時，共用一份工具內的表會互相衝突；排除原因跟題目放在一起也比較好查。
 
 ### TD7：能力與方向對應
 - 作答型態是 `choice`，沿用 `review-events.js` 的對應，能力為 `recognition`。

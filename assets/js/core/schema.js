@@ -12,6 +12,7 @@ import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
 import { LEVELS } from '../data/shared/levels.js';
 import { SCENE_AXIS_KEYS } from '../data/shared/scene-axes.js';
+import { JLPT_BLANK, jlptMondaiOf } from '../data/shared/jlpt-mondai.js';
 import { hasKanji } from './kana.js';
 
 /**
@@ -524,16 +525,148 @@ export function validateReading(entry, lang) {
 }
 
 /**
+ * JLPT 模擬題允許的欄位。多打或拼錯的欄位不會讓畫面壞掉，只會默默被忽略，
+ * 例如把 edited 打成 edit，修改原因就從對照工具的視線裡消失了。
+ */
+const JLPT_KEYS = ['id', 'level', 'section', 'mondai', 'stem', 'underline', 'options', 'answer', 'note', 'sourceRef', 'edited'];
+
+/**
+ * 字串頭尾不能有空白。中間的空格要保留（N5 的分かち書き），只有頭尾是打錯。
+ */
+const isTrimmed = (v) => typeof v === 'string' && v === v.trim();
+
+/**
+ * 子字串出現的次數，不重疊計算
+ */
+const occurrences = (text, part) => (part ? text.split(part).length - 1 : 0);
+
+/**
+ * 驗證一題 JLPT 模擬題。
+ *
+ * 選項和情境題一樣寫死在資料裡：讀法題的錯誤選項（かくせい／がくせ）只能跟正解差一個音，
+ * 隨機抽的干擾選項做不到。題面依題型分三種形式（見 shared/jlpt-mondai.js），
+ * 這裡逐一檢查考點有沒有標對——底線字找不到、空格多一個，題目就沒辦法作答。
+ */
+export function validateJlpt(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (lang !== 'ja') c.add('(entry)', `JLPT 模擬題只屬於日文題庫，實際語言為 ${JSON.stringify(lang)}`);
+  if (!new RegExp(`^${lang}-j-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-j-NNNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
+  }
+  for (const key of Object.keys(entry)) {
+    if (!JLPT_KEYS.includes(key)) c.add(key, `不認得的欄位「${key}」`);
+  }
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
+  }
+
+  const mondai = jlptMondaiOf(entry.section, entry.mondai);
+  if (!mondai) {
+    c.add('mondai', `沒有這個題型：section ${JSON.stringify(entry.section)}、mondai ${JSON.stringify(entry.mondai)}`);
+  }
+
+  const stem = entry.stem;
+  if (!isFilledString(stem)) {
+    c.add('stem', 'stem 不可為空');
+  } else {
+    if (!isTrimmed(stem)) c.add('stem', 'stem 頭尾不可有空白');
+    /* 底線另存欄位、畫面用 DOM 節點包，題面字串裡一律不放標籤 */
+    if (/[<>]/.test(stem)) c.add('stem', 'stem 不可含 HTML 標籤，底線字請放 underline 欄位');
+    if (mondai) {
+      const blanks = occurrences(stem, JLPT_BLANK);
+      if (mondai.form === 'underline') {
+        if (!isFilledString(entry.underline)) {
+          c.add('underline', `「${mondai.label}」題要標出底線字，underline 不可為空`);
+        } else if (occurrences(stem, entry.underline) !== 1) {
+          c.add('underline', `底線字「${entry.underline}」在 stem 中必須剛好出現一次，實際 ${occurrences(stem, entry.underline)} 次`);
+        }
+        if (blanks) c.add('stem', `「${mondai.label}」題不可有括號空格`);
+      } else {
+        if (entry.underline !== null) c.add('underline', `「${mondai.label}」題沒有底線字，underline 必須是 null`);
+        if (mondai.form === 'blank' && blanks !== 1) {
+          c.add('stem', `「${mondai.label}」題的 stem 必須剛好一個「${JLPT_BLANK}」，實際 ${blanks} 個`);
+        }
+        if (mondai.form === 'paraphrase') {
+          if (blanks) c.add('stem', `「${mondai.label}」題不可有括號空格`);
+          if (/^[A-ZＡ-Ｚ][:：]/.test(stem)) c.add('stem', '言い換え題的 stem 開頭不可留「A:」這類標號');
+        }
+      }
+    }
+  }
+
+  if (!isFilledString(entry.answer)) c.add('answer', 'answer 不可為空');
+  if (!isFilledString(entry.note)) c.add('note', 'note 不可為空，要說明為什麼是這個而不是別的');
+  if (!/^(moji|goi|bunpou)-\d+\.\d+$/.test(entry.sourceRef || '')) {
+    c.add('sourceRef', `sourceRef 必須是上游題號（例如 moji-1.1），實際為 ${JSON.stringify(entry.sourceRef)}`);
+  } else if (entry.section && !entry.sourceRef.startsWith(`${entry.section}-`)) {
+    c.add('sourceRef', `sourceRef「${entry.sourceRef}」與 section「${entry.section}」不一致`);
+  }
+  if (entry.edited !== null && !isFilledString(entry.edited)) {
+    c.add('edited', 'edited 只能是 null，或用文字寫出與上游不同的原因');
+  }
+
+  const options = entry.options;
+  if (!Array.isArray(options) || options.length !== CHOICE_OPTIONS) {
+    c.add('options', `options 必須剛好 ${CHOICE_OPTIONS} 個，實際為 ${JSON.stringify(options)}`);
+    return c.result();
+  }
+  if (options.some((o) => !isFilledString(o))) c.add('options', 'options 不可有空字串');
+  if (options.some((o) => isFilledString(o) && !isTrimmed(o))) c.add('options', 'options 頭尾不可有空白');
+  if (new Set(options).size !== options.length) {
+    c.add('options', `options 有重複：${options.filter((o, i) => options.indexOf(o) !== i).join('、')}`);
+  }
+  if (!options.includes(entry.answer)) {
+    c.add('options', `options 必須包含正解「${entry.answer}」，否則這題無解`);
+  }
+
+  return c.result();
+}
+
+/**
+ * 找出流水號的缺號。
+ * JLPT 題的 id 是手寫的，跳號不會讓畫面出錯，但代表有一題被刪掉或少貼了一題，
+ * 對照上游時要能一眼看出來，所以要求從 1 起連號。
+ */
+export function findSerialGaps(list) {
+  const numbers = (list || []).map((item) => Number(String(item?.id ?? '').split('-').pop()));
+  const gaps = [];
+  numbers.forEach((n, i) => {
+    if (n !== i + 1) gaps.push(`第 ${i + 1} 筆應為 ${i + 1} 號，實際為 ${Number.isNaN(n) ? '無法辨識' : n}`);
+  });
+  return gaps;
+}
+
+/**
  * 每個資料區塊對應的驗證函式。
- * words、sentences、scenes 與 readings 需要語言參數，kana 與 letters 不需要。
+ * words、sentences、scenes、readings 與 jlpt 需要語言參數，kana 與 letters 不需要。
  */
 const SECTION_VALIDATORS = {
   words: (entry, lang) => validateWord(entry, lang),
   sentences: (entry, lang) => validateSentence(entry, lang),
   scenes: (entry, lang) => validateScene(entry, lang),
   readings: (entry, lang) => validateReading(entry, lang),
+  jlpt: (entry, lang) => validateJlpt(entry, lang),
   kana: (entry) => validateKana(entry),
   letters: (entry) => validateLetter(entry),
+};
+
+/**
+ * 區塊層級的額外檢查：逐筆驗證看不到的整體規則
+ */
+const SECTION_CHECKS = {
+  jlpt(list) {
+    const errors = findSerialGaps(list).map((message) => ({ id: '(jlpt)', field: 'id', message: `流水號不連續：${message}` }));
+    const refs = list.map((item) => item?.sourceRef);
+    for (const ref of new Set(refs.filter((r, i) => r && refs.indexOf(r) !== i))) {
+      errors.push({ id: ref, field: 'sourceRef', message: `同一個上游題號 ${ref} 只能對應一題` });
+    }
+    return errors;
+  },
 };
 
 /**
@@ -553,6 +686,7 @@ export function validateDataset(dataset, lang) {
     for (const dup of findDuplicateIds(list)) {
       errors.push({ id: dup, field: 'id', message: `${section} 中有重複的 id：${dup}` });
     }
+    errors.push(...(SECTION_CHECKS[section]?.(list) ?? []));
   }
   return errors;
 }
