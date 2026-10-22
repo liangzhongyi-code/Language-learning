@@ -23,6 +23,7 @@ import { emptyProgress, weakest, dueIds } from '../core/progress.js';
 import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../core/quiz-setup.js';
 import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
 import { levelLabel, levelsOf } from '../data/shared/levels.js';
+import { JLPT_MONDAI, JLPT_MONDAI_KEYS } from '../core/jlpt-mondai.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { awaitLearningStore } from './storage-gate.js';
@@ -35,7 +36,14 @@ const DIRECTION_LABEL = {
   mixed: { en: '混合', ja: '混合' },
 };
 
-const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀' };
+const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀', jlpt: 'JLPT 模擬' };
+
+/**
+ * 一個題源至少要有幾題才能開局。
+ * 其他題源要從題庫抽三個干擾選項，所以至少四題；JLPT 模擬題的選項寫在每一題裡，
+ * 一題就能出——只練「問題2 表記」這種窄範圍時，不能因為湊不到四題就把選項灰掉。
+ */
+const minPoolOf = (source) => (source === 'jlpt' ? 1 : MIN_POOL);
 
 /**
  * 會受「出題方向」影響的題型。
@@ -50,6 +58,7 @@ const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
 const NO_KANA_REASON = {
   scene: '四個選項是連場合一起寫死的，沒有假名版',
   reading: '整篇短文沒有假名版',
+  jlpt: 'JLPT 本身就在考漢字，題面照考試原樣呈現',
 };
 
 /**
@@ -74,14 +83,14 @@ const SCOPE_NOUN = { weak: '還沒練熟的題目', due: '今天該複習的題�
  * 每個範圍各報自己的交集數，不能用一個數字描述兩個——
  * 易錯有 3 題、到期有 0 題時，共用一個數字會把 3 安在到期頭上。
  */
-function strandedNote(stranded, scopeTotals, scopeSizes, sourceLabel) {
+function strandedNote(stranded, scopeTotals, scopeSizes, sourceLabel, minPool = MIN_POOL) {
   const lines = stranded.map((s) => {
     const total = scopeTotals[s] || 0;
     const here = scopeSizes[s] || 0;
     const noun = esc(SCOPE_NOUN[s]);
     return strandedReason({ here, total }) === 'short'
-      ? `你有 ${total} 個${noun}，還不夠出一局（至少要 ${MIN_POOL} 題），再練幾局就會出現。`
-      : `你有 ${total} 個${noun}，但只有 ${here} 個在${esc(sourceLabel)}裡，不夠出一局（至少要 ${MIN_POOL} 題）。換個題型看看。`;
+      ? `你有 ${total} 個${noun}，還不夠出一局（至少要 ${minPool} 題），再練幾局就會出現。`
+      : `你有 ${total} 個${noun}，但只有 ${here} 個在${esc(sourceLabel)}裡，不夠出一局（至少要 ${minPool} 題）。換個題型看看。`;
   });
   return `<p class="setting-note">${lines.join('<br>')}</p>`;
 }
@@ -137,9 +146,20 @@ function rubyHtml(pairs, fallback) {
   return `<span class="rb">${inner}</span>`;
 }
 
-export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
-  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'] };
-  const loadedKeys = new Set(typeof dataProvider === 'function' ? [] : ['words', 'sentences', 'scenes', 'readings']);
+/**
+ * JLPT 題面：底線字包成 <u>。底線字在 schema 保證只出現一次，這裡仍只切第一處，
+ * 前後兩段與底線字都各自跳脫，題面字串本身永遠不會被當成 HTML。
+ * 整句包在單一 span 裡：.prompt 是帶 gap 的 flex 容器，原因同 rubyHtml。
+ */
+function underlinedHtml(text, underline) {
+  const at = underline ? String(text).indexOf(underline) : -1;
+  if (at < 0) return `<span>${esc(text)}</span>`;
+  return `<span>${esc(text.slice(0, at))}<u>${esc(underline)}</u>${esc(text.slice(at + underline.length))}</span>`;
+}
+
+export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
+  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt'] };
+  const loadedKeys = new Set(typeof dataProvider === 'function' ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt']);
   let sourceGeneration = 0;
   let sourceLoading = false;
   let sourceError = '';
@@ -188,7 +208,24 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 畫面上看不出這局到底會出幾題。記住「他要的是全部」才能跟著新題源走。
      */
     useAll: false,
+    /**
+     * JLPT 模擬題要練哪些題型（core/jlpt-mondai.js 的 key），預設全部。
+     * 不記進偏好：題型是這一局想加強什麼，跟漢字模式那種長期習慣不同。
+     */
+    mondai: [...JLPT_MONDAI_KEYS],
   };
+
+  /**
+   * 題源的完整題池。JLPT 模擬題另外依勾選的題型篩一次，
+   * 其餘地方（級別、範圍、題數）就能跟其他題源走同一套計算。
+   */
+  const sourcePool = (source) => {
+    const pool = poolOf(source, words, sentences, scenes, readings, jlpt);
+    return source === 'jlpt' ? pool.filter((item) => config.mondai.includes(`${item.section}-${item.mondai}`)) : pool;
+  };
+
+  /* 未載入前用目錄的分布估 JLPT 題數，同樣只算勾選的題型 */
+  const jlptMetaAt = (level) => config.mondai.reduce((sum, key) => sum + (dataMeta.jlptByMondai?.[level]?.[key] || 0), 0);
 
   let session = null;
   /**
@@ -248,21 +285,31 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     if (!poolSizeCache.has(source)) {
       const counts = { words: dataMeta.words, sentences: dataMeta.sentences,
         cloze: dataMeta.cloze ?? dataMeta.sentences, scene: dataMeta.scenes, reading: dataMeta.readingQuestions,
+        jlpt: source === 'jlpt' ? [1, 2, 3, 4, 5].reduce((sum, level) => sum + jlptMetaAt(level), 0) : 0,
         mixed: source === 'mixed' ? poolSize('words') + poolSize('sentences') : 0 };
       poolSizeCache.set(source, sourceReady(source)
-        ? poolOf(source, words, sentences, scenes, readings).length : counts[source] || 0);
+        ? sourcePool(source).length : counts[source] || 0);
     }
     return poolSizeCache.get(source);
   }
 
+  /* JLPT 膠囊顯示完整題數，不受題型勾選影響——全部取消勾選時膠囊不能跟著消失 */
+  const jlptTotal = () => (sourceReady('jlpt') ? jlpt.length : dataMeta.jlpt || 0);
+
+  /* 某個 JLPT 題型在某一級有幾題，不受勾選影響，題型膠囊上的數字用它 */
+  const mondaiCountAt = (key, level) => (sourceReady('jlpt')
+    ? jlpt.filter((item) => item.level === level && `${item.section}-${item.mondai}` === key).length
+    : dataMeta.jlptByMondai?.[level]?.[key] || 0);
+
   function countsAtLevels(source) {
     if (sourceReady(source)) {
-      const pool = poolOf(source, words, sentences, scenes, readings);
+      const pool = sourcePool(source);
       return Object.fromEntries(levelsOf('ja').map(({ level }) => [level, pool.filter((item) => item.level === level).length]));
     }
     const maps = { words: dataMeta.wordsByLevel, sentences: dataMeta.sentencesByLevel,
       cloze: dataMeta.clozeByLevel ?? dataMeta.sentencesByLevel, scene: dataMeta.scenesByLevel,
-      reading: dataMeta.readingQuestionsByLevel };
+      reading: dataMeta.readingQuestionsByLevel,
+      jlpt: Object.fromEntries(levelsOf('ja').map(({ level }) => [level, jlptMetaAt(level)])) };
     if (source !== 'mixed') return maps[source] || {};
     const wordCounts = countsAtLevels('words');
     const sentenceCounts = countsAtLevels('sentences');
@@ -291,6 +338,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       if (sourceKeys[source].includes('sentences')) sentences = dataset.sentences;
       if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
       if (sourceKeys[source].includes('readings')) readings = dataset.readings;
+      if (sourceKeys[source].includes('jlpt')) jlpt = dataset.jlpt;
       sourceKeys[source].forEach((key) => loadedKeys.add(key));
       poolSizeCache.clear();
       levelIdCache.clear();
@@ -307,7 +355,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
    * 英文頁永遠回完整題庫；日文的 all 也不做任何篩選。
    */
   function poolAtLevel(source, level = config.level) {
-    const pool = poolOf(source, words, sentences, scenes, readings);
+    const pool = sourcePool(source);
     if (lang !== 'ja' || level === 'all') return pool;
     return pool.filter((item) => item.level === Number(level));
   }
@@ -321,7 +369,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     if (level === 'all') return null;
     if (!levelIdCache.has(level)) {
       const numeric = Number(level);
-      const all = [...words, ...sentences, ...scenes, ...poolOf('reading', words, sentences, scenes, readings)];
+      const all = [...words, ...sentences, ...scenes, ...poolOf('reading', words, sentences, scenes, readings), ...jlpt];
       levelIdCache.set(level, new Set(all.filter((item) => item.level === numeric).map((item) => item.id)));
     }
     return levelIdCache.get(level);
@@ -388,7 +436,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
    * 空白連錯誤訊息都沒有。全站其餘語法最新只到 ES2020，沒有理由在這裡拉高底線。
    */
   const isSource = Object.prototype.hasOwnProperty.call(SOURCE_LABEL, requested ?? '');
-  if (isSource && poolSize(requested) >= MIN_POOL) {
+  if (isSource && poolSize(requested) >= minPoolOf(requested)) {
     config.source = requested;
   }
 
@@ -410,15 +458,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 學習紀錄只讀一次、題庫只取一次——兩者都是這一頁最貴的操作。
      */
     const progress = progressCache;
-    const fullPool = poolOf(config.source, words, sentences, scenes, readings);
+    const fullPool = sourcePool(config.source);
     const levelCounts = countsAtLevels(config.source);
+    const minPool = minPoolOf(config.source);
 
     /**
      * 切換題型後，原本的級別可能不足四題。
      * 例如句型沒有 N2/N1、情境的 N4 目前只有三題；這時退回「全部」，
      * 不留下沒有任何膠囊選中、按開始才爆錯的幽靈狀態。
      */
-    if (lang === 'ja' && config.level !== 'all' && (levelCounts[config.level] || 0) < MIN_POOL) {
+    if (lang === 'ja' && config.level !== 'all' && (levelCounts[config.level] || 0) < minPool) {
       config.level = 'all';
     }
     const pool = config.level === 'all'
@@ -454,7 +503,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       sizes: scopeSizes,
       totals,
       scope: config.scope,
-      minPool: MIN_POOL,
+      minPool,
     });
     // 冷載入的空池不代表範圍不足；等題源就緒後才套用 fallback，避免吃掉使用者的選擇。
     if (sourceReady(config.source)) {
@@ -480,8 +529,31 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
             ...(poolSize('scene') ? [['scene', `情境（${poolSize('scene')}）`]] : []),
             /* 閱讀題顯示的是題數不是篇數——使用者選的是這一局要作答幾題 */
             ...(poolSize('reading') ? [['reading', `閱讀（${poolSize('reading')}）`]] : []),
+            /* JLPT 模擬題只有日文；英文頁沒有資料，膠囊不出現 */
+            ...(jlptTotal() ? [['jlpt', `JLPT 模擬（${jlptTotal()}）`]] : []),
           ], config.source)}</div>
         </div>
+
+        ${
+          /**
+           * JLPT 題型可以複選，例如只練「問題2 表記」。
+           * 數字跟著目前的級別走；全部取消勾選時開始鍵停用並說明，而不是按了才報錯。
+           */
+          config.source === 'jlpt'
+            ? `<div class="setting">
+          <label>題型（可複選）</label>
+          <div class="chips">${JLPT_MONDAI.map((m) => {
+            const count = config.level === 'all'
+              ? [1, 2, 3, 4, 5].reduce((sum, level) => sum + mondaiCountAt(m.key, level), 0)
+              : mondaiCountAt(m.key, Number(config.level));
+            return `<button class="chip" type="button" data-mondai="${esc(m.key)}" aria-pressed="${config.mondai.includes(m.key)}">${esc(`問題${m.mondai} ${m.label}（${count}）`)}</button>`;
+          }).join('')}</div>
+          <p class="setting-note">${config.mondai.length
+            ? '文字・語彙的問題1～4 與文法的問題1 各自編號，照 JLPT 試卷的分法。選項照考試形式寫在每一題裡，不會跨級。'
+            : '至少要選一種題型才能開始。'}</p>
+        </div>`
+            : ''
+        }
 
         ${
           lang === 'ja'
@@ -493,16 +565,18 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
               levelsOf('ja').map(({ level, label }) => [
                 level,
                 `${label}（${levelCounts[level] || 0}）`,
-                (levelCounts[level] || 0) < MIN_POOL,
+                (levelCounts[level] || 0) < minPool,
               ])
             ),
             config.level
           )}</div>
           <p class="setting-note">${
-            config.level === 'all'
-              ? '不分級，題目與自動抽出的干擾選項可能來自 N5 到 N1。'
-              : `只出 ${levelsOf('ja').find((item) => item.level === Number(config.level))?.label} 題目；干擾選項與填空候選詞仍取自完整題源，可能跨級。`
-          }　灰色級別表示目前題型不足 ${MIN_POOL} 題。</p>
+            config.source === 'jlpt'
+              ? `${config.level === 'all' ? '不分級。' : `只出 ${esc(levelLabel('ja', Number(config.level)))} 題目。`}每一題的選項都寫在題目裡，不會跨級。`
+              : config.level === 'all'
+                ? '不分級，題目與自動抽出的干擾選項可能來自 N5 到 N1。'
+                : `只出 ${levelsOf('ja').find((item) => item.level === Number(config.level))?.label} 題目；干擾選項與填空候選詞仍取自完整題源，可能跨級。`
+          }　灰色級別表示目前題型${minPool === 1 ? '沒有題目' : `不足 ${minPool} 題`}。</p>
         </div>`
             : ''
         }
@@ -601,10 +675,10 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
             config.scope
           )}</div>
           ${SCOPE_NOTE[config.scope] ? `<p class="setting-note">${SCOPE_NOTE[config.scope]}</p>` : ''}
-          ${stranded.length ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source]) : ''}
+          ${stranded.length ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source], minPool) : ''}
         </div>`
             : stranded.length
-              ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source])
+              ? strandedNote(stranded, totals, scopeSizes, SOURCE_LABEL[config.source], minPool)
               : ''
         }
 
@@ -621,7 +695,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         ${sourceLoading || sourceError ? `<div class="notice" role="status" aria-live="polite">${sourceLoading ? '正在載入題庫…' : esc(sourceError)}${sourceError ? '<button class="btn ghost" type="button" data-source-retry>重試載入</button>' : ''}</div>` : ''}
 
         <div class="actions">
-          <button class="btn" type="button" data-start ${sourceLoading || sourceError || !sourceReady(config.source) ? 'disabled' : ''}>開始測驗</button>
+          <button class="btn" type="button" data-start ${sourceLoading || sourceError || !sourceReady(config.source)
+            || (config.source === 'jlpt' && !config.mondai.length) ? 'disabled' : ''}>開始測驗</button>
         </div>
         <p class="setting-note quiz-backup-link">測驗紀錄會自動保存在這個瀏覽器；要匯出請到<a href="../index.html#backup">全站首頁的「備份與還原」</a>。</p>
       </div>`;
@@ -650,6 +725,19 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
          */
         if (set === 'source') loadSource();
         else renderSetup();
+      });
+    });
+
+    /* 題型複選：切換後題數會變，衍生的題數快取與上一次的範圍計算都要作廢 */
+    mount.querySelectorAll('[data-mondai]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const key = chip.dataset.mondai;
+        config.mondai = config.mondai.includes(key)
+          ? config.mondai.filter((k) => k !== key)
+          : JLPT_MONDAI_KEYS.filter((k) => k === key || config.mondai.includes(k));
+        poolSizeCache.delete('jlpt');
+        lastSetup = null;
+        renderSetup();
       });
     });
 
@@ -690,7 +778,9 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         sentences,
         scenes,
         readings,
+        jlpt,
         source: config.source,
+        mondai: config.source === 'jlpt' ? config.mondai : null,
         direction: config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
@@ -952,16 +1042,23 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       })
       .join('');
 
+    /**
+     * JLPT 模擬題的題面上方是日文問法，作答後補上中文對照。
+     * 先給中文就等於幫忙讀懂題目，考試時沒有這個待遇，所以等選完才出現。
+     */
+    const isJlpt = Boolean(q.mondaiKey);
+    const askZhHtml = isJlpt && q.askZh ? `<br><span class="ask-zh">問法：${esc(q.askZh)}</span>` : '';
+
     const feedback = !answered
       ? ''
       : q.answeredIndex === q.correctIndex
-        ? `<div class="feedback good">答對了。${q.note ? esc(q.note) : ''}</div>`
+        ? `<div class="feedback good">答對了。${q.note ? esc(q.note) : ''}${askZhHtml}</div>`
         : `<div class="feedback">正解是 <b>${rubyHtml(
             q.options[q.correctIndex].ruby,
             q.options[q.correctIndex].text
           )}</b>。${
             q.note ? `<br>${esc(q.note)}` : ''
-          }</div>`;
+          }${askZhHtml}</div>`;
 
     /**
      * 情境題的場合描述與閱讀題的短文都放在題面之上。
@@ -1001,27 +1098,33 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         ? `<details class="context passage" lang="${lang}" data-passage="${esc(q.passageId)}" ${isOpen ? 'open' : ''}>
              <summary class="passage-title">${esc(q.title)}</summary>${esc(q.context)}
            </details>`
-        : `<div class="context">${esc(q.context)}</div>`;
+        : isJlpt
+          ? `<div class="context" lang="ja">${esc(q.context)}</div>`
+          : `<div class="context">${esc(q.context)}</div>`;
     const translation =
       isReading && answered
         ? `<details class="translation"><summary>對照中文翻譯</summary><p>${esc(q.translation)}</p></details>`
         : '';
 
-    /* 題型標籤：閱讀與情境有自己的名字，其餘顯示出題方向 */
+    /* 題型標籤：閱讀、JLPT 與情境有自己的名字，其餘顯示出題方向 */
     const topLabel = isReading
       ? SOURCE_LABEL.reading
-      : q.context
-        ? SOURCE_LABEL.scene
-        : DIRECTION_LABEL[q.direction][lang];
+      : isJlpt
+        ? `${SOURCE_LABEL.jlpt} ${q.mondaiLabel}`
+        : q.context
+          ? SOURCE_LABEL.scene
+          : DIRECTION_LABEL[q.direction][lang];
 
     mount.innerHTML = `
       <div class="card">
         ${quizTop(index, total, topLabel)}
 
         ${context}
-        <div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>
+        ${isJlpt
+          ? `<div class="prompt jlpt-stem" lang="ja">${underlinedHtml(q.prompt, q.underline)}</div>`
+          : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
         <div class="prompt-sub">${
-          isReading ? '依短文內容作答' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
+          isReading ? '依短文內容作答' : isJlpt ? '選出最適合的答案' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
         }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>
 
         <div class="opts${

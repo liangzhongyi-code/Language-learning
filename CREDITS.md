@@ -3,7 +3,10 @@
 本站的**單字**題庫有一部分是從公開授權的學術字表匯入的。
 中文翻譯、主題分類與等級對照為本專案自行編寫，原始字表的授權條款如下。
 
-單字以外的題庫——句型、情境題、閱讀短文、假名表——全部是本專案自行撰寫，
+**JLPT 模擬題**（`ja/jlpt/`）的題面與選項來自 JLPTSuccess（教學內容採 CC BY-SA 4.0），見下方「日文」一節；
+繁中解說為本專案撰寫。
+
+其餘題庫——句型、情境題、閱讀短文、假名表——全部是本專案自行撰寫，
 沒有引用任何外部素材。
 
 ---
@@ -39,15 +42,35 @@
 上述清單是社群依據舊版《日本語能力試験出題基準》與教材整理的非官方版本，
 與實際考題不保證一致。
 
+### JLPT 模擬題：JLPTSuccess（N5 文字・語彙・文法）
+
+- 來源：[JLPTSuccess](https://github.com/gauravaccentureproducts/JLPTSuccess)（JLPTSuccess contributors）的 `N5/data/papers/{moji,goi,bunpou}/paper-1..7.json`
+- 固定版本：commit `708a995691dcd0983e2ede47db423281b1cd343a`；各檔 SHA-256 記錄在 `tools/import-jlptsuccess.mjs`，`--check` 可逐題對照。
+- 授權：題目屬上游的教學內容，採 [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)。上游根目錄 `LICENSE` 的 MIT 條款只涵蓋程式碼，同檔的「Note on dual licensing」寫明教學內容另採 CC BY-SA 4.0。
+  - 上游 `N5/CONTENT-LICENSE.md` §8 只說內容「適用 `LICENSE`」，沒有另給授權；本專案依 `LICENSE` 的雙授權說明，採較嚴格的 CC BY-SA 4.0 處理。
+  - 2026-10-22 更正：規劃階段曾寫成「題目內容也是 MIT」，是只讀了 §8 而沒讀完 `LICENSE` 的誤判。
+- 上游聲明題目為原創，未抄錄 JLPT 考古題。
+- 內容：問題1 漢字讀法、問題2 表記、問題3 文脈規定、問題4 言い換え類義、文法問題1。上游 260 題，本專案收錄 255 題、排除 5 題、修改 33 題；修改原因寫在各題的 `edited`，排除原因寫在各批次檔的 `excluded`。
+- 本專案的改動：
+  - 題面格式正規化：底線字另存欄位、括號空格統一寫法、拿掉言い換え題開頭的「A: 」。
+  - 每個題型的日文問法由本專案自寫。
+  - 不收上游的英文與印地文解說；`note` 由本專案以繁中撰寫。
+- 品質說明：上游標示的「native_reviewed」實為 AI 扮演母語者審查。本專案的審查與 `note` 也由 AI 撰寫，**未經日語母語者審查**。
+- 不收：上游的 VOICEVOX 語音與 KanjiVG 筆順圖。
+
+**重要：這些是模擬題，不是 JLPT 官方試題或考古題。**
+
 ---
 
 ## ShareAlike 的影響
 
-NGSL 與 TSL 採 CC BY-SA 4.0，衍生作品必須以相同條款釋出並標註原作者。
-本專案匯入的英文單字資料（`assets/js/data/en/words/` 底下標明來源為
-NGSL 或 TSL 的批次檔）因此同樣以 **CC BY-SA 4.0** 釋出。
+NGSL、TSL 與 JLPTSuccess 的教學內容採 CC BY-SA 4.0，衍生作品必須以相同條款釋出並標註原作者。
+以下資料因此同樣以 **CC BY-SA 4.0** 釋出：
 
-以下與 NGSL／TSL 無衍生關係；自行撰寫部分採本專案授權，第三方程式各遵守下方授權：
+- 英文單字資料（`assets/js/data/en/words/` 底下標明來源為 NGSL 或 TSL 的批次檔）
+- JLPT 模擬題（`assets/js/data/ja/jlpt/` 與目錄產物 `catalog/ja-jlpt.js`），含本專案為它撰寫的繁中 `note`
+
+以下與 NGSL／TSL／JLPTSuccess 無衍生關係；自行撰寫部分採本專案授權，第三方程式各遵守下方授權：
 
 - 程式碼（第三方排程程式另見下方 ts-fsrs 授權）
 - 句型題庫（`{en,ja}/sentences/`）

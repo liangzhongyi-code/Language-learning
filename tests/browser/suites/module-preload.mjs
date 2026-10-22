@@ -14,7 +14,7 @@ const VARIANTS = [
   ...['ja', 'en'].flatMap((lang) => [
     { name: `${lang}/index.html`, prefs: { [`daily.${lang}.level`]: 3 } },
     { name: `${lang}/daily.html`, prefs: { [`daily.${lang}.level`]: 5 } },
-    ...['sentences', 'cloze', 'mixed', 'scene', 'reading', 'words', 'toString'].map((source) => ({ name: `${lang}/quiz.html?source=${source}` })),
+    ...['sentences', 'cloze', 'mixed', 'scene', 'reading', 'jlpt', 'words', 'toString'].map((source) => ({ name: `${lang}/quiz.html?source=${source}` })),
   ]),
 ];
 

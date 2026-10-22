@@ -33,7 +33,25 @@ for (const [lang, words] of [['ja', ja], ['en', en]]) {
   });
 }
 
-test('catalog: 17 個生成資源及索引必須與來源逐檔同步', () => {
+test('J10 catalog: JLPT 模擬題只有日文，按需載入、不帶審查欄位、筆數與題型分布一致', async () => {
+  const { jlpt } = await import('../assets/js/data/ja/jlpt.js');
+  const { JLPT_MONDAI_KEYS } = await import('../assets/js/core/jlpt-mondai.js');
+  const loaded = (await loadDataset('ja', 'jlpt')).jlpt;
+  assert.deepEqual(loaded, jlpt.map(({ sourceRef, edited, ...row }) => row));
+  assert.ok(loaded.every(row => !('sourceRef' in row) && !('edited' in row)));
+  assert.equal(CATALOG_META.ja.jlpt, jlpt.length);
+  for (let level = 1; level <= 5; level++) {
+    assert.equal(CATALOG_META.ja.jlptByLevel[level], jlpt.filter(q => q.level === level).length);
+    for (const key of JLPT_MONDAI_KEYS) {
+      assert.equal(CATALOG_META.ja.jlptByMondai[level][key],
+        jlpt.filter(q => q.level === level && `${q.section}-${q.mondai}` === key).length, `${level} ${key}`);
+    }
+  }
+  assert.equal(CATALOG_META.en.jlpt, 0);
+  await assert.rejects(loadDataset('en', 'jlpt'), /沒有此題型/);
+});
+
+test('catalog: 18 個生成資源及索引必須與來源逐檔同步', () => {
   const script = fileURLToPath(new URL('../tools/build-catalog.mjs', import.meta.url));
   assert.match(execFileSync(process.execPath, [script, '--check'], { encoding: 'utf8' }), /PASS catalog/);
 });

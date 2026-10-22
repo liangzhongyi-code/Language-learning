@@ -15,6 +15,7 @@
 import { shuffle, sample } from './shuffle.js';
 import { speakTextOf } from './speech-text.js';
 import { kanaPool } from './kana.js';
+import { jlptMondaiOf } from './jlpt-mondai.js';
 
 /**
  * 一題需要一個正解加三個干擾選項
@@ -46,6 +47,7 @@ const SOURCE_KIND = {
   cloze: 'cloze',
   scene: 'choice',
   reading: 'choice',
+  jlpt: 'choice',
 };
 
 /**
@@ -218,8 +220,9 @@ export function pickDistractors(
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences, scenes, readings) {
+export function poolOf(source, words, sentences, scenes, readings, jlpt) {
   if (source === 'words') return [...(words || [])];
+  if (source === 'jlpt') return [...(jlpt || [])];
   if (source === 'sentences') return [...(sentences || [])];
   if (source === 'scene') return [...(scenes || [])];
   /**
@@ -388,6 +391,47 @@ function buildReadingQuestion(item, { lang, rng, askIn = 'zh' }) {
      * 目標語言模式的選項雖然是日文，但漢字直接餵給語音引擎會唸錯讀音，
      * 而整篇短文的假名轉寫成本又太高——寧可不給也不要唸錯。
      */
+    speakText: null,
+    note: item.note ?? null,
+    answeredIndex: null,
+  };
+}
+
+/**
+ * 產生一題 JLPT 模擬題。
+ *
+ * 和情境題一樣，四個選項就是資料裡寫好的四個，這裡只打亂順序：
+ * 讀法題的錯誤選項要跟正解只差一個音，從題庫抽來的干擾選項做不到。
+ *
+ * context 放這個問題號的日文問法（JLPT 的題目說明本來就在題面上方），
+ * askZh 是它的中文對照，作答後才顯示。底線字另存 underline，由畫面層包成 <u>，
+ * 題面字串本身不放標籤。
+ *
+ * 沒有 speakText：漢字讀法題一唸出來就是答案，其他題型的漢字也可能被語音引擎唸錯。
+ */
+function buildJlptQuestion(item, { rng }) {
+  const mondai = jlptMondaiOf(item.section, item.mondai);
+  if (!mondai) throw new Error(`JLPT 題目 ${item.id} 的題型不存在：${item.section} 問題${item.mondai}`);
+  const options = shuffle(
+    item.options.map((text) => ({ text, isCorrect: text === item.answer })),
+    rng
+  );
+
+  return {
+    kind: 'choice',
+    sourceId: item.id,
+    level: item.level,
+    direction: 'target2zh',
+    mondaiKey: mondai.key,
+    mondaiLabel: `問題${mondai.mondai} ${mondai.label}`,
+    context: mondai.ask,
+    askZh: mondai.askZh,
+    prompt: item.stem,
+    underline: item.underline ?? null,
+    promptLang: 'ja',
+    optionLang: 'ja',
+    options,
+    correctIndex: options.findIndex((o) => o.isCorrect),
     speakText: null,
     note: item.note ?? null,
     answeredIndex: null,
@@ -587,7 +631,13 @@ export function buildSession({
   sentences,
   scenes,
   readings,
+  jlpt,
   source = 'words',
+  /**
+   * JLPT 模擬題只出這些題型（core/jlpt-mondai.js 的 key，例如 moji-2）。
+   * null 表示全部題型；其他題源忽略此參數。
+   */
+  mondai = null,
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
   /**
@@ -613,10 +663,16 @@ export function buildSession({
   count = 10,
   rng = Math.random,
 }) {
-  const base = poolOf(source, words, sentences, scenes, readings);
+  const all = poolOf(source, words, sentences, scenes, readings, jlpt);
   if (level !== null && (!Number.isInteger(level) || level < 1 || level > 5)) {
     throw new Error(`難度不合法：${level}。請選 N5 到 N1。`);
   }
+  if (source === 'jlpt' && mondai !== null && (!Array.isArray(mondai) || !mondai.length)) {
+    throw new Error('至少要選一種題型才能出題。');
+  }
+  const base = source === 'jlpt' && mondai !== null
+    ? all.filter((item) => mondai.includes(`${item.section}-${item.mondai}`))
+    : all;
 
   /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
   const leveled = level === null ? base : base.filter((item) => item.level === level);
@@ -624,7 +680,14 @@ export function buildSession({
   const swap = kanjiMode !== 'show' && hasKanaVersion(source);
   const pool = swap ? kanaPool(leveled, kanjiMode === 'ruby') : leveled;
 
-  if (pool.length < OPTIONS_PER_QUESTION) {
+  /**
+   * JLPT 模擬題的選項寫在每一題裡，不從題庫抽干擾選項，所以一題就能出；
+   * 只練「問題2 表記」這種窄範圍時，不能因為湊不到四筆就拒絕出題。
+   */
+  if (source === 'jlpt' && !pool.length) {
+    throw new Error('這個級別或題型目前沒有 JLPT 模擬題。');
+  }
+  if (source !== 'jlpt' && pool.length < OPTIONS_PER_QUESTION) {
     throw new Error(
       `題庫筆數不足：題源 ${source} 只有 ${pool.length} 筆，至少需要 ${OPTIONS_PER_QUESTION} 筆才能出題。`
     );
@@ -663,13 +726,14 @@ export function buildSession({
    * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。
    * 一局 10 題感覺不出來，但題數選「全部」時是 7608 題 × 7608 筆的差別。
    */
-  const byCategory = kind === 'choice' && source !== 'scene' && source !== 'reading'
+  const byCategory = kind === 'choice' && !['scene', 'reading', 'jlpt'].includes(source)
     ? indexByCategory(pool)
     : null;
 
   const questions = picked.map((item) => {
     if (kind === 'cloze') return buildClozeQuestion(item, pool, { lang, rng });
     if (source === 'scene') return buildSceneQuestion(item, { lang, rng });
+    if (source === 'jlpt') return buildJlptQuestion(item, { rng });
     if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });

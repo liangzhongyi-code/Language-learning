@@ -1,10 +1,11 @@
 # JLPT 模擬題源任務
 
-> 2026-10-22 · 任務待核准；核准不代表完成，完成以驗證紀錄為準。
+> 2026-10-22 · 任務已核准；核准不代表完成，完成以驗證紀錄為準。
+> 2026-10-22 進度：T1–T8 已實作，驗證結果見 [實作紀錄](../../../docs/logic-changes/2026-10-22-002-jlpt-mock-implementation.md)。題目未經母語者審查，尚未發布。
 > 驗收情境見 [specs/jlpt-mock.md](specs/jlpt-mock.md)；每個情境只對應一個任務。
 
 ## 任務順序
-1. **T1 格式與 schema**：`shared/jlpt-mondai.js`（區段、問題號、題面形式、自寫問法與中文對照）；`validateJlpt` 接進 `schema.js`；先寫違規案例的測試。
+1. **T1 格式與 schema**：`core/jlpt-mondai.js`（區段、問題號、題面形式、自寫問法與中文對照）；`validateJlpt` 接進 `schema.js`；先寫違規案例的測試。
 2. **T2 匯入對照工具**：`tools/import-jlptsuccess.mjs`，記錄固定 commit 與每個上游檔的 SHA-256；`--draft`、`--check`、排除表；工具測試用假資料，不把上游原始檔放進版控。
 3. **T3 題庫第一批**：依序 `n5-moji.js`（100）、`n5-goi.js`（100）、`n5-bunpou.js`（60），每題經 TD6 檢查並寫繁中 note；一個檔一個 commit；`CREDITS.md`、`IMPORTING.md` 同步。
 4. **T4 目錄與載入**：`build-catalog.mjs` 輸出 `ja-jlpt.js` 與筆數；`catalog.js` 的 `loadDataset`；`build-preload.mjs` 預載表。

@@ -35,7 +35,8 @@ quiz-service（題源、問題號篩選）→ quiz-engine buildJlptQuestion → 
 
 ### 2.2 Components
 - **資料檔** `assets/js/data/ja/jlpt/n5-moji.js`、`n5-goi.js`、`n5-bunpou.js`，加上 barrel `ja/jlpt.js`。物件字面值，id 自己連號（`ja-j-0001` 起），一批一個檔，可單獨 revert。
-- **共用定義** `assets/js/data/shared/jlpt-mondai.js`：區段（moji／goi／bunpou）與問題號的合法組合、題型名稱、題面形式（底線或括號空格），以及自寫的日文問法和中文對照。
+- **共用定義** `assets/js/core/jlpt-mondai.js`：區段（moji／goi／bunpou）與問題號的合法組合、題型名稱、題面形式（底線或括號空格），以及自寫的日文問法和中文對照。
+  - 2026-10-22 實作時調整：原設計放在 `assets/js/data/shared/`，改放 `core/`。原因是 `quiz-engine.js` 要用它，而歷程頁會經由 `stats.js` 載入 `quiz-engine.js`；放在 `data/` 底下會讓歷程頁多一個題庫路徑的請求，違反「歷程不為未使用的題庫或索引發出請求」的既有瀏覽器測試。它是考試結構的定義，不是題庫資料。
 - **schema** `validateJlpt`：J01、J02 的規則；接進 `schema.js` 的驗證表。
 - **匯入對照工具** `tools/import-jlptsuccess.mjs`：讀本機下載的上游檔，先驗每個檔的 SHA-256，不符就拒絕。`--draft` 產生草稿（題面、選項、正解、上游英文解說放註解供撰寫 note 參考）；`--check` 比對已進版控的資料與上游，列出差異、核對修改與排除清單（排除清單在各批次檔，見 TD6）。
 - **目錄建置** `tools/build-catalog.mjs`：輸出 `catalog/ja-jlpt.js`，`meta.js` 加 `jlpt`、`jlptByLevel`、`jlptByMondai`，`sourceHash` 一併納入。`tools/build-preload.mjs` 的預載表同步。

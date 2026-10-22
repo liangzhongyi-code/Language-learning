@@ -1097,6 +1097,16 @@ html.no-lines .gap-mid svg { display: none; }
 .prompt-sub { color: var(--mute); font-size: 13px; }
 
 /**
+ * JLPT 模擬題的底線字。線要粗一點、離字遠一點，
+ * 否則在平假名的下緣幾乎看不出來，讀法題就不知道在考哪個詞。
+ */
+.jlpt-stem u {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+.feedback .ask-zh { color: var(--mute); font-size: 13px; }
+
+/**
  * 情境題的場合描述。
  * 刻意用引文的樣子（左側粗線）而不是另一段內文——
  * 它是判斷的依據而不是題目本身，視覺上要一眼分得出來。

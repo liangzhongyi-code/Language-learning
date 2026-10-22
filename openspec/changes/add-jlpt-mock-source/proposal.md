@@ -9,6 +9,7 @@
 ## 題目來源
 - 上游：[JLPTSuccess](https://github.com/gauravaccentureproducts/JLPTSuccess) 的 `N5/data/papers/{moji,goi,bunpou}/paper-1..7.json`，固定 commit `708a995691dcd0983e2ede47db423281b1cd343a`。
 - 授權：根目錄 `LICENSE` 為 MIT（Copyright (c) 2026 JLPTSuccess contributors）；`N5/CONTENT-LICENSE.md` §8 明定題目、例句、解說同受此授權。上游聲明全部原創、未抄考古題。
+  - **2026-10-22 更正**：上句是誤判。同一份 `LICENSE` 後段的「Note on dual licensing」寫明 MIT 只涵蓋程式碼，教學內容（題目等）採 **CC BY-SA 4.0**；§8 只說內容「適用 `LICENSE`」，等於指向這段。實作時改依 CC BY-SA 4.0 處理：題庫與目錄產物標註來源與改動，衍生資料（含繁中 note）同樣以 CC BY-SA 4.0 釋出，與既有 NGSL／TSL 單字的做法一致。詳見 `CREDITS.md`。
 - 品質：上游標的 `native_reviewed` 實為 Claude 扮演母語者審查，視為 AI 撰寫、AI 審查的資料，收錄前須逐題人工把關。
 - 抽查依據：2026-10-22 評估報告（外部閱讀副本，不在專案內）。機械全檢全部題目，人工抽 91 題；本批涵蓋的題型抽樣未發現答案錯誤，`moji-6.12` 選項重複需修正。
 

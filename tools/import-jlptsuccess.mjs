@@ -19,7 +19,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { JLPT_BLANK, jlptMondaiOf } from '../assets/js/data/shared/jlpt-mondai.js';
+import { JLPT_BLANK, jlptMondaiOf } from '../assets/js/core/jlpt-mondai.js';
 
 export const SOURCE_REPO = 'https://github.com/gauravaccentureproducts/JLPTSuccess';
 export const SOURCE_COMMIT = '708a995691dcd0983e2ede47db423281b1cd343a';
@@ -54,7 +54,8 @@ export const SOURCE_SHA256 = Object.freeze({
 export const SECTIONS = ['moji', 'goi', 'bunpou'];
 
 /**
- * 每個區段的起始流水號。三個批次檔各占一段，可以分開撰寫而不會撞號。
+ * 草稿的起始流水號。三個批次檔各占一段，可以分開撰寫而不會撞號；
+ * 正式題庫要求整份連號，排除題目後要把後面區段的號碼往前補（見 ja/jlpt.js）。
  */
 export const ID_START = Object.freeze({ moji: 1, goi: 101, bunpou: 201 });
 

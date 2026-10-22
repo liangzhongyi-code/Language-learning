@@ -11,6 +11,7 @@
 > | 句型 | `<lang>/sentences/{core,01,02}.js` + `sentences.js` barrel | 物件字面值，含 `chunks` | 下面第八節 |
 > | 情境（僅日文） | `ja/scenes.js` 單檔 | 物件字面值 | 下面第八節 |
 > | 閱讀 | `<lang>/readings.js` 單檔 | 物件字面值，一篇含多題 | 下面第八節 |
+> | JLPT 模擬（僅日文） | `ja/jlpt/n5-*.js` + `jlpt.js` barrel | 物件字面值，選項固定 | 下面第九節 |
 >
 > 只有單字是「一列一個元組 + START 起始號推算 id」的格式，
 > 另外三種都是直接寫物件、id 自己填。照第二節的元組表去寫句型或情境，測試會直接擋下來。
@@ -299,3 +300,32 @@ NGSL 2001–2801 → 4
 寫完一篇之後，**自己把每一題的 `note` 拿回短文裡對一次**：
 note 宣稱的依據那句話真的存在嗎？真的支持那個答案嗎？
 四個干擾選項有沒有哪個其實也對？這一關 schema 驗不到，只能人看。
+
+---
+
+## 九、JLPT 模擬題（`ja/jlpt/`，只有日文）
+
+規格見 `openspec/changes/add-jlpt-mock-source/`。來源是 JLPTSuccess 的固定 commit，教學內容採 CC BY-SA 4.0（見 `CREDITS.md`），所以這裡的資料與 note 同樣以 CC BY-SA 4.0 釋出。
+
+**流程**
+
+1. 用 curl 原樣下載上游 `N5/data/papers/{moji,goi,bunpou}/paper-1..7.json`。網址格式寫在 `tools/import-jlptsuccess.mjs` 檔頭；換行被轉換過，雜湊就不會相符。
+2. `node tools/import-jlptsuccess.mjs --draft <目錄> --section moji --out <草稿檔>` 產生草稿：格式已正規化，note 留空，上游英文解說放在註解。草稿不是題庫。
+3. 逐題審查後寫進 `ja/jlpt/n5-<區段>.js`，寫上繁中 note。
+4. `node tools/import-jlptsuccess.mjs --check <目錄>` 必須顯示「對照一致」，`npm test` 必須全綠。
+
+**審查規則（設計 TD6）**
+
+- **正解唯一**：其他三個選項放進題面都不成立。文法題最常見的問題是「助詞換一個也說得通」「題面沒有敬體線索，常體也成立」。
+- **只修真正的錯**：分かち書き空格照上游保留，包括底線字旁邊的空格。
+- **換一個選項就能修好的**：修改後在 `edited` 寫原因（繁中一句）。
+- **要動兩個以上選項的**：整題不收，放進該檔的 `excluded`，並寫原因。
+- **不默默修改**：`--check` 會抓「與上游不同卻沒寫 edited」和「寫了 edited 卻與上游相同」。
+
+**id 規則**
+
+整份從 `ja-j-0001` 連號，依文字 → 語彙 → 文法接續。排除題目後，後面區段的號碼要往前補，schema 會擋跳號。上游題號 `sourceRef` 只能對應一題。
+
+**欄位不進目錄**
+
+`sourceRef` 與 `edited` 只供對照工具與審查使用，`tools/build-catalog.mjs` 不會把它們帶進 `catalog/ja-jlpt.js`。

@@ -92,6 +92,8 @@ export function issueReportOf({ session, question, index, settings = {}, descrip
       optionLang: question.optionLang ?? null,
       segments: question.segments ?? null,
       gap: question.gap ?? null,
+      /* JLPT 模擬題才有：題型與底線字，少了它們看不出讀法題考的是哪個詞 */
+      ...(question.mondaiKey ? { mondai: question.mondaiKey, underline: question.underline ?? null } : {}),
       options,
       correct: correctAnswer(question),
       chosen: chosenAnswer(question),

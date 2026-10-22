@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateJlpt, validateDataset, findSerialGaps } from '../assets/js/core/schema.js';
-import { JLPT_BLANK, JLPT_MONDAI, jlptMondaiOf } from '../assets/js/data/shared/jlpt-mondai.js';
+import { JLPT_BLANK, JLPT_MONDAI, jlptMondaiOf } from '../assets/js/core/jlpt-mondai.js';
 
 /**
  * 三種題面形式各一題合法範例。題面保留 N5 的分かち書き空格

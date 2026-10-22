@@ -15,6 +15,7 @@ const modules = {
     levels: [() => import('./catalog/ja-words-1.js'), () => import('./catalog/ja-words-2.js'),
       () => import('./catalog/ja-words-3.js'), () => import('./catalog/ja-words-4.js'), () => import('./catalog/ja-words-5.js')],
     sentences: () => import('./catalog/ja-sentences.js'), scenes: () => import('./catalog/ja-scenes.js'), readings: () => import('./catalog/ja-readings.js'),
+    jlpt: () => import('./catalog/ja-jlpt.js'),
   },
 };
 const pending = new Map();
@@ -39,8 +40,10 @@ export async function loadWords(lang, { level = 'all' } = {}) {
 }
 export async function loadDataset(lang, source) {
   const data = language(lang);
-  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'] };
+  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt'] };
   if (!Object.prototype.hasOwnProperty.call(fields, source)) throw new Error('不支援的題型。');
+  /* JLPT 模擬題只有日文；英文不提供這個題源，而不是給一份空題庫假裝有 */
+  if (fields[source].some(field => field !== 'words' && !data[field])) throw new Error('這個語言沒有此題型。');
   return Object.fromEntries(await Promise.all(fields[source].map(async field => [field, field === 'words'
     ? await loadWords(lang) : [...await cached(`${lang}:${field}`, async () => (await data[field]())[field])]])));
 }

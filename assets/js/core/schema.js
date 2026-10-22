@@ -12,7 +12,7 @@ import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
 import { LEVELS } from '../data/shared/levels.js';
 import { SCENE_AXIS_KEYS } from '../data/shared/scene-axes.js';
-import { JLPT_BLANK, jlptMondaiOf } from '../data/shared/jlpt-mondai.js';
+import { JLPT_BLANK, jlptMondaiOf } from './jlpt-mondai.js';
 import { hasKanji } from './kana.js';
 
 /**
@@ -544,7 +544,7 @@ const occurrences = (text, part) => (part ? text.split(part).length - 1 : 0);
  * 驗證一題 JLPT 模擬題。
  *
  * 選項和情境題一樣寫死在資料裡：讀法題的錯誤選項（かくせい／がくせ）只能跟正解差一個音，
- * 隨機抽的干擾選項做不到。題面依題型分三種形式（見 shared/jlpt-mondai.js），
+ * 隨機抽的干擾選項做不到。題面依題型分三種形式（見 core/jlpt-mondai.js），
  * 這裡逐一檢查考點有沒有標對——底線字找不到、空格多一個，題目就沒辦法作答。
  */
 export function validateJlpt(entry, lang) {

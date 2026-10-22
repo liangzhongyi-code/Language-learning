@@ -10,7 +10,7 @@ import { canonicalJson } from '../../core/learning-operations.js';
 import { loadReviewContext, reviewChanges } from './review-commit.js';
 import { newOperationId } from './learning-store.js';
 
-const SOURCES = ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading'];
+const SOURCES = ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading', 'jlpt'];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const fail = (code, message) => { throw new LearningError(code, message); };
 

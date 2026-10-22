@@ -16,10 +16,10 @@
   const level = [1, 2, 3, 4, 5].includes(prefs[`daily.${lang}.level`]) ? prefs[`daily.${lang}.level`] : 1;
   let files = [`${lang}-words-${level}`];
   if (page === 'quiz') {
-    /* 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題），否則單字全庫 */
+    /* 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題與 JLPT 模擬題），否則單字全庫 */
     const source = new URLSearchParams(window.location.search).get('source');
     const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
-      scene: lang === 'ja' ? ['scenes'] : ['words'] };
+      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? ['jlpt'] : ['words'] };
     const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
     files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`) : [`${lang}-${field}`]);
   }

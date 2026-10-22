@@ -17,10 +17,10 @@
   const level = [1, 2, 3, 4, 5].includes(prefs[`daily.${lang}.level`]) ? prefs[`daily.${lang}.level`] : 1;
   let files = [`${lang}-words-${level}`];
   if (page === 'quiz') {
-    /* 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題），否則單字全庫 */
+    /* 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題與 JLPT 模擬題），否則單字全庫 */
     const source = new URLSearchParams(window.location.search).get('source');
     const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
-      scene: lang === 'ja' ? ['scenes'] : ['words'] };
+      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? ['jlpt'] : ['words'] };
     const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
     files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`) : [`${lang}-${field}`]);
   }
@@ -44,6 +44,7 @@
 <link rel="modulepreload" href="../assets/js/core/quiz-setup.js">
 <link rel="modulepreload" href="../assets/js/core/issue-code.js">
 <link rel="modulepreload" href="../assets/js/data/shared/levels.js">
+<link rel="modulepreload" href="../assets/js/core/jlpt-mondai.js">
 <link rel="modulepreload" href="../assets/js/ui/speech.js">
 <link rel="modulepreload" href="../assets/js/ui/storage-gate.js">
 <link rel="modulepreload" href="../assets/js/ui/platform/learning-store.js">
@@ -85,7 +86,7 @@
 <main class="wrap">
   <div class="page-head">
     <h1>日文測驗</h1>
-    <p>選擇題、填空、情境與閱讀六種題型。答完一題會立刻告訴你對不對，每局結束檢討錯在哪。</p>
+    <p>選擇題、填空、情境、閱讀與 JLPT 模擬七種題型。答完一題會立刻告訴你對不對，每局結束檢討錯在哪。</p>
   </div>
   <div id="notice"></div>
   <div id="app"></div>
