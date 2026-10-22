@@ -1,0 +1,26 @@
+{
+  "docStatus": {
+    "proposal.md": "draft",
+    "design.md": "draft",
+    "tasks.md": "draft"
+  },
+  "docNote": {
+    "proposal.md": "2026-10-22 使用者決定：保留空格、N5 閱讀下限 60 字、獨立 JLPT 題源、只寫繁中解說；並要求開第一批 openspec。四項方向已決定，文件全文待使用者確認",
+    "design.md": "待使用者核准",
+    "tasks.md": "待使用者核准"
+  },
+  "gates": [
+    {
+      "no": 1,
+      "name": "設計核准",
+      "status": "pending",
+      "note": ""
+    },
+    {
+      "no": 2,
+      "name": "任務核准",
+      "status": "pending",
+      "note": ""
+    }
+  ]
+}
