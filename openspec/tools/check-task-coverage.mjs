@@ -24,6 +24,11 @@ const groups = [
     tasks: 'add-jlpt-mock-source/tasks.md',
     specs: ['add-jlpt-mock-source/specs/jlpt-mock.md'],
   },
+  {
+    prefix: 'R',
+    tasks: 'add-jlpt-n1-reading/tasks.md',
+    specs: ['add-jlpt-n1-reading/specs/jlpt-reading.md'],
+  },
 ];
 const errors = [];
 let totalIds = 0;
