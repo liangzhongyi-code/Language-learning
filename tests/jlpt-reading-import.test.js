@@ -113,6 +113,9 @@ test('R07 對照：修改要寫原因、排除要寫原因、必須依選組順�
     assert.deepEqual(compareWithUpstream({ upstream, data: skipSecond, excluded: [{ sourceRef: order[1], reason: '正解不唯一' }], types: ['tanbun'] }), []);
     assert.match(compareWithUpstream({ upstream, data: skipSecond, excluded: [{ sourceRef: order[1], reason: '' }], types: ['tanbun'] }).join(), /沒寫原因/);
     assert.match(compareWithUpstream({ upstream, data: [ours(by.get('sim-tan1'), 0)], types: ['tanbun'] }).join(), /不在選組名單/);
+    /* 只比對 tanbun 時，其他題型的排除項（上游沒載入）要略過，不能誤報「上游沒有」 */
+    assert.deepEqual(compareWithUpstream({ upstream, data: first, excluded: [{ sourceRef: 'sim-chu56', reason: '比喻前後矛盾' }], types: ['tanbun'] }), []);
+    assert.match(compareWithUpstream({ upstream, data: first, excluded: [{ sourceRef: 'sim-tan999', reason: '測試' }], types: ['tanbun'] }).join(), /上游沒有 sim-tan999/);
     assert.match(compareWithUpstream({ upstream, data: first, types: ['tanbun'], batch: 2 }).join(), /超過本批/);
   } finally {
     await rm(dir, { recursive: true, force: true });

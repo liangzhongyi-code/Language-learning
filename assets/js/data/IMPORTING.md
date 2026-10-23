@@ -12,6 +12,7 @@
 > | 情境（僅日文） | `ja/scenes.js` 單檔 | 物件字面值 | 下面第八節 |
 > | 閱讀 | `<lang>/readings.js` 單檔 | 物件字面值，一篇含多題 | 下面第八節 |
 > | JLPT 模擬（僅日文） | `ja/jlpt/n5-*.js` + `jlpt.js` barrel | 物件字面值，選項固定 | 下面第九節 |
+> | JLPT 讀解（僅日文） | `ja/jlpt-reading/n1-*.js` + `jlpt-reading.js` barrel | 物件字面值，一組短文帶多題、逐選項解說 | 下面第十節 |
 >
 > 只有單字是「一列一個元組 + START 起始號推算 id」的格式，
 > 另外三種都是直接寫物件、id 自己填。照第二節的元組表去寫句型或情境，測試會直接擋下來。
@@ -329,3 +330,37 @@ note 宣稱的依據那句話真的存在嗎？真的支持那個答案嗎？
 **欄位不進目錄**
 
 `sourceRef` 與 `edited` 只供對照工具與審查使用，`tools/build-catalog.mjs` 不會把它們帶進 `catalog/ja-jlpt.js`。
+
+---
+
+## 十、JLPT 讀解（`ja/jlpt-reading/`，只有日文）
+
+規格見 `openspec/changes/add-jlpt-n1-reading/`。來源是 Yomitaku 的固定 commit，授權 MIT（見 `CREDITS.md`）。
+
+**資料格式**
+
+- 一組短文一筆：`passage`；統合理解改用 `passageA`／`passageB`。
+- 劃線句另存 `underline`，原文不留 `⟪⟫` 標記。
+- 每題四個選項，`explain` 是與選項同順序的四段繁中解說。
+- 題型鍵值用名稱（`dokkai-tanbun` 等），畫面上的「問題 N」由 `core/jlpt-mondai.js` 的 `mondaiByLevel` 依級別決定（N1 為問題 8～13）。
+
+**流程**
+
+1. 用 curl 原樣下載上游 `js/bank/<題型>.js`，網址格式寫在 `tools/import-yomitaku.mjs` 檔頭。
+   - 工具只取 `window.BANK.push(…)` 括號內的 JSON 解析，**不執行**下載的檔案。
+2. `node tools/import-yomitaku.mjs --select <目錄>` 列出每個題型的選組順序。
+   - 選組規則：去掉上游早期 15% 與字數低於官方七成的組，再用固定種子打亂。
+3. `node tools/import-yomitaku.mjs --draft <目錄> --type <題型> --start <起始號> --out <草稿檔>` 產生草稿。
+   - 草稿的解說留空，上游日文解說放在註解。草稿不是題庫。
+4. 照選組順序逐組審查、寫解說；排除的組寫進該檔的 `excluded`，再由下一組遞補，不可跳著挑。
+5. 收尾檢查：`--check <目錄>` 必須顯示「對照一致」，`npm test` 必須全綠，最後執行 `node tools/build-catalog.mjs`。
+
+**解說寫法**
+
+- 正解那段以「正解。」開頭，寫出原文依據。
+- 錯誤選項說明錯在哪，句尾用【】標繁中陷阱類型，例如【主張相反】【部分曲解】【只有 A】【條件不符】。
+
+**目錄**
+
+- JLPT 目錄按級別分檔（`catalog/ja-jlpt-1..5.js`），每檔同時匯出 `jlpt` 與 `jlptReading`。
+- `sourceRef`／`edited` 只供對照工具與審查，不進目錄。

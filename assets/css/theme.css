@@ -1107,6 +1107,22 @@ html.no-lines .gap-mid svg { display: none; }
 .feedback .ask-zh { color: var(--mute); font-size: 13px; }
 
 /**
+ * JLPT 讀解。短文保留原文的換行（段落、公告的條列），
+ * 統合理解的 A、B 兩篇各自成段，中間留白分開。
+ */
+.jlpt-passage-part { white-space: pre-line; overflow-wrap: anywhere; }
+.jlpt-passage-part + .jlpt-passage-part { margin-top: var(--size-3); padding-top: var(--size-3); border-top: 1px dashed var(--border); }
+.jlpt-passage-label { display: block; color: var(--accent); font-family: var(--font-display); }
+.jlpt-passage u { text-decoration-thickness: 2px; text-underline-offset: 5px; }
+/* 讀解的問句是一整句日文，用題面大字會在手機上斷成好幾行，壓過短文 */
+.prompt.jlpt-ask { font-size: 19px; line-height: 1.6; }
+
+/* 讀解的逐選項解說：先列你選的與正解，其餘收在展開區塊 */
+.feedback .opt-explain { margin: var(--size-2) 0 0; line-height: 1.7; }
+.feedback .opt-explain-more { margin-top: var(--size-2); }
+.feedback .opt-explain-more > summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+
+/**
  * 情境題的場合描述。
  * 刻意用引文的樣子（左側粗線）而不是另一段內文——
  * 它是判斷的依據而不是題目本身，視覺上要一眼分得出來。

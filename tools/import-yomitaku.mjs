@@ -67,6 +67,13 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const numberOf = (id) => Number(String(id).replace(/\D/g, ''));
 
 /**
+ * 從上游組 id 的前綴判斷題型，不必載入上游檔。
+ * 排除表只記組 id；用 --types 只比對部分題型時，要靠它略過其他題型的排除項。
+ */
+const PREFIX_TYPE = Object.freeze({ tan: 'tanbun', chu: 'chubun', cho: 'chobun', togo: 'togo', shu: 'shucho', joho: 'joho' });
+export const typeOfRef = (ref) => PREFIX_TYPE[(String(ref).match(/^sim-([a-z]+)\d+$/) || [])[1]] ?? null;
+
+/**
  * 取出 `window.BANK.push(` 與最後一個 `);` 之間的文字，當成 JSON 陣列的內容解析。
  * 括號外的任何東西（包括混進來的程式碼）都直接丟掉，括號內不是純 JSON 就整檔拒絕。
  */
@@ -192,9 +199,10 @@ export function compareWithUpstream({ upstream, data, excluded = [], types = TYP
   }
   const skipped = new Map();
   for (const { sourceRef, reason } of excluded) {
+    /* 不在這次比對範圍的題型直接略過：它們的上游檔沒有載入，查不到不代表不存在 */
+    if (!types.includes(typeOfRef(sourceRef))) continue;
     const source = bySource.get(sourceRef);
     if (!source) { errors.push(`排除表：上游沒有 ${sourceRef}`); continue; }
-    if (!types.includes(source.type)) continue;
     if (used.has(sourceRef)) errors.push(`排除表：${sourceRef} 已收錄為 ${used.get(sourceRef)}，不能同時排除`);
     if (skipped.has(sourceRef)) errors.push(`排除表：${sourceRef} 重複列出`);
     if (typeof reason !== 'string' || !reason.trim()) errors.push(`排除表：${sourceRef} 沒寫原因`);

@@ -33,25 +33,43 @@ for (const [lang, words] of [['ja', ja], ['en', en]]) {
   });
 }
 
-test('J10 catalog: JLPT 模擬題只有日文，按需載入、不帶審查欄位、筆數與題型分布一致', async () => {
+test('J10/R09 catalog: JLPT 只有日文、按級別分檔、不帶審查欄位、題數以題目計', async () => {
   const { jlpt } = await import('../assets/js/data/ja/jlpt.js');
-  const { JLPT_MONDAI_KEYS } = await import('../assets/js/core/jlpt-mondai.js');
-  const loaded = (await loadDataset('ja', 'jlpt')).jlpt;
-  assert.deepEqual(loaded, jlpt.map(({ sourceRef, edited, ...row }) => row));
-  assert.ok(loaded.every(row => !('sourceRef' in row) && !('edited' in row)));
-  assert.equal(CATALOG_META.ja.jlpt, jlpt.length);
+  const { jlptReading } = await import('../assets/js/data/ja/jlpt-reading.js');
+  const { JLPT_KIND_KEYS, jlptKindKeyOf } = await import('../assets/js/core/jlpt-mondai.js');
+  const strip = ({ sourceRef, edited, ...row }) => row;
+  const all = await loadDataset('ja', 'jlpt');
+  assert.deepEqual(all.jlpt, jlpt.map(strip));
+  assert.deepEqual(all.jlptReading, jlptReading.map(strip));
+  assert.ok([...all.jlpt, ...all.jlptReading].every(row => !('sourceRef' in row) && !('edited' in row)));
+  const questions = [...jlpt, ...jlptReading.flatMap(set => set.questions.map(() => set))];
+  assert.equal(CATALOG_META.ja.jlpt, questions.length);
   for (let level = 1; level <= 5; level++) {
-    assert.equal(CATALOG_META.ja.jlptByLevel[level], jlpt.filter(q => q.level === level).length);
-    for (const key of JLPT_MONDAI_KEYS) {
+    const one = await loadDataset('ja', 'jlpt', { level });
+    assert.deepEqual(one.jlpt, jlpt.filter(q => q.level === level).map(strip));
+    assert.deepEqual(one.jlptReading, jlptReading.filter(s => s.level === level).map(strip));
+    assert.equal(CATALOG_META.ja.jlptByLevel[level], questions.filter(q => q.level === level).length);
+    for (const key of JLPT_KIND_KEYS) {
       assert.equal(CATALOG_META.ja.jlptByMondai[level][key],
-        jlpt.filter(q => q.level === level && `${q.section}-${q.mondai}` === key).length, `${level} ${key}`);
+        questions.filter(q => q.level === level && jlptKindKeyOf(q) === key).length, `${level} ${key}`);
     }
   }
+  await assert.rejects(loadDataset('ja', 'jlpt', { level: 6 }), /級別/);
   assert.equal(CATALOG_META.en.jlpt, 0);
   await assert.rejects(loadDataset('en', 'jlpt'), /沒有此題型/);
 });
 
-test('catalog: 18 個生成資源及索引必須與來源逐檔同步', () => {
+test('R09 catalog: JLPT 各級分檔，N5 檔不含讀解、N1 檔不含 N5 題目', async () => {
+  const n5 = await import('../assets/js/data/catalog/ja-jlpt-1.js');
+  const n1 = await import('../assets/js/data/catalog/ja-jlpt-5.js');
+  assert.ok(n5.jlpt.length > 0 && n5.jlptReading.length === 0);
+  assert.ok(n1.jlpt.length === 0);
+  assert.ok(n1.jlptReading.every(set => set.level === 5));
+  const files = await readdir(new URL('../assets/js/data/catalog/', import.meta.url));
+  assert.ok(!files.includes('ja-jlpt.js'), '舊的單一 JLPT 檔已移除');
+});
+
+test('catalog: 22 個生成資源及索引必須與來源逐檔同步', () => {
   const script = fileURLToPath(new URL('../tools/build-catalog.mjs', import.meta.url));
   assert.match(execFileSync(process.execPath, [script, '--check'], { encoding: 'utf8' }), /PASS catalog/);
 });

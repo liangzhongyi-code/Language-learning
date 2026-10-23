@@ -15,7 +15,8 @@ const modules = {
     levels: [() => import('./catalog/ja-words-1.js'), () => import('./catalog/ja-words-2.js'),
       () => import('./catalog/ja-words-3.js'), () => import('./catalog/ja-words-4.js'), () => import('./catalog/ja-words-5.js')],
     sentences: () => import('./catalog/ja-sentences.js'), scenes: () => import('./catalog/ja-scenes.js'), readings: () => import('./catalog/ja-readings.js'),
-    jlpt: () => import('./catalog/ja-jlpt.js'),
+    jlpt: [() => import('./catalog/ja-jlpt-1.js'), () => import('./catalog/ja-jlpt-2.js'),
+      () => import('./catalog/ja-jlpt-3.js'), () => import('./catalog/ja-jlpt-4.js'), () => import('./catalog/ja-jlpt-5.js')],
   },
 };
 const pending = new Map();
@@ -38,11 +39,26 @@ export async function loadWords(lang, { level = 'all' } = {}) {
   const rows = await Promise.all(levels.map(n => cached(`${lang}:words:${n}`, async () => (await data.levels[n - 1]()).words)));
   return rows.flat().sort((a, b) => Number(a.id.split('-').pop()) - Number(b.id.split('-').pop()));
 }
-export async function loadDataset(lang, source) {
+/**
+ * JLPT 題庫按級別分檔，只載入指定的級別；all 時載入五級。
+ * 同時回傳一題一筆的 jlpt 與讀解短文組 jlptReading，依級別由低到高串接。
+ */
+async function loadJlpt(lang, data, level) {
+  if (level !== 'all' && (!Number.isInteger(level) || level < 1 || level > 5)) throw new Error('題庫級別不正確。');
+  const levels = level === 'all' ? [1, 2, 3, 4, 5] : [level];
+  const parts = await Promise.all(levels.map(n => cached(`${lang}:jlpt:${n}`, () => data.jlpt[n - 1]())));
+  return { jlpt: parts.flatMap(part => part.jlpt), jlptReading: parts.flatMap(part => part.jlptReading) };
+}
+
+export async function loadDataset(lang, source, { level = 'all' } = {}) {
   const data = language(lang);
-  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt'] };
+  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'] };
   if (!Object.prototype.hasOwnProperty.call(fields, source)) throw new Error('不支援的題型。');
   /* JLPT 模擬題只有日文；英文不提供這個題源，而不是給一份空題庫假裝有 */
+  if (source === 'jlpt') {
+    if (!data.jlpt) throw new Error('這個語言沒有此題型。');
+    return loadJlpt(lang, data, level);
+  }
   if (fields[source].some(field => field !== 'words' && !data[field])) throw new Error('這個語言沒有此題型。');
   return Object.fromEntries(await Promise.all(fields[source].map(async field => [field, field === 'words'
     ? await loadWords(lang) : [...await cached(`${lang}:${field}`, async () => (await data[field]())[field])]])));

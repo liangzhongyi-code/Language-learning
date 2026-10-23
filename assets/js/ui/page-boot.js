@@ -47,7 +47,7 @@ async function boot() {
   } else if (page === 'quiz') {
     const { initQuizPage } = await import('./quiz-view.js');
     initQuizPage({ ...args, words: [], sentences: [], scenes: [], readings: [],
-      dataProvider: source => loadDataset(lang, source), dataMeta: CATALOG_META[lang],
+      dataProvider: (source, options) => loadDataset(lang, source, options), dataMeta: CATALOG_META[lang],
       onDataRetry: source => {
         const url = new URL(window.location.href);
         url.searchParams.set('source', source);

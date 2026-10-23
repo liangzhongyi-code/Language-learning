@@ -15,7 +15,7 @@
 import { shuffle, sample } from './shuffle.js';
 import { speakTextOf } from './speech-text.js';
 import { kanaPool } from './kana.js';
-import { jlptMondaiOf } from './jlpt-mondai.js';
+import { jlptMondaiOf, jlptReadingTypeOf, jlptKindKeyOf, JLPT_READING_FOCUS } from './jlpt-mondai.js';
 
 /**
  * 一題需要一個正解加三個干擾選項
@@ -220,9 +220,31 @@ export function pickDistractors(
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences, scenes, readings, jlpt) {
+export function poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading) {
   if (source === 'words') return [...(words || [])];
-  if (source === 'jlpt') return [...(jlpt || [])];
+  /**
+   * JLPT 讀解跟閱讀題一樣是「一篇對多題」，攤平成一題一筆，每一筆帶著自己那篇短文。
+   * 題目 id 就是 sourceId，所以同一篇的不同題各自排程、互不影響。
+   */
+  if (source === 'jlpt') {
+    return [
+      ...(jlpt || []),
+      ...(jlptReading || []).flatMap((set) =>
+        set.questions.map((q, i) => ({
+          ...q,
+          passageId: set.id,
+          level: set.level,
+          type: set.type,
+          passage: set.passage,
+          passageA: set.passageA,
+          passageB: set.passageB,
+          passageUnderline: set.underline,
+          questionNo: i + 1,
+          questionCount: set.questions.length,
+        }))
+      ),
+    ];
+  }
   if (source === 'sentences') return [...(sentences || [])];
   if (source === 'scene') return [...(scenes || [])];
   /**
@@ -410,6 +432,7 @@ function buildReadingQuestion(item, { lang, rng, askIn = 'zh' }) {
  * 沒有 speakText：漢字讀法題一唸出來就是答案，其他題型的漢字也可能被語音引擎唸錯。
  */
 function buildJlptQuestion(item, { rng }) {
+  if (item.passageId) return buildJlptReadingQuestion(item, { rng });
   const mondai = jlptMondaiOf(item.section, item.mondai);
   if (!mondai) throw new Error(`JLPT 題目 ${item.id} 的題型不存在：${item.section} 問題${item.mondai}`);
   const options = shuffle(
@@ -436,6 +459,72 @@ function buildJlptQuestion(item, { rng }) {
     note: item.note ?? null,
     answeredIndex: null,
   };
+}
+
+/**
+ * 產生一題 JLPT 讀解題。
+ *
+ * context 是題型的日文說明（作答前就看得到），短文另外放 passage／passageA／passageB，
+ * 劃線句放 passageUnderline，由畫面層包成 <u>。短文不放進 context，問題回報代碼才不會夾帶整篇。
+ *
+ * 逐選項解說跟著選項走：打亂的是 { text, explain } 這一對，不是分開打亂兩個陣列。
+ * 情報檢索不打亂（題型定義的 shuffle 為 false），選項照原文出現順序排列。
+ */
+function buildJlptReadingQuestion(item, { rng }) {
+  const type = jlptReadingTypeOf(item.type);
+  if (!type) throw new Error(`JLPT 讀解題 ${item.id} 的題型不存在：${item.type}`);
+  const paired = item.options.map((text, i) => ({ text, isCorrect: text === item.answer, explain: item.explain?.[i] ?? null }));
+  const options = type.shuffle ? shuffle(paired, rng) : paired;
+  const number = type.mondaiByLevel[item.level];
+
+  return {
+    kind: 'choice',
+    sourceId: item.id,
+    level: item.level,
+    direction: 'target2zh',
+    mondaiKey: type.key,
+    mondaiLabel: number ? `問題${number} ${type.label}` : type.label,
+    context: type.ask,
+    askZh: type.askZh,
+    passageId: item.passageId,
+    passage: item.passage ?? null,
+    passageA: item.passageA ?? null,
+    passageB: item.passageB ?? null,
+    passageUnderline: item.passageUnderline ?? null,
+    questionNo: item.questionNo,
+    questionCount: item.questionCount,
+    focusLabel: JLPT_READING_FOCUS[item.focus] ?? null,
+    prompt: item.ask,
+    underline: null,
+    promptLang: 'ja',
+    optionLang: 'ja',
+    options,
+    correctIndex: options.findIndex((o) => o.isCorrect),
+    speakText: null,
+    note: null,
+    answeredIndex: null,
+  };
+}
+
+/**
+ * JLPT 題的抽題：讀解按篇抽，一篇的題目一起出且照原順序；一題一筆的題目視為一題一篇。
+ *
+ * 與閱讀題不同，最後一篇不截斷：讀完一篇長文只答前兩題就換下一篇，
+ * 等於白讀了後半的考點。代價是題數可能比指定的多，最多多出一篇減一題。
+ */
+function sampleJlptQuestions(pool, count, rng) {
+  const groups = new Map();
+  for (const item of pool) {
+    const key = item.passageId ?? item.id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  const picked = [];
+  for (const key of shuffle([...groups.keys()], rng)) {
+    if (picked.length >= count) break;
+    picked.push(...groups.get(key).sort((a, b) => (a.questionNo ?? 0) - (b.questionNo ?? 0)));
+  }
+  return picked;
 }
 
 /**
@@ -632,6 +721,8 @@ export function buildSession({
   scenes,
   readings,
   jlpt,
+  /* JLPT 讀解短文組，與 jlpt 同屬 jlpt 題源 */
+  jlptReading,
   source = 'words',
   /**
    * JLPT 模擬題只出這些題型（core/jlpt-mondai.js 的 key，例如 moji-2）。
@@ -663,7 +754,7 @@ export function buildSession({
   count = 10,
   rng = Math.random,
 }) {
-  const all = poolOf(source, words, sentences, scenes, readings, jlpt);
+  const all = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading);
   if (level !== null && (!Number.isInteger(level) || level < 1 || level > 5)) {
     throw new Error(`難度不合法：${level}。請選 N5 到 N1。`);
   }
@@ -671,7 +762,7 @@ export function buildSession({
     throw new Error('至少要選一種題型才能出題。');
   }
   const base = source === 'jlpt' && mondai !== null
-    ? all.filter((item) => mondai.includes(`${item.section}-${item.mondai}`))
+    ? all.filter((item) => mondai.includes(jlptKindKeyOf(item)))
     : all;
 
   /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
@@ -718,9 +809,15 @@ export function buildSession({
   }
 
   const kind = kindOf(source);
-  /* 閱讀題按篇抽，其餘題型逐題抽 */
-  const picked =
-    source === 'reading' ? sampleReadingQuestions(scoped, count, rng) : sample(scoped, count, rng);
+  /**
+   * 閱讀題按篇抽，其餘題型逐題抽。JLPT 題池裡有讀解時按篇抽且不截斷；
+   * 只有一題一筆時照舊逐題抽，N5 的出題結果與加入讀解前完全相同。
+   */
+  const picked = source === 'reading'
+    ? sampleReadingQuestions(scoped, count, rng)
+    : source === 'jlpt' && scoped.some((item) => item.passageId)
+      ? sampleJlptQuestions(scoped, count, rng)
+      : sample(scoped, count, rng);
 
   /**
    * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。

@@ -23,7 +23,7 @@ import { emptyProgress, weakest, dueIds } from '../core/progress.js';
 import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from '../core/quiz-setup.js';
 import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
 import { levelLabel, levelsOf } from '../data/shared/levels.js';
-import { JLPT_MONDAI, JLPT_MONDAI_KEYS } from '../core/jlpt-mondai.js';
+import { JLPT_KIND_KEYS, jlptKindKeyOf, jlptKindsAt } from '../core/jlpt-mondai.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { awaitLearningStore } from './storage-gate.js';
@@ -157,13 +157,27 @@ function underlinedHtml(text, underline) {
   return `<span>${esc(text.slice(0, at))}<u>${esc(underline)}</u>${esc(text.slice(at + underline.length))}</span>`;
 }
 
-export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
-  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt'] };
-  const loadedKeys = new Set(typeof dataProvider === 'function' ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt']);
+export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], jlptReading = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
+  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'] };
+  const lazy = typeof dataProvider === 'function';
+  const loadedKeys = new Set(lazy ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt', 'jlptReading']);
+  /**
+   * JLPT 題庫按級別分檔載入：只練 N5 的人不下載 N1 讀解。
+   * 這裡記已載入的級別與各級資料，jlpt／jlptReading 永遠是已載入各級的合集。
+   */
+  const jlptLoaded = new Map();
+  const jlptLevelsNeeded = () => (config.level === 'all' ? [1, 2, 3, 4, 5] : [Number(config.level)]);
   let sourceGeneration = 0;
   let sourceLoading = false;
   let sourceError = '';
-  const sourceReady = (source) => sourceKeys[source].every((key) => loadedKeys.has(key));
+  const sourceReady = (source) => (source === 'jlpt' && lazy
+    ? jlptLevelsNeeded().every((level) => jlptLoaded.has(level))
+    : sourceKeys[source].every((key) => loadedKeys.has(key)));
+  /* 選 JLPT 題源時的預設級別：今日學習的級別偏好，沒有就 N5 */
+  const dailyLevel = () => {
+    const pref = loadPrefs()[`daily.${lang}.level`];
+    return [1, 2, 3, 4, 5].includes(pref) ? pref : 1;
+  };
   /**
    * 設定值。題源可由網址參數預選，供單字頁與文法頁的捷徑使用。
    */
@@ -212,7 +226,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * JLPT 模擬題要練哪些題型（core/jlpt-mondai.js 的 key），預設全部。
      * 不記進偏好：題型是這一局想加強什麼，跟漢字模式那種長期習慣不同。
      */
-    mondai: [...JLPT_MONDAI_KEYS],
+    mondai: [...JLPT_KIND_KEYS],
   };
 
   /**
@@ -220,12 +234,18 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
    * 其餘地方（級別、範圍、題數）就能跟其他題源走同一套計算。
    */
   const sourcePool = (source) => {
-    const pool = poolOf(source, words, sentences, scenes, readings, jlpt);
-    return source === 'jlpt' ? pool.filter((item) => config.mondai.includes(`${item.section}-${item.mondai}`)) : pool;
+    const pool = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading);
+    return source === 'jlpt' ? pool.filter((item) => config.mondai.includes(jlptKindKeyOf(item))) : pool;
   };
 
-  /* 未載入前用目錄的分布估 JLPT 題數，同樣只算勾選的題型 */
-  const jlptMetaAt = (level) => config.mondai.reduce((sum, key) => sum + (dataMeta.jlptByMondai?.[level]?.[key] || 0), 0);
+  /**
+   * JLPT 的題數一律看目錄的分布：題庫按級別載入，已載入的只是其中幾級，
+   * 拿它算「全部」或其他級別的題數會少算。沒有目錄（測試直接給資料）時才看實際題池。
+   */
+  const jlptFromMeta = () => Boolean(dataMeta.jlptByMondai);
+  const jlptCountAt = (level, keys = config.mondai) => (jlptFromMeta()
+    ? keys.reduce((sum, key) => sum + (dataMeta.jlptByMondai[level]?.[key] || 0), 0)
+    : poolOf('jlpt', [], [], [], [], jlpt, jlptReading).filter((item) => item.level === level && keys.includes(jlptKindKeyOf(item))).length);
 
   let session = null;
   /**
@@ -283,9 +303,12 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
   const poolSizeCache = new Map();
   function poolSize(source) {
     if (!poolSizeCache.has(source)) {
+      if (source === 'jlpt') {
+        poolSizeCache.set(source, [1, 2, 3, 4, 5].reduce((sum, level) => sum + jlptCountAt(level), 0));
+        return poolSizeCache.get(source);
+      }
       const counts = { words: dataMeta.words, sentences: dataMeta.sentences,
         cloze: dataMeta.cloze ?? dataMeta.sentences, scene: dataMeta.scenes, reading: dataMeta.readingQuestions,
-        jlpt: source === 'jlpt' ? [1, 2, 3, 4, 5].reduce((sum, level) => sum + jlptMetaAt(level), 0) : 0,
         mixed: source === 'mixed' ? poolSize('words') + poolSize('sentences') : 0 };
       poolSizeCache.set(source, sourceReady(source)
         ? sourcePool(source).length : counts[source] || 0);
@@ -294,22 +317,22 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
   }
 
   /* JLPT 膠囊顯示完整題數，不受題型勾選影響——全部取消勾選時膠囊不能跟著消失 */
-  const jlptTotal = () => (sourceReady('jlpt') ? jlpt.length : dataMeta.jlpt || 0);
+  const jlptTotal = () => [1, 2, 3, 4, 5].reduce((sum, level) => sum + jlptCountAt(level, JLPT_KIND_KEYS), 0);
 
   /* 某個 JLPT 題型在某一級有幾題，不受勾選影響，題型膠囊上的數字用它 */
-  const mondaiCountAt = (key, level) => (sourceReady('jlpt')
-    ? jlpt.filter((item) => item.level === level && `${item.section}-${item.mondai}` === key).length
-    : dataMeta.jlptByMondai?.[level]?.[key] || 0);
+  const mondaiCountAt = (key, level) => jlptCountAt(level, [key]);
 
   function countsAtLevels(source) {
+    if (source === 'jlpt') {
+      return Object.fromEntries(levelsOf('ja').map(({ level }) => [level, jlptCountAt(level)]));
+    }
     if (sourceReady(source)) {
       const pool = sourcePool(source);
       return Object.fromEntries(levelsOf('ja').map(({ level }) => [level, pool.filter((item) => item.level === level).length]));
     }
     const maps = { words: dataMeta.wordsByLevel, sentences: dataMeta.sentencesByLevel,
       cloze: dataMeta.clozeByLevel ?? dataMeta.sentencesByLevel, scene: dataMeta.scenesByLevel,
-      reading: dataMeta.readingQuestionsByLevel,
-      jlpt: Object.fromEntries(levelsOf('ja').map(({ level }) => [level, jlptMetaAt(level)])) };
+      reading: dataMeta.readingQuestionsByLevel };
     if (source !== 'mixed') return maps[source] || {};
     const wordCounts = countsAtLevels('words');
     const sentenceCounts = countsAtLevels('sentences');
@@ -329,17 +352,28 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     renderSetup();
     if (!sourceLoading) return;
     try {
-      const dataset = await dataProvider(source);
+      /* JLPT 只載入還沒載過的級別，逐級要，各級結果分開存 */
+      const levels = source === 'jlpt' ? jlptLevelsNeeded().filter((level) => !jlptLoaded.has(level)) : [];
+      const datasets = source === 'jlpt'
+        ? await Promise.all(levels.map((level) => dataProvider(source, { level })))
+        : [await dataProvider(source)];
       if (generation !== sourceGeneration || phase !== 'setup' || config.source !== source) return;
-      if (!dataset || sourceKeys[source].some((key) => !Array.isArray(dataset[key]))) {
+      if (datasets.some((dataset) => !dataset || sourceKeys[source].some((key) => !Array.isArray(dataset[key])))) {
         throw new Error('題庫資料格式不完整');
       }
-      if (sourceKeys[source].includes('words')) words = dataset.words;
-      if (sourceKeys[source].includes('sentences')) sentences = dataset.sentences;
-      if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
-      if (sourceKeys[source].includes('readings')) readings = dataset.readings;
-      if (sourceKeys[source].includes('jlpt')) jlpt = dataset.jlpt;
-      sourceKeys[source].forEach((key) => loadedKeys.add(key));
+      if (source === 'jlpt') {
+        levels.forEach((level, i) => jlptLoaded.set(level, datasets[i]));
+        const loaded = [...jlptLoaded.keys()].sort((a, b) => a - b).map((level) => jlptLoaded.get(level));
+        jlpt = loaded.flatMap((part) => part.jlpt);
+        jlptReading = loaded.flatMap((part) => part.jlptReading);
+      } else {
+        const [dataset] = datasets;
+        if (sourceKeys[source].includes('words')) words = dataset.words;
+        if (sourceKeys[source].includes('sentences')) sentences = dataset.sentences;
+        if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
+        if (sourceKeys[source].includes('readings')) readings = dataset.readings;
+        sourceKeys[source].forEach((key) => loadedKeys.add(key));
+      }
       poolSizeCache.clear();
       levelIdCache.clear();
     } catch {
@@ -369,7 +403,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     if (level === 'all') return null;
     if (!levelIdCache.has(level)) {
       const numeric = Number(level);
-      const all = [...words, ...sentences, ...scenes, ...poolOf('reading', words, sentences, scenes, readings), ...jlpt];
+      const all = [...words, ...sentences, ...scenes, ...poolOf('reading', words, sentences, scenes, readings),
+        ...poolOf('jlpt', [], [], [], [], jlpt, jlptReading)];
       levelIdCache.set(level, new Set(all.filter((item) => item.level === numeric).map((item) => item.id)));
     }
     return levelIdCache.get(level);
@@ -438,6 +473,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
   const isSource = Object.prototype.hasOwnProperty.call(SOURCE_LABEL, requested ?? '');
   if (isSource && poolSize(requested) >= minPoolOf(requested)) {
     config.source = requested;
+    if (requested === 'jlpt') config.level = dailyLevel();
   }
 
   /* ── 設定畫面 ─────────────────────────────────────────── */
@@ -461,6 +497,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     const fullPool = sourcePool(config.source);
     const levelCounts = countsAtLevels(config.source);
     const minPool = minPoolOf(config.source);
+    /**
+     * JLPT 題型膠囊：只列目前級別有題目的題型（N5 是文字・語彙・文法，N1 是讀解），
+     * 不分級時列出各級有題目的全部題型。勾選但目前級別沒有題目的題型不算數。
+     */
+    const kindLevel = config.level === 'all' ? null : Number(config.level);
+    const jlptKinds = config.source !== 'jlpt' ? [] : jlptKindsAt(kindLevel)
+      .map((k) => ({ ...k, count: kindLevel ? mondaiCountAt(k.key, kindLevel)
+        : [1, 2, 3, 4, 5].reduce((sum, level) => sum + mondaiCountAt(k.key, level), 0) }))
+      .filter((k) => k.count > 0);
+    const jlptPicked = jlptKinds.some((k) => config.mondai.includes(k.key));
 
     /**
      * 切換題型後，原本的級別可能不足四題。
@@ -542,15 +588,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           config.source === 'jlpt'
             ? `<div class="setting">
           <label>題型（可複選）</label>
-          <div class="chips">${JLPT_MONDAI.map((m) => {
-            const count = config.level === 'all'
-              ? [1, 2, 3, 4, 5].reduce((sum, level) => sum + mondaiCountAt(m.key, level), 0)
-              : mondaiCountAt(m.key, Number(config.level));
-            return `<button class="chip" type="button" data-mondai="${esc(m.key)}" aria-pressed="${config.mondai.includes(m.key)}">${esc(`問題${m.mondai} ${m.label}（${count}）`)}</button>`;
-          }).join('')}</div>
-          <p class="setting-note">${config.mondai.length
-            ? '文字・語彙的問題1～4 與文法的問題1 各自編號，照 JLPT 試卷的分法。選項照考試形式寫在每一題裡，不會跨級。'
-            : '至少要選一種題型才能開始。'}</p>
+          <div class="chips">${jlptKinds.map(({ key, label, count }) =>
+            `<button class="chip" type="button" data-mondai="${esc(key)}" aria-pressed="${config.mondai.includes(key)}">${esc(`${label}（${count}）`)}</button>`
+          ).join('')}</div>
+          <p class="setting-note">${!jlptPicked
+            ? '至少要選一種有題目的題型才能開始。'
+            : config.level === 'all'
+              ? '不分級時讀解題型不標問題號（各級號碼不同）。選項照考試形式寫在每一題裡，不會跨級。'
+              : Number(config.level) === 1
+                ? '文字・語彙的問題1～4 與文法的問題1 各自編號，照 JLPT 試卷的分法。選項照考試形式寫在每一題裡，不會跨級。'
+                : '問題號照官方試卷的編號。讀解一篇短文的題目會一起出，題數可能比選的多幾題；作答後可看每個選項的解說。'}</p>
         </div>`
             : ''
         }
@@ -696,7 +743,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
 
         <div class="actions">
           <button class="btn" type="button" data-start ${sourceLoading || sourceError || !sourceReady(config.source)
-            || (config.source === 'jlpt' && !config.mondai.length) ? 'disabled' : ''}>開始測驗</button>
+            || (config.source === 'jlpt' && !jlptPicked) ? 'disabled' : ''}>開始測驗</button>
         </div>
         <p class="setting-note quiz-backup-link">測驗紀錄會自動保存在這個瀏覽器；要匯出請到<a href="../index.html#backup">全站首頁的「備份與還原」</a>。</p>
       </div>`;
@@ -723,7 +770,13 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
          * 在每次重畫時當場算——寫回 config 的話就會黏住，切一次小範圍
          * 再切回來，使用者選的 10 題會變成整個題庫。
          */
-        if (set === 'source') loadSource();
+        /**
+         * 切到 JLPT 時，級別若是「全部」就改成今日學習的級別：JLPT 題庫按級別分檔，
+         * 預設全部等於一進來就下載五級（含 N1 長文）。使用者之後手動選「全部」則照選。
+         * JLPT 換級別也可能要載入新的一級，所以同樣走 loadSource。
+         */
+        if (set === 'source' && value === 'jlpt' && config.level === 'all') config.level = dailyLevel();
+        if (set === 'source' || (set === 'level' && config.source === 'jlpt')) loadSource();
         else renderSetup();
       });
     });
@@ -734,7 +787,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         const key = chip.dataset.mondai;
         config.mondai = config.mondai.includes(key)
           ? config.mondai.filter((k) => k !== key)
-          : JLPT_MONDAI_KEYS.filter((k) => k === key || config.mondai.includes(k));
+          : JLPT_KIND_KEYS.filter((k) => k === key || config.mondai.includes(k));
         poolSizeCache.delete('jlpt');
         lastSetup = null;
         renderSetup();
@@ -779,6 +832,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         scenes,
         readings,
         jlpt,
+        jlptReading,
         source: config.source,
         mondai: config.source === 'jlpt' ? config.mondai : null,
         direction: config.direction,
@@ -1047,18 +1101,40 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 先給中文就等於幫忙讀懂題目，考試時沒有這個待遇，所以等選完才出現。
      */
     const isJlpt = Boolean(q.mondaiKey);
+    /* JLPT 讀解：一篇（或 A、B 兩篇）短文帶多題，選項各有解說 */
+    const isJlptReading = isJlpt && Boolean(q.passageId);
     const askZhHtml = isJlpt && q.askZh ? `<br><span class="ask-zh">問法：${esc(q.askZh)}</span>` : '';
+
+    /**
+     * 讀解題的逐選項解說：選錯時先列「你選的」與「正解」兩段，答對時先列正解；
+     * 其餘選項收進可展開的區塊。學 N1 讀解最需要知道的是自己掉進哪個陷阱，
+     * 但一次攤開四段太長，會把下一題推出畫面。
+     */
+    const explainHtml = (i, tag) => `<p class="opt-explain"><b>${esc(tag)}${i + 1}. ${esc(q.options[i].text)}</b><br>${esc(q.options[i].explain ?? '')}</p>`;
+    const readingFeedback = () => {
+      const chosen = q.answeredIndex;
+      const first = chosen === q.correctIndex ? [q.correctIndex] : [chosen, q.correctIndex];
+      const rest = q.options.map((_, i) => i).filter((i) => !first.includes(i));
+      const tagOf = (i) => (i === q.correctIndex ? '正解 ' : i === chosen ? '你選的 ' : '');
+      return `<div class="feedback${chosen === q.correctIndex ? ' good' : ''}">${chosen === q.correctIndex ? '答對了。' : '答錯了。'}
+          ${first.map((i) => explainHtml(i, tagOf(i))).join('')}
+          <details class="opt-explain-more"><summary>看其他選項的解說</summary>${rest.map((i) => explainHtml(i, '')).join('')}</details>
+          ${askZhHtml.replace(/^<br>/, '')}
+        </div>`;
+    };
 
     const feedback = !answered
       ? ''
-      : q.answeredIndex === q.correctIndex
-        ? `<div class="feedback good">答對了。${q.note ? esc(q.note) : ''}${askZhHtml}</div>`
-        : `<div class="feedback">正解是 <b>${rubyHtml(
-            q.options[q.correctIndex].ruby,
-            q.options[q.correctIndex].text
-          )}</b>。${
-            q.note ? `<br>${esc(q.note)}` : ''
-          }${askZhHtml}</div>`;
+      : isJlptReading
+        ? readingFeedback()
+        : q.answeredIndex === q.correctIndex
+          ? `<div class="feedback good">答對了。${q.note ? esc(q.note) : ''}${askZhHtml}</div>`
+          : `<div class="feedback">正解是 <b>${rubyHtml(
+              q.options[q.correctIndex].ruby,
+              q.options[q.correctIndex].text
+            )}</b>。${
+              q.note ? `<br>${esc(q.note)}` : ''
+            }${askZhHtml}</div>`;
 
     /**
      * 情境題的場合描述與閱讀題的短文都放在題面之上。
@@ -1068,7 +1144,9 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 閱讀題多一個標題與作答後才出現的中文翻譯——
      * 先給翻譯就沒得考了，所以要等他選完才顯示。
      */
-    const isReading = Boolean(q.passageId);
+    const hasPassage = Boolean(q.passageId);
+    /* 閱讀題源特有的標題與中文翻譯；JLPT 讀解沒有這兩樣 */
+    const isReading = hasPassage && !isJlptReading;
 
     /**
      * 同一篇短文的第二題以後預設收合。
@@ -1077,7 +1155,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 三百多個像素才看得到選項。第一題攤開讓他讀，之後收起來但隨時能點開回頭查。
      */
     const previous = index > 0 ? session.questions[index - 1] : null;
-    const sameAsPrevious = isReading && previous?.passageId === q.passageId;
+    const sameAsPrevious = hasPassage && previous?.passageId === q.passageId;
 
     /**
      * 展開狀態要跟著使用者走，不能每次重繪都回到預設。
@@ -1087,20 +1165,38 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 「正解／你選的」標記推出視窗；反過來手動展開的也會被收掉，
      * 正好是他要對照原文的那一刻。sameAsPrevious 只當作第一次出現時的初始值。
      */
-    if (isReading && !(q.passageId in passageOpen)) {
+    if (hasPassage && !(q.passageId in passageOpen)) {
       passageOpen[q.passageId] = !sameAsPrevious;
     }
-    const isOpen = isReading && passageOpen[q.passageId];
+    const isOpen = hasPassage && passageOpen[q.passageId];
 
-    const context = !q.context
-      ? ''
-      : isReading
-        ? `<details class="context passage" lang="${lang}" data-passage="${esc(q.passageId)}" ${isOpen ? 'open' : ''}>
-             <summary class="passage-title">${esc(q.title)}</summary>${esc(q.context)}
-           </details>`
-        : isJlpt
-          ? `<div class="context" lang="ja">${esc(q.context)}</div>`
-          : `<div class="context">${esc(q.context)}</div>`;
+    /**
+     * JLPT 讀解的短文區塊：題型說明在上，短文可收合；統合理解分 A、B 兩段標示。
+     * 劃線句在每段裡各自找（只會出現在其中一段），找到就包成 <u>，其餘一律跳脫。
+     */
+    const jlptPassage = () => {
+      const block = (text, label) => `<div class="jlpt-passage-part">${label ? `<b class="jlpt-passage-label">${label}</b>` : ''}${
+        underlinedHtml(text, q.passageUnderline)}</div>`;
+      const body = q.passageA
+        ? block(q.passageA, 'A') + block(q.passageB, 'B')
+        : block(q.passage, '');
+      return `<div class="context" lang="ja">${esc(q.context)}</div>
+        <details class="context passage jlpt-passage" lang="ja" data-passage="${esc(q.passageId)}" ${isOpen ? 'open' : ''}>
+          <summary class="passage-title">文章（第 ${q.questionNo} 題／共 ${q.questionCount} 題）</summary>${body}
+        </details>`;
+    };
+
+    const context = isJlptReading
+      ? jlptPassage()
+      : !q.context
+        ? ''
+        : isReading
+          ? `<details class="context passage" lang="${lang}" data-passage="${esc(q.passageId)}" ${isOpen ? 'open' : ''}>
+               <summary class="passage-title">${esc(q.title)}</summary>${esc(q.context)}
+             </details>`
+          : isJlpt
+            ? `<div class="context" lang="ja">${esc(q.context)}</div>`
+            : `<div class="context">${esc(q.context)}</div>`;
     const translation =
       isReading && answered
         ? `<details class="translation"><summary>對照中文翻譯</summary><p>${esc(q.translation)}</p></details>`
@@ -1120,11 +1216,15 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         ${quizTop(index, total, topLabel)}
 
         ${context}
-        ${isJlpt
-          ? `<div class="prompt jlpt-stem" lang="ja">${underlinedHtml(q.prompt, q.underline)}</div>`
-          : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
+        ${isJlptReading
+          ? `<div class="prompt jlpt-ask" lang="ja"><span>${esc(q.prompt)}</span></div>`
+          : isJlpt
+            ? `<div class="prompt jlpt-stem" lang="ja">${underlinedHtml(q.prompt, q.underline)}</div>`
+            : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
         <div class="prompt-sub">${
-          isReading ? '依短文內容作答' : isJlpt ? '選出最適合的答案' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
+          isReading ? '依短文內容作答'
+            : isJlptReading ? `依文章內容作答${q.focusLabel ? `　·　考點：${esc(q.focusLabel)}` : ''}`
+              : isJlpt ? '選出最適合的答案' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
         }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>
 
         <div class="opts${

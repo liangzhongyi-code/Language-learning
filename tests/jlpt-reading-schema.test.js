@@ -95,3 +95,25 @@ test('題型定義：N1 為問題8～13、鍵值與題型對照、題型清單�
   assert.equal(jlptKindsAt(null).length, 11);
   assert.equal(new Set(JLPT_KIND_KEYS).size, 11);
 });
+
+test('R01／R05 已進版控的讀解題庫：零錯誤、六種題型各 25 組、共 350 題', async () => {
+  const { jlptReading } = await import('../assets/js/data/ja/jlpt-reading.js');
+  const errors = validateDataset({ jlptReading }, 'ja');
+  assert.equal(errors.length, 0, errors.slice(0, 10).map((e) => `${e.id} ${e.field} ${e.message}`).join('\n'));
+  for (const t of JLPT_READING_TYPES) assert.equal(jlptReading.filter((s) => s.type === t.type).length, 25, t.type);
+  assert.equal(jlptReading.reduce((sum, s) => sum + s.questions.length, 0), 350);
+});
+
+test('R08 授權標註：CREDITS、批次檔檔頭與目錄產物都標明 Yomitaku、固定 commit 與 MIT', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const credits = await readFile(new URL('../CREDITS.md', import.meta.url), 'utf8');
+  for (const needle of ['Yomitaku', '2f4ed8ef8c1ac3da343d4adac86969acfe23aaac', 'Copyright (c) 2026 Mocas-12', 'Permission is hereby granted', '未經日語母語者審查']) {
+    assert.ok(credits.includes(needle), `CREDITS 缺少 ${needle}`);
+  }
+  for (const t of JLPT_READING_TYPES) {
+    const head = (await readFile(new URL(`../assets/js/data/ja/jlpt-reading/n1-${t.type}.js`, import.meta.url), 'utf8')).slice(0, 800);
+    for (const needle of ['Yomitaku', '2f4ed8ef8c1ac3da343d4adac86969acfe23aaac', 'MIT']) assert.ok(head.includes(needle), `${t.type} 檔頭缺少 ${needle}`);
+  }
+  const catalog = (await readFile(new URL('../assets/js/data/catalog/ja-jlpt-5.js', import.meta.url), 'utf8')).slice(0, 300);
+  assert.match(catalog, /Yomitaku.*MIT/);
+});

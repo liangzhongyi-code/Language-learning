@@ -6,6 +6,9 @@
 **JLPT 模擬題**（`ja/jlpt/`）的題面與選項來自 JLPTSuccess（教學內容採 CC BY-SA 4.0），見下方「日文」一節；
 繁中解說為本專案撰寫。
 
+**JLPT 讀解**（`ja/jlpt-reading/`）的短文、題目與選項來自 Yomitaku（MIT），見下方「日文」一節；
+逐選項的繁中解說為本專案撰寫。
+
 其餘題庫——句型、情境題、閱讀短文、假名表——全部是本專案自行撰寫，
 沒有引用任何外部素材。
 
@@ -59,6 +62,50 @@
 - 不收：上游的 VOICEVOX 語音與 KanjiVG 筆順圖。
 
 **重要：這些是模擬題，不是 JLPT 官方試題或考古題。**
+
+### JLPT 讀解：Yomitaku（N1 讀解）
+
+- 來源：[Yomitaku](https://github.com/Mocas-12/jlpt-n1-Yomitaku)（Mocas-12）的 `js/bank/{tanbun,chubun,chobun,togo,shucho,joho}.js`
+- 固定版本：commit `2f4ed8ef8c1ac3da343d4adac86969acfe23aaac`；各檔 SHA-256 記錄在 `tools/import-yomitaku.mjs`，`--check` 可逐組對照。
+- 授權：**MIT License**，`Copyright (c) 2026 Mocas-12`。2026-10-23 讀完上游 `LICENSE` 全文確認：沒有另附內容授權，repo 也沒有其他授權或聲明檔，題庫與程式碼同受 MIT 授權。
+- 上游聲明題目是依 JLPT 官方各大問的測驗目標自寫的原創模擬題，每組都標「非真題」。
+- 內容：N1 讀解六種大問（問題 8～13），每種 25 組，共 150 組、350 題。
+  - 選組：依固定種子排序，避開上游早期 15% 的批次與字數不到官方七成的短文。
+  - 排除 3 組，依序遞補；排除原因寫在各批次檔的 `excluded`。
+  - 修改 44 組，主要是錯字、與事實不符的詞，以及會讓正解不唯一的選項；原因寫在各組的 `edited`。
+- 本專案的改動：
+  - 劃線句的 `⟪⟫` 標記改存欄位，考點標籤改為本專案的分類，拿掉上游標題。
+  - 每種題型的日文說明由本專案自寫。
+  - 不收上游的日文解說，逐選項的繁中解說由本專案撰寫。
+- 品質說明：上游題目很可能由 AI 依規範產生；本專案的審查與解說也由 AI 撰寫，**未經日語母語者審查**。
+
+**重要：這些是模擬題，不是 JLPT 官方試題或考古題。**
+
+#### MIT 授權原文（Yomitaku）
+
+```text
+MIT License
+
+Copyright (c) 2026 Mocas-12
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
