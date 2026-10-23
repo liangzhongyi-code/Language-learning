@@ -1,26 +1,26 @@
 {
   "docStatus": {
-    "proposal.md": "draft",
-    "design.md": "draft",
-    "tasks.md": "draft"
+    "proposal.md": "approved",
+    "design.md": "approved",
+    "tasks.md": "approved"
   },
   "docNote": {
-    "proposal.md": "2026-10-23 使用者決定：做法 B、逐選項繁中解說、短文不附中譯、第一批約 350 題；並要求開 N1 讀解第一批 openspec。四項方向已決定，文件全文待使用者確認",
-    "design.md": "待使用者核准",
-    "tasks.md": "待使用者核准"
+    "proposal.md": "2026-10-23 使用者決定：做法 B、逐選項繁中解說、短文不附中譯、第一批約 350 題",
+    "design.md": "2026-10-23 使用者「全部核准 直接做到完」",
+    "tasks.md": "2026-10-23 使用者「全部核准 直接做到完」，照 T1–T8 實作至完成"
   },
   "gates": [
     {
       "no": 1,
       "name": "設計核准",
-      "status": "pending",
-      "note": ""
+      "status": "passed",
+      "note": "2026-10-23：全部核准 直接做到完"
     },
     {
       "no": 2,
       "name": "任務核准",
-      "status": "pending",
-      "note": ""
+      "status": "passed",
+      "note": "2026-10-23：全部核准 直接做到完"
     }
   ]
 }

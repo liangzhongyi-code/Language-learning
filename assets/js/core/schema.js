@@ -12,7 +12,7 @@ import { ROLE_KEYS } from '../data/shared/roles.js';
 import { patternById } from '../data/shared/patterns.js';
 import { LEVELS } from '../data/shared/levels.js';
 import { SCENE_AXIS_KEYS } from '../data/shared/scene-axes.js';
-import { JLPT_BLANK, jlptMondaiOf } from './jlpt-mondai.js';
+import { JLPT_BLANK, jlptMondaiOf, jlptReadingTypeOf, JLPT_READING_FOCUS } from './jlpt-mondai.js';
 import { hasKanji } from './kana.js';
 
 /**
@@ -628,6 +628,124 @@ export function validateJlpt(entry, lang) {
 }
 
 /**
+ * JLPT 讀解短文組允許的欄位，理由同 JLPT_KEYS
+ */
+const JLPT_READING_KEYS = ['id', 'level', 'type', 'passage', 'passageA', 'passageB', 'underline', 'questions', 'sourceRef', 'edited'];
+const JLPT_READING_QUESTION_KEYS = ['id', 'focus', 'ask', 'options', 'answer', 'explain'];
+
+/**
+ * 一組讀解最多幾題。官方長文一篇 4 題，再多就不是一組短文而是一份試卷
+ */
+const MAX_READING_SET_QUESTIONS = 4;
+
+/**
+ * 驗證一組 JLPT 讀解短文。
+ *
+ * 外層檢查短文本身：單篇或 A／B 雙篇、劃線句、字數下限；內層逐題檢查選項與逐選項解說。
+ * 劃線句另存 underline，原文不留 ⟪⟫ 這類標記——標記留在原文裡，畫面就會把它當成文字印出來。
+ */
+export function validateJlptReading(entry, lang) {
+  const c = collector(entry?.id);
+  if (!entry || typeof entry !== 'object') {
+    c.add('(entry)', '不是物件');
+    return c.result();
+  }
+
+  if (lang !== 'ja') c.add('(entry)', `JLPT 讀解只屬於日文題庫，實際語言為 ${JSON.stringify(lang)}`);
+  if (!new RegExp(`^${lang}-jr-${SERIAL}$`).test(entry.id || '')) {
+    c.add('id', `id 必須符合 ${lang}-jr-NNNN（3–5 位流水號），實際為 ${JSON.stringify(entry.id)}`);
+  }
+  for (const key of Object.keys(entry)) {
+    if (!JLPT_READING_KEYS.includes(key)) c.add(key, `不認得的欄位「${key}」`);
+  }
+  if (!LEVELS.includes(entry.level)) {
+    c.add('level', `level 必須是 ${LEVELS.join('/')}，實際為 ${JSON.stringify(entry.level)}`);
+  }
+
+  const type = jlptReadingTypeOf(entry.type);
+  if (!type) c.add('type', `沒有這個讀解題型：${JSON.stringify(entry.type)}`);
+  else if (LEVELS.includes(entry.level) && !type.mondaiByLevel[entry.level]) {
+    c.add('level', `「${type.label}」在這個級別沒有對應的問題號，先在 jlpt-mondai.js 補上 mondaiByLevel`);
+  }
+
+  /* 單篇或雙篇：統合理解是 A、B 兩篇，其他題型只有一篇 */
+  const texts = [];
+  if (type?.dual) {
+    for (const field of ['passageA', 'passageB']) {
+      if (!isFilledString(entry[field])) c.add(field, `「${type.label}」要有 ${field}`);
+      else texts.push(entry[field]);
+    }
+    if (entry.passage !== null) c.add('passage', `「${type.label}」是雙篇，passage 必須是 null`);
+  } else if (type) {
+    if (!isFilledString(entry.passage)) c.add('passage', 'passage 不可為空');
+    else texts.push(entry.passage);
+    if (entry.passageA !== null || entry.passageB !== null) c.add('passageA', `「${type.label}」是單篇，passageA／passageB 必須是 null`);
+  }
+  const full = texts.join('');
+  if (texts.some((t) => !isTrimmed(t))) c.add('passage', '短文頭尾不可有空白');
+  if (/[⟪⟫<>]/.test(full)) c.add('passage', '短文不可殘留 ⟪⟫ 標記或 HTML 標籤，劃線句請放 underline 欄位');
+  if (type && texts.length && full.length < type.minChars) {
+    c.add('passage', `短文長度不足：${full.length} 字，「${type.label}」至少要 ${type.minChars} 字（官方字數的七成）`);
+  }
+
+  const questions = entry.questions;
+  if (!Array.isArray(questions) || !questions.length || questions.length > MAX_READING_SET_QUESTIONS) {
+    c.add('questions', `每組 1～${MAX_READING_SET_QUESTIONS} 題，實際 ${questions?.length ?? 0} 題`);
+    return c.result();
+  }
+
+  /* 劃線句：有劃線題才需要，而且要在原文剛好出現一次 */
+  const hasUnderlineQuestion = questions.some((q) => q?.focus === 'underline');
+  if (hasUnderlineQuestion) {
+    if (!isFilledString(entry.underline)) c.add('underline', '有劃線句題，underline 不可為空');
+    else if (occurrences(full, entry.underline) !== 1) {
+      c.add('underline', `劃線句在原文中必須剛好出現一次，實際 ${occurrences(full, entry.underline)} 次`);
+    }
+  } else if (entry.underline !== null) {
+    c.add('underline', '沒有劃線句題，underline 必須是 null');
+  }
+
+  for (const [i, q] of questions.entries()) {
+    const at = `questions[${i}]`;
+    if (q?.id !== `${entry.id}-q${i + 1}`) {
+      c.add(`${at}.id`, `題目 id 必須是「${entry.id}-q${i + 1}」，實際為 ${JSON.stringify(q?.id)}`);
+    }
+    for (const key of Object.keys(q || {})) {
+      if (!JLPT_READING_QUESTION_KEYS.includes(key)) c.add(`${at}.${key}`, `不認得的欄位「${key}」`);
+    }
+    if (!Object.prototype.hasOwnProperty.call(JLPT_READING_FOCUS, q?.focus ?? '')) {
+      c.add(`${at}.focus`, `考點不在允許值內：${JSON.stringify(q?.focus)}`);
+    }
+    if (!isFilledString(q?.ask)) c.add(`${at}.ask`, 'ask 不可為空');
+    if (!isFilledString(q?.answer)) c.add(`${at}.answer`, 'answer 不可為空');
+
+    const options = q?.options;
+    if (!Array.isArray(options) || options.length !== CHOICE_OPTIONS) {
+      c.add(`${at}.options`, `options 必須剛好 ${CHOICE_OPTIONS} 個`);
+      continue;
+    }
+    if (options.some((o) => !isFilledString(o) || !isTrimmed(o))) c.add(`${at}.options`, 'options 不可為空，頭尾不可有空白');
+    if (new Set(options).size !== options.length) c.add(`${at}.options`, 'options 有重複');
+    if (!options.includes(q.answer)) c.add(`${at}.options`, `options 必須包含正解「${q.answer}」`);
+
+    /* 逐選項解說與選項同順序，打亂選項時兩者一起移動，所以數量必須一致 */
+    const explain = q?.explain;
+    if (!Array.isArray(explain) || explain.length !== CHOICE_OPTIONS || explain.some((e) => !isFilledString(e))) {
+      c.add(`${at}.explain`, `explain 必須剛好 ${CHOICE_OPTIONS} 段，每段都不可為空`);
+    }
+  }
+
+  if (!/^sim-(tan|chu|cho|togo|shu|joho)\d+$/.test(entry.sourceRef || '')) {
+    c.add('sourceRef', `sourceRef 必須是上游組 id（例如 sim-tan164），實際為 ${JSON.stringify(entry.sourceRef)}`);
+  }
+  if (entry.edited !== null && !isFilledString(entry.edited)) {
+    c.add('edited', 'edited 只能是 null，或用文字寫出與上游不同的原因');
+  }
+
+  return c.result();
+}
+
+/**
  * 找出流水號的缺號。
  * JLPT 題的 id 是手寫的，跳號不會讓畫面出錯，但代表有一題被刪掉或少貼了一題，
  * 對照上游時要能一眼看出來，所以要求從 1 起連號。
@@ -651,6 +769,7 @@ const SECTION_VALIDATORS = {
   scenes: (entry, lang) => validateScene(entry, lang),
   readings: (entry, lang) => validateReading(entry, lang),
   jlpt: (entry, lang) => validateJlpt(entry, lang),
+  jlptReading: (entry, lang) => validateJlptReading(entry, lang),
   kana: (entry) => validateKana(entry),
   letters: (entry) => validateLetter(entry),
 };
@@ -664,6 +783,14 @@ const SECTION_CHECKS = {
     const refs = list.map((item) => item?.sourceRef);
     for (const ref of new Set(refs.filter((r, i) => r && refs.indexOf(r) !== i))) {
       errors.push({ id: ref, field: 'sourceRef', message: `同一個上游題號 ${ref} 只能對應一題` });
+    }
+    return errors;
+  },
+  jlptReading(list) {
+    const errors = findSerialGaps(list).map((message) => ({ id: '(jlptReading)', field: 'id', message: `流水號不連續：${message}` }));
+    const refs = list.map((item) => item?.sourceRef);
+    for (const ref of new Set(refs.filter((r, i) => r && refs.indexOf(r) !== i))) {
+      errors.push({ id: ref, field: 'sourceRef', message: `同一組上游短文 ${ref} 只能收錄一次` });
     }
     return errors;
   },
