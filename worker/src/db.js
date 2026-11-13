@@ -212,3 +212,46 @@ export async function logUpload(db, userId, now, since) {
     db.prepare('DELETE FROM upload_log WHERE user_id = ? AND at <= ?').bind(userId, since),
   ]);
 }
+
+/**
+ * 後台名單：合併白名單與 users（開放模式下才列出不在白名單的使用者），
+ * 附上最後登入時間、未過期 session 數、快照最後更新時間與新增者 email。
+ * 擁有者排第一，其餘依最後登入時間新到舊，從未登入的排最後，同序再依 email。
+ */
+export async function listMembers(db, { mode, now }) {
+  const { results } = await db
+    .prepare(
+      'WITH people AS ('
+        + ' SELECT email FROM allowed_emails'
+        + " UNION SELECT email FROM users WHERE ?1 = 'open'"
+        + '), stats AS ('
+        + ' SELECT p.email AS email,'
+        + ' (SELECT MAX(u.last_login_at) FROM users u WHERE u.email = p.email) AS last_login_at,'
+        + ' (SELECT COUNT(*) FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = p.email AND s.expires_at > ?2) AS active_sessions,'
+        + ' (SELECT MAX(sn.updated_at) FROM snapshots sn JOIN users u ON u.id = sn.user_id WHERE u.email = p.email) AS snapshot_updated_at'
+        + ' FROM people p'
+        + ') '
+        + 'SELECT st.email, a.nickname, a.role, a.email IS NOT NULL AS in_allowlist, a.created_at, adder.email AS added_by_email,'
+        + ' st.last_login_at, st.active_sessions, st.snapshot_updated_at '
+        + 'FROM stats st LEFT JOIN allowed_emails a ON a.email = st.email '
+        + 'LEFT JOIN users adder ON adder.id = a.added_by '
+        + "ORDER BY COALESCE(a.role = 'owner', 0) DESC, st.last_login_at IS NULL, st.last_login_at DESC, st.email",
+    )
+    .bind(mode, now)
+    .all();
+  return results;
+}
+
+/**
+ * 新增白名單成員（角色固定 member）；email 已存在時不覆蓋並回 false。
+ */
+export async function insertMember(db, { email, nickname, addedBy, now }) {
+  const result = await db
+    .prepare(
+      "INSERT INTO allowed_emails(email, nickname, role, created_at, added_by) VALUES (?, ?, 'member', ?, ?) "
+        + 'ON CONFLICT(email) DO NOTHING',
+    )
+    .bind(normalizeEmail(email), nickname, now, addedBy)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
+}

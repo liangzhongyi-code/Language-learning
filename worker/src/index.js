@@ -7,6 +7,7 @@ import { error } from './http.js';
 import { handleStart, handleCallback, handleLogout } from './auth.js';
 import { handleDeleteAccount, handleMeta, handleDownload, handleUpload } from './snapshot.js';
 import { checkOrigin, handleMe } from './access.js';
+import { handleListMembers, handleAddMember } from './admin.js';
 
 /**
  * 路由表：key 為「方法 路徑」，value 為 (request, env, ctx, url, params) => Response。
@@ -20,6 +21,8 @@ const routes = new Map([
   ['GET /api/snapshot/meta', handleMeta],
   ['GET /api/snapshot', handleDownload],
   ['PUT /api/snapshot', handleUpload],
+  ['GET /api/admin/members', handleListMembers],
+  ['POST /api/admin/members', handleAddMember],
 ]);
 
 export default {
