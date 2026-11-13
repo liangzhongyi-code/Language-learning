@@ -292,11 +292,14 @@ test('標頭或 body 不合法：400 BAD_REQUEST，不寫入', async () => {
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM snapshots').first()).n, 0);
 });
 
-test('X-Device-Label 可省略、會解碼並截到 64 字', async () => {
+test('X-Device-Label：前端以 encodeURIComponent 編碼，可省略、解碼後截到 64 字，解碼失敗存空字串但不讓請求失敗', async () => {
   await put(alice, bytes(8), { deviceLabel: null });
   assert.equal((await meta(alice)).deviceLabel, null);
   await put(alice, bytes(8), { ifMatch: '1', deviceLabel: encodeURIComponent('長'.repeat(80)) });
   assert.equal((await meta(alice)).deviceLabel, '長'.repeat(64));
-  await put(alice, bytes(8), { ifMatch: '2', deviceLabel: '%E0%A4%A' });
-  assert.equal((await meta(alice)).deviceLabel, '%E0%A4%A');
+  const broken = await put(alice, bytes(8), { ifMatch: '2', deviceLabel: '%E0%A4%A' });
+  assert.equal(broken.status, 200);
+  assert.equal((await meta(alice)).deviceLabel, '');
+  await put(alice, bytes(8), { ifMatch: '3', deviceLabel: encodeURIComponent('媽媽的 iPad（客廳）') });
+  assert.equal((await meta(alice)).deviceLabel, '媽媽的 iPad（客廳）', '中文裝置名稱往返一致');
 });

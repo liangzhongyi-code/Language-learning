@@ -85,7 +85,8 @@ export const handleDownload = requireUser(async (request, env, ctx, url, { user 
 /**
  * 解析上傳標頭；任何一項不合法回 null。
  * If-Match 是非負整數（第一次上傳為 0）；X-Upload-Id 為 1～64 個 [A-Za-z0-9_-]；
- * X-Schema-Version 為正整數；X-Device-Label 選填，以 encodeURIComponent 編碼，解碼失敗時保留原文，截到 64 字。
+ * X-Schema-Version 為正整數（備份格式版本，目前為 2）；
+ * X-Device-Label 選填，前端以 encodeURIComponent 編碼（標頭只能放 ASCII），解碼失敗存空字串、不讓請求失敗，解碼後截到 64 字。
  */
 function parseUploadHeaders(headers) {
   const ifMatch = headers.get('if-match');
@@ -100,7 +101,7 @@ function parseUploadHeaders(headers) {
     try {
       deviceLabel = decodeURIComponent(rawLabel);
     } catch {
-      deviceLabel = rawLabel;
+      deviceLabel = '';
     }
     deviceLabel = Array.from(deviceLabel).slice(0, DEVICE_LABEL_MAX).join('');
   }
