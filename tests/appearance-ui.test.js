@@ -44,10 +44,13 @@ function harness(initial = {}, fail = false, navEntry = null) {
   };
   const strip = (path) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import .+;\r?\n/gm, '').replace(/\bexport /g, '');
   const code = strip('../assets/js/ui/prefs.js') + '\n' + strip('../assets/js/ui/appearance.js') + '\n' + strip('../assets/js/ui/nav.js');
-  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});', { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance });
+  /* 搬家提示另有瀏覽器套件 cloud-gate；這裡只記錄導覽列有沒有用正確的位置與相對前綴呼叫它 */
+  const banners = [];
+  const renderLegacyBanner = (anchor, base) => { banners.push({ anchor, base }); return null; };
+  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});', { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance, renderLegacyBanner });
   if (navEntry) api[navEntry]();
   else api.bindAppearance();
-  return { ...api, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
+  return { ...api, banners, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
 }
 
 test('根頁與語言內頁只有外觀入口，且可直接切換並保存深淺模式', () => {
@@ -61,6 +64,14 @@ test('根頁與語言內頁只有外觀入口，且可直接切換並保存深�
       assert.equal(JSON.parse(h.values.get(h.key)).theme, theme);
       assert.equal(h.controls.find((c) => c.value === theme).checked, true);
     }
+  }
+});
+
+test('H06 兩種導覽列都在導覽列後接上搬家提示，站內連結用本頁的相對前綴', () => {
+  for (const [navEntry, base] of [['renderNav', '../'], ['renderRootNav', './']]) {
+    const h = harness({}, false, navEntry);
+    assert.deepEqual(h.banners.map((call) => call.base), [base], navEntry);
+    assert.equal(h.banners[0].anchor, h.panel, `${navEntry} 應以導覽列（.topbar）為插入位置`);
   }
 });
 
