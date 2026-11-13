@@ -9,6 +9,7 @@
  */
 
 import { appearanceHtml, bindAppearance } from './appearance.js';
+import { renderLegacyBanner } from './legacy-banner.js';
 
 /**
  * 每個語言的頁面清單。key 相同者互為對方語言的同功能頁。
@@ -86,6 +87,7 @@ export function renderNav() {
     </header>`;
 
   document.body.insertAdjacentHTML('afterbegin', html);
+  renderLegacyBanner(document.querySelector('.topbar'), '../');
   bindAppearance();
 }
 
@@ -109,5 +111,6 @@ export function renderRootNav(currentKey) {
       </div>
     </header>`;
   document.body.insertAdjacentHTML('afterbegin', html);
+  renderLegacyBanner(document.querySelector('.topbar'), './');
   bindAppearance();
 }

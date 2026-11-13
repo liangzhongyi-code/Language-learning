@@ -257,7 +257,8 @@ export async function run({ page, origin }) {
       await page.locator('.feedback').waitFor();
     } else {
       await page.locator('a.entry[href="./ja/index.html"]').click();
-      check(new URL(page.url()).pathname === '/ja/index.html', `首頁 ${width}: 卡片連結可互動`);
+      /* Workers 版的 auto-trailing-slash 會把 /ja/index.html 以 307 轉到 /ja/，兩種網址都是同一頁 */
+      check(['/ja/index.html', '/ja/'].includes(new URL(page.url()).pathname), `首頁 ${width}: 卡片連結可互動`);
     }
     console.log(`appearance-effects ${path} ${width}: ${records.filter((r) => r.label.startsWith(`${path} ${width} `)).length} 組像素／${computedRecords.filter((r) => r.label.startsWith(`${path} ${width} `)).length} 組 computed`);
   }

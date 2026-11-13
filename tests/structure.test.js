@@ -69,6 +69,24 @@ test('21 個頁面都存在', () => {
   assert.equal(htmlFiles.length, expected.length, `HTML 檔數應為 ${expected.length}，實際 ${htmlFiles.length}`);
 });
 
+/**
+ * 頂層 .html 不在 SITE_ENTRIES 的清單（H02）。Workers 版只發布白名單，新頁面忘了加入就會在新網址 404。
+ */
+function unpublishedRootPages(names, entries) {
+  const published = new Set(entries.map((entry) => entry.path));
+  return names.filter((name) => name.endsWith('.html') && !published.has(name));
+}
+
+test('H02 每個頂層 .html 都在 tools/build-site.mjs 的 SITE_ENTRIES 中', async () => {
+  const { SITE_ENTRIES } = await import('../tools/build-site.mjs');
+  assert.deepEqual(unpublishedRootPages(readdirSync(ROOT), SITE_ENTRIES), [], '頂層頁面沒有加入 SITE_ENTRIES，Workers 版不會發布');
+});
+
+test('H02 頂層頁面白名單檢查本身有效（自我驗證）', () => {
+  const entries = [{ path: 'index.html' }, { path: 'en' }];
+  assert.deepEqual(unpublishedRootPages(['index.html', 'new.html', 'en', 'README.md'], entries), ['new.html']);
+});
+
 /* ── 相對路徑與零外部依賴 ─────────────────────────────────── */
 
 test('沒有任何絕對根路徑引用，才能部署在 Pages 的子路徑底下', () => {

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 
 /**
- * 用真 IndexedDB 讀寫確認測試在瀏覽器執行，並核對 fixture 站的私有檔案隔離。
+ * 用真 IndexedDB 讀寫確認測試在瀏覽器執行，並核對測試站的私有檔案隔離。
+ * fixture 伺服器對白名單外的路徑回 403；本機 Worker（--server wrangler）只發布白名單，回 404（H02）。
  */
-export async function run({ page, origin, intentionalFailure }) {
+export async function run({ page, origin, intentionalFailure, serverKind = 'fixture' }) {
   assert.equal(await page.title(), '測試隔離頁');
   assert.equal(new URL(page.url()).origin, origin);
   const value = await page.evaluate(async () => {
@@ -29,7 +30,7 @@ export async function run({ page, origin, intentionalFailure }) {
   });
   assert.equal(value, 42);
   for (const path of ['/.git/config', '/package.json', '/node_modules/playwright/package.json', '/assets/../.idea/misc.xml']) {
-    assert.equal(await page.evaluate(async (url) => (await fetch(url)).status, origin + path), 403);
+    assert.equal(await page.evaluate(async (url) => (await fetch(url)).status, origin + path), serverKind === 'wrangler' ? 404 : 403, path);
   }
   if (intentionalFailure) {
     await page.evaluate(() => { throw new Error('F00 intentional failure'); });

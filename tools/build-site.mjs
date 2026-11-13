@@ -3,8 +3,8 @@
  * 只複製 SITE_ENTRIES 列出的項目；新增的資料夾預設不公開，必須明確加入清單。
  * 用法：node tools/build-site.mjs（wrangler dev／deploy 會自動先執行）。
  */
-import { cpSync, existsSync, rmSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { cpSync, existsSync, rmSync, mkdirSync, statSync } from 'node:fs';
+import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,6 +24,19 @@ export const SITE_ENTRIES = [
 ];
 
 /**
+ * 白名單目錄內只複製這些網站檔案類型；開發說明（.md）、隱藏檔與其他雜項一律略過。
+ */
+export const SITE_EXTENSIONS = ['.html', '.css', '.js', '.mjs', '.json', '.svg', '.png', '.ico', '.woff2'];
+
+/**
+ * 複製時的過濾：略過名稱以點開頭的檔案與資料夾，檔案另須是網站檔案類型。
+ */
+function isSiteFile(source) {
+  if (basename(source).startsWith('.')) return false;
+  return statSync(source).isDirectory() || SITE_EXTENSIONS.includes(extname(source));
+}
+
+/**
  * 清空並重建輸出目錄，回傳實際複製的項目路徑。
  */
 export function buildSite({ root = ROOT, outDir = OUT_DIR } = {}) {
@@ -36,7 +49,7 @@ export function buildSite({ root = ROOT, outDir = OUT_DIR } = {}) {
       if (required) throw new Error('缺少網站必要項目：' + path);
       continue;
     }
-    cpSync(source, join(outDir, path), { recursive: true });
+    cpSync(source, join(outDir, path), { recursive: true, filter: isSiteFile });
     copied.push(path);
   }
   return copied;
