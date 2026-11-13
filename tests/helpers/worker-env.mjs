@@ -100,3 +100,46 @@ export async function clearTables(DB) {
     await DB.prepare(`DELETE FROM ${table}`).run();
   }
 }
+
+/**
+ * 從 Set-Cookie 取出 __Host-ll_session 的值；沒有時回 null。
+ */
+export function sessionTokenFrom(response) {
+  const header = response.headers.get('set-cookie') ?? '';
+  const match = /__Host-ll_session=([^;]*)/.exec(header);
+  return match ? match[1] : null;
+}
+
+/**
+ * 走完整個登入流程：/api/auth/start → 假 Google 授權 → /api/auth/callback。
+ * 回傳 { start, callbackUrl, response, token, cookie }；token 為 null 表示沒有發 session。
+ */
+export async function signIn(worker, env, google, { returnTo = '/', user } = {}) {
+  if (user) google.setUser(user);
+  const start = await worker.fetch(
+    new Request(`${TEST_SITE}/api/auth/start?returnTo=${encodeURIComponent(returnTo)}`), env, {},
+  );
+  const callbackUrl = await google.authorize(start.headers.get('location'));
+  const response = await worker.fetch(new Request(callbackUrl.href), env, {});
+  const token = sessionTokenFrom(response);
+  return { start, callbackUrl, response, token, cookie: token ? `__Host-ll_session=${token}` : null };
+}
+
+/**
+ * 對 Worker 發 API 請求。寫入類請求預設帶本站 Origin；cookie 為 session cookie 字串。
+ * body 若是物件會轉成 JSON。
+ */
+export async function callApi(worker, env, method, path, { cookie, body, headers = {}, origin = TEST_SITE } = {}) {
+  const init = { method, headers: { ...headers } };
+  if (cookie) init.headers.cookie = cookie;
+  if (origin !== null && !['GET', 'HEAD'].includes(method)) init.headers.origin = origin;
+  if (body !== undefined) {
+    if (body instanceof Uint8Array || body instanceof ArrayBuffer || typeof body === 'string') {
+      init.body = body;
+    } else {
+      init.body = JSON.stringify(body);
+      init.headers['content-type'] = 'application/json';
+    }
+  }
+  return worker.fetch(new Request(`${TEST_SITE}${path}`, init), env, {});
+}

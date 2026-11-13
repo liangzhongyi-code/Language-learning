@@ -2,6 +2,7 @@
  * 隨機值、雜湊與 session cookie。
  * session token 是 32 bytes 隨機值（base64url），資料庫只保存它的 SHA-256；原文只出現在 Set-Cookie。
  */
+import { insertSession } from './db.js';
 
 /**
  * 產生 n bytes 的隨機值，以 base64url（無補位）表示。
@@ -33,4 +34,38 @@ export async function sha256Bytes(text) {
  */
 export async function sha256Hex(text) {
   return Array.from(await sha256Bytes(text), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * session cookie 名稱；__Host- 前綴要求 Secure、Path=/ 且不得帶 Domain。
+ */
+export const SESSION_COOKIE = '__Host-ll_session';
+
+/**
+ * session 有效期（秒）：30 天，不滑動延長。
+ */
+export const SESSION_TTL = 30 * 24 * 60 * 60;
+
+/**
+ * 設定 session cookie 的 Set-Cookie 值。
+ */
+export function sessionCookie(token) {
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL}`;
+}
+
+/**
+ * 清除 session cookie 的 Set-Cookie 值。
+ */
+export function clearSessionCookie() {
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+/**
+ * 為使用者建立新 session，回傳 token 原文（只用於 Set-Cookie）。
+ * 資料庫只保存 token 的 SHA-256。
+ */
+export async function createSession(DB, userId, now) {
+  const token = randomToken(32);
+  await insertSession(DB, { tokenHash: await sha256Hex(token), userId, now, expiresAt: now + SESSION_TTL });
+  return token;
 }

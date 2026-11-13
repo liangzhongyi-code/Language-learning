@@ -36,3 +36,46 @@ export async function insertLoginState(db, { stateHash, codeVerifier, returnTo, 
 export async function purgeExpiredLoginStates(db, now) {
   await db.prepare('DELETE FROM login_states WHERE expires_at <= ?').bind(now).run();
 }
+
+/**
+ * 取出並刪除一筆登入狀態（一次性）；查無回 null。過期與否由呼叫端判斷。
+ */
+export async function consumeLoginState(db, stateHash) {
+  return db
+    .prepare('DELETE FROM login_states WHERE state_hash = ? RETURNING code_verifier, return_to, expires_at')
+    .bind(stateHash)
+    .first();
+}
+
+/**
+ * 依 Google sub 建立或更新使用者，回傳使用者 id。
+ * 新使用者的 id 由呼叫端產生（隨機值），不外露 google_sub。
+ */
+export async function upsertUser(db, { newId, googleSub, email, now }) {
+  const row = await db
+    .prepare(
+      'INSERT INTO users(id, google_sub, email, created_at, last_login_at) VALUES (?, ?, ?, ?, ?) '
+        + 'ON CONFLICT(google_sub) DO UPDATE SET email = excluded.email, last_login_at = excluded.last_login_at '
+        + 'RETURNING id',
+    )
+    .bind(newId, googleSub, normalizeEmail(email), now, now)
+    .first();
+  return row.id;
+}
+
+/**
+ * 新增一筆 session（只存 token 的雜湊）。
+ */
+export async function insertSession(db, { tokenHash, userId, now, expiresAt }) {
+  await db
+    .prepare('INSERT INTO sessions(token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(tokenHash, userId, now, expiresAt)
+    .run();
+}
+
+/**
+ * 刪除已過期的 session。
+ */
+export async function purgeExpiredSessions(db, now) {
+  await db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now).run();
+}
