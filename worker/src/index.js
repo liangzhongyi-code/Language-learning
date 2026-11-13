@@ -3,11 +3,14 @@
  * 其餘請求由靜態資源直接回應。路由表找不到的 API 一律回 404 JSON。
  */
 import { error } from './http.js';
+import { handleStart } from './auth.js';
 
 /**
  * 路由表：key 為「方法 路徑」，value 為 (request, env, ctx, url) => Response。
  */
-const routes = new Map();
+const routes = new Map([
+  ['GET /api/auth/start', handleStart],
+]);
 
 export default {
   async fetch(request, env, ctx) {

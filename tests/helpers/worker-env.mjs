@@ -70,3 +70,33 @@ export async function startLocalWorker({ vars = {} } = {}) {
     },
   };
 }
+
+/**
+ * Worker 測試用的本站 origin（不是真實網域）。
+ */
+export const TEST_SITE = 'https://site.test';
+
+/**
+ * 組出直接呼叫 worker.fetch 用的 env：DB 加上固定的假設定值。
+ * 預設是白名單模式、測試環境；需要時以 overrides 覆寫（例如 GOOGLE_OAUTH_BASE、TEST_NOW）。
+ */
+export function workerEnv(DB, overrides = {}) {
+  return {
+    DB,
+    GOOGLE_CLIENT_ID: 'test-client-id.apps.example.test',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    ACCESS_MODE: 'allowlist',
+    SITE_ORIGIN: TEST_SITE,
+    ENVIRONMENT: 'test',
+    ...overrides,
+  };
+}
+
+/**
+ * 清空全部資料表，讓同一個測試檔內的案例互不影響。
+ */
+export async function clearTables(DB) {
+  for (const table of ['allowed_emails', 'users', 'sessions', 'login_states', 'snapshots', 'snapshot_chunks', 'upload_log']) {
+    await DB.prepare(`DELETE FROM ${table}`).run();
+  }
+}

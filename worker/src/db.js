@@ -19,3 +19,20 @@ export async function findAllowed(db, email) {
     .bind(normalizeEmail(email))
     .first();
 }
+
+/**
+ * 新增一筆登入狀態（state 只存雜湊）。
+ */
+export async function insertLoginState(db, { stateHash, codeVerifier, returnTo, expiresAt }) {
+  await db
+    .prepare('INSERT INTO login_states(state_hash, code_verifier, return_to, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(stateHash, codeVerifier, returnTo, expiresAt)
+    .run();
+}
+
+/**
+ * 刪除已過期的登入狀態。
+ */
+export async function purgeExpiredLoginStates(db, now) {
+  await db.prepare('DELETE FROM login_states WHERE expires_at <= ?').bind(now).run();
+}
