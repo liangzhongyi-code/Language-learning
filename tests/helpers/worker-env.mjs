@@ -2,7 +2,7 @@
  * Worker 測試共用工具：讀 wrangler 設定、取得本機 D1（Miniflare）、啟動本機 Worker。
  * 全部在本機執行，資料存在每次測試各自的暫存目錄，不連外、不共用狀態。
  */
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,13 +17,29 @@ export function readWranglerConfig() {
 }
 
 /**
+ * 在暫存目錄寫一份只含 D1 綁定的 wrangler 設定，回傳其路徑。
+ * 正式設定含靜態資源與 build 指令，多個測試檔平行取用時會同時重建 dist-site/ 而互相干擾；
+ * D1 測試只需要資料庫，因此只沿用正式設定的 D1 綁定與 compatibility_date。
+ */
+function writeD1OnlyConfig(dir) {
+  const config = readWranglerConfig();
+  const path = join(dir, 'wrangler.d1-only.json');
+  writeFileSync(path, JSON.stringify({
+    name: `${config.name}-d1-test`,
+    compatibility_date: config.compatibility_date,
+    d1_databases: config.d1_databases.map(({ binding, database_name, database_id }) => ({ binding, database_name, database_id })),
+  }));
+  return path;
+}
+
+/**
  * 建立暫存的本機 D1，套用全部 migration 後回傳 { env, dispose }。
  * env 只含 DB 綁定，其他變數由測試自行組合。
  */
 export async function createTestDb() {
   const { getPlatformProxy } = await import('wrangler');
   const dir = mkdtempSync(join(tmpdir(), 'lang-learn-d1-'));
-  const proxy = await getPlatformProxy({ configPath: join(ROOT, 'wrangler.jsonc'), persist: { path: dir } });
+  const proxy = await getPlatformProxy({ configPath: writeD1OnlyConfig(dir), persist: { path: dir } });
   const { readdirSync } = await import('node:fs');
   const migrations = join(ROOT, 'worker', 'migrations');
   let files = [];
@@ -69,4 +85,77 @@ export async function startLocalWorker({ vars = {} } = {}) {
       rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+/**
+ * Worker 測試用的本站 origin（不是真實網域）。
+ */
+export const TEST_SITE = 'https://site.test';
+
+/**
+ * 組出直接呼叫 worker.fetch 用的 env：DB 加上固定的假設定值。
+ * 預設是白名單模式、測試環境；需要時以 overrides 覆寫（例如 GOOGLE_OAUTH_BASE、TEST_NOW）。
+ */
+export function workerEnv(DB, overrides = {}) {
+  return {
+    DB,
+    GOOGLE_CLIENT_ID: 'test-client-id.apps.example.test',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    ACCESS_MODE: 'allowlist',
+    SITE_ORIGIN: TEST_SITE,
+    ENVIRONMENT: 'test',
+    ...overrides,
+  };
+}
+
+/**
+ * 清空全部資料表，讓同一個測試檔內的案例互不影響。
+ */
+export async function clearTables(DB) {
+  for (const table of ['allowed_emails', 'users', 'sessions', 'login_states', 'snapshots', 'snapshot_chunks', 'upload_log']) {
+    await DB.prepare(`DELETE FROM ${table}`).run();
+  }
+}
+
+/**
+ * 從 Set-Cookie 取出 __Host-ll_session 的值；沒有時回 null。
+ */
+export function sessionTokenFrom(response) {
+  const header = response.headers.get('set-cookie') ?? '';
+  const match = /__Host-ll_session=([^;]*)/.exec(header);
+  return match ? match[1] : null;
+}
+
+/**
+ * 走完整個登入流程：/api/auth/start → 假 Google 授權 → /api/auth/callback。
+ * 回傳 { start, callbackUrl, response, token, cookie }；token 為 null 表示沒有發 session。
+ */
+export async function signIn(worker, env, google, { returnTo = '/', user } = {}) {
+  if (user) google.setUser(user);
+  const start = await worker.fetch(
+    new Request(`${TEST_SITE}/api/auth/start?returnTo=${encodeURIComponent(returnTo)}`), env, {},
+  );
+  const callbackUrl = await google.authorize(start.headers.get('location'));
+  const response = await worker.fetch(new Request(callbackUrl.href), env, {});
+  const token = sessionTokenFrom(response);
+  return { start, callbackUrl, response, token, cookie: token ? `__Host-ll_session=${token}` : null };
+}
+
+/**
+ * 對 Worker 發 API 請求。寫入類請求預設帶本站 Origin；cookie 為 session cookie 字串。
+ * body 若是物件會轉成 JSON。
+ */
+export async function callApi(worker, env, method, path, { cookie, body, headers = {}, origin = TEST_SITE } = {}) {
+  const init = { method, headers: { ...headers } };
+  if (cookie) init.headers.cookie = cookie;
+  if (origin !== null && !['GET', 'HEAD'].includes(method)) init.headers.origin = origin;
+  if (body !== undefined) {
+    if (body instanceof Uint8Array || body instanceof ArrayBuffer || typeof body === 'string') {
+      init.body = body;
+    } else {
+      init.body = JSON.stringify(body);
+      init.headers['content-type'] = 'application/json';
+    }
+  }
+  return worker.fetch(new Request(`${TEST_SITE}${path}`, init), env, {});
 }
