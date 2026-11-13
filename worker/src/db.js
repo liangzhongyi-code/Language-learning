@@ -79,3 +79,36 @@ export async function insertSession(db, { tokenHash, userId, now, expiresAt }) {
 export async function purgeExpiredSessions(db, now) {
   await db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now).run();
 }
+
+/**
+ * 一句 SQL 同時驗 session、未過期與存取權（開放模式或 email 在白名單）。
+ * 通過時回 { user_id, email, role }，role 為白名單角色（開放模式下不在名單者為 null）；否則回 null。
+ */
+export async function findAuthorizedSession(db, tokenHash, now, mode) {
+  return db
+    .prepare(
+      'SELECT u.id AS user_id, u.email AS email, a.role AS role FROM sessions s '
+        + 'JOIN users u ON s.user_id = u.id '
+        + 'LEFT JOIN allowed_emails a ON a.email = u.email '
+        + "WHERE s.token_hash = ? AND s.expires_at > ? AND (? = 'open' OR a.email IS NOT NULL)",
+    )
+    .bind(tokenHash, now, mode)
+    .first();
+}
+
+/**
+ * 查 session 本身（不看存取權），用來區分 401 與 403；使用者列已不存在時回 null。
+ */
+export async function findSession(db, tokenHash) {
+  return db
+    .prepare('SELECT s.user_id, s.expires_at FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token_hash = ?')
+    .bind(tokenHash)
+    .first();
+}
+
+/**
+ * 刪除某位使用者的全部 session。
+ */
+export async function deleteUserSessions(db, userId) {
+  await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run();
+}

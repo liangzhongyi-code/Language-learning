@@ -5,6 +5,7 @@
 import { siteOrigin, nowSec, oauthEndpoints } from './config.js';
 import { randomToken, sha256Hex, sha256Bytes, base64url, createSession, sessionCookie } from './session.js';
 import * as db from './db.js';
+import { isEmailAllowed } from './access.js';
 
 /**
  * login_states 的有效期（秒）。
@@ -102,7 +103,7 @@ export async function handleCallback(request, env, ctx, url) {
   if (!claims) return back(returnTo, 'EXCHANGE_FAILED');
   if (claims.email_verified !== true) return back(returnTo, 'NOT_ALLOWED');
   const email = db.normalizeEmail(claims.email);
-  if (!(await db.findAllowed(env.DB, email))) return back(returnTo, 'NOT_ALLOWED');
+  if (!(await isEmailAllowed(env, email))) return back(returnTo, 'NOT_ALLOWED');
 
   const userId = await db.upsertUser(env.DB, { newId: crypto.randomUUID(), googleSub: claims.sub, email, now });
   await db.purgeExpiredSessions(env.DB, now);

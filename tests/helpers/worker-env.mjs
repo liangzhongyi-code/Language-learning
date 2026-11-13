@@ -2,7 +2,7 @@
  * Worker 測試共用工具：讀 wrangler 設定、取得本機 D1（Miniflare）、啟動本機 Worker。
  * 全部在本機執行，資料存在每次測試各自的暫存目錄，不連外、不共用狀態。
  */
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,13 +17,29 @@ export function readWranglerConfig() {
 }
 
 /**
+ * 在暫存目錄寫一份只含 D1 綁定的 wrangler 設定，回傳其路徑。
+ * 正式設定含靜態資源與 build 指令，多個測試檔平行取用時會同時重建 dist-site/ 而互相干擾；
+ * D1 測試只需要資料庫，因此只沿用正式設定的 D1 綁定與 compatibility_date。
+ */
+function writeD1OnlyConfig(dir) {
+  const config = readWranglerConfig();
+  const path = join(dir, 'wrangler.d1-only.json');
+  writeFileSync(path, JSON.stringify({
+    name: `${config.name}-d1-test`,
+    compatibility_date: config.compatibility_date,
+    d1_databases: config.d1_databases.map(({ binding, database_name, database_id }) => ({ binding, database_name, database_id })),
+  }));
+  return path;
+}
+
+/**
  * 建立暫存的本機 D1，套用全部 migration 後回傳 { env, dispose }。
  * env 只含 DB 綁定，其他變數由測試自行組合。
  */
 export async function createTestDb() {
   const { getPlatformProxy } = await import('wrangler');
   const dir = mkdtempSync(join(tmpdir(), 'lang-learn-d1-'));
-  const proxy = await getPlatformProxy({ configPath: join(ROOT, 'wrangler.jsonc'), persist: { path: dir } });
+  const proxy = await getPlatformProxy({ configPath: writeD1OnlyConfig(dir), persist: { path: dir } });
   const { readdirSync } = await import('node:fs');
   const migrations = join(ROOT, 'worker', 'migrations');
   let files = [];
