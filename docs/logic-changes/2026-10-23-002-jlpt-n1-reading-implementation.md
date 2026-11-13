@@ -4,7 +4,7 @@
 
 - 日期／時區：2026-10-23（Asia/Taipei）
 - 類型：功能／題庫／資料契約／載入
-- 狀態：已驗證（本機 Node 全套、隔離瀏覽器全套、預覽頁人工操作）；未發布
+- 狀態：已發布（2026-11-13）；先前已驗證（本機 Node 全套、隔離瀏覽器全套、預覽頁人工操作）
 - 核准狀態與依據：使用者 2026-10-23「全部核准 直接做到完」
 - change-id／規格：[add-jlpt-n1-reading](../../openspec/changes/add-jlpt-n1-reading/proposal.md)，[設計](../../openspec/changes/add-jlpt-n1-reading/design.md)，[情境 R01–R18](../../openspec/changes/add-jlpt-n1-reading/specs/jlpt-reading.md)，[任務](../../openspec/changes/add-jlpt-n1-reading/tasks.md)
 - 相關前次紀錄：[2026-10-23-001 規劃](2026-10-23-001-jlpt-n1-reading.md)
@@ -103,6 +103,7 @@
 - 題目與解說未經日語母語者審查；子代理回報的約 40 處疑慮，值得優先複查。
 - Yomitaku 其餘約 1650 題、N1 其他科目、N2～N4 讀解尚未規劃。
 - 提交／發布證據：已 commit 並推到 feature 分支，見 Git 歷史；尚未合併到 main，未部署 GitHub Pages。
+- 2026-11-13 補記：已合併並推送 origin/main（2268bb4..51d36b9，快轉），GitHub Pages 部署工作 43388253786 成功；線上 ja-jlpt-1.js、ja-jlpt-5.js 與本機逐位元組一致。 題目仍未經母語者審查。
 
 ## 後續更正／取代
 

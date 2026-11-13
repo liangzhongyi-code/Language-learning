@@ -4,7 +4,7 @@
 
 - 日期／時區：2026-10-22（Asia/Taipei）
 - 類型：功能／題庫／資料契約
-- 狀態：已驗證（本機 Node 全套、隔離瀏覽器全套、預覽頁人工操作）；未發布
+- 狀態：已發布（2026-11-13）；先前已驗證（本機 Node 全套、隔離瀏覽器全套、預覽頁人工操作）
 - 核准狀態與依據：使用者 2026-10-22「核准設計與任務，照 T1–T8 的順序開始實作」
 - change-id／規格：[add-jlpt-mock-source](../../openspec/changes/add-jlpt-mock-source/proposal.md)，[設計](../../openspec/changes/add-jlpt-mock-source/design.md)，[情境 J01–J16](../../openspec/changes/add-jlpt-mock-source/specs/jlpt-mock.md)，[任務](../../openspec/changes/add-jlpt-mock-source/tasks.md)
 - 相關前次紀錄：[2026-10-22-001 規劃](2026-10-22-001-jlpt-mock-source.md)
@@ -119,6 +119,7 @@
 - 題目與 note 未經日語母語者審查；子代理列出的約 25 題「有疑慮但沒改」，值得優先複查。
 - 第二批（排序題、`questions.json`）與第三批（閱讀、N5 下限 60 字）尚未開始。
 - 提交／發布證據：已 commit 並推到 feature 分支，見 Git 歷史；尚未合併到 main，未部署 GitHub Pages。
+- 2026-11-13 補記：已合併並推送 origin/main（2268bb4..51d36b9，快轉），GitHub Pages 部署工作 43388253786 成功；線上 ja-jlpt-1.js、ja-jlpt-5.js 與本機逐位元組一致。 題目仍未經母語者審查。
 
 ## 後續更正／取代
 
