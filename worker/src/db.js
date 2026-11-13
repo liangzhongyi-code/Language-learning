@@ -255,3 +255,51 @@ export async function insertMember(db, { email, nickname, addedBy, now }) {
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }
+
+/**
+ * 更新白名單成員的暱稱及（或）角色。只在目標目前角色仍等於 expectedRole 且不是擁有者時才寫入，
+ * 避免「讀取角色後、寫入前」被別的請求改掉。回傳更新後的列；條件不符回 null。
+ */
+export async function updateMember(db, { email, expectedRole, changes }) {
+  const sets = [];
+  const values = [];
+  if ('nickname' in changes) {
+    sets.push('nickname = ?');
+    values.push(changes.nickname);
+  }
+  if ('role' in changes) {
+    sets.push('role = ?');
+    values.push(changes.role);
+  }
+  return db
+    .prepare(
+      `UPDATE allowed_emails SET ${sets.join(', ')} WHERE email = ? AND role = ? AND role <> 'owner' `
+        + 'RETURNING email, nickname, role',
+    )
+    .bind(...values, normalizeEmail(email), expectedRole)
+    .first();
+}
+
+/**
+ * 從白名單移除一個人（擁有者除外），並刪除他對應使用者的全部 session；雲端快照保留。
+ * 回傳是否真的刪除了白名單列。
+ */
+export async function removeMember(db, email) {
+  const target = normalizeEmail(email);
+  const [deleted] = await db.batch([
+    db.prepare("DELETE FROM allowed_emails WHERE email = ? AND role <> 'owner'").bind(target),
+    db.prepare('DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = ?) '
+      + 'AND NOT EXISTS (SELECT 1 FROM allowed_emails WHERE email = ?)').bind(target, target),
+  ]);
+  return (deleted.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * 只更新擁有者的暱稱（擁有者可以改自己的暱稱；角色永遠不經後台變更）。
+ */
+export async function updateOwnerNickname(db, { email, nickname }) {
+  return db
+    .prepare("UPDATE allowed_emails SET nickname = ? WHERE email = ? AND role = 'owner' RETURNING email, nickname, role")
+    .bind(nickname, normalizeEmail(email))
+    .first();
+}
