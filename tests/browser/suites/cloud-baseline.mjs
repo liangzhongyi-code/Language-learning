@@ -104,4 +104,18 @@ export async function run({ page, context, origin }) {
   await page.locator('#backup [data-confirm]').click();
   await page.waitForFunction(() => document.querySelector('#backup .backup-msg').textContent.startsWith('已還原'));
   assert.equal(await page.evaluate((key) => localStorage.getItem(key), KEY), null, 'C16 從備份還原不會帶入同步狀態');
+
+  /**
+   * T16 的模組在真 Chromium 可以載入；gzip 串流來回一致，超過上限時丟出 TOO_LARGE。
+   */
+  const gzip = await page.evaluate(async () => {
+    const { gzipText, gunzipText, SNAPSHOT_MAX_BYTES } = await import('/assets/js/ui/platform/cloud-api.js');
+    const { SYNC_STATUSES } = await import('/assets/js/ui/platform/cloud-sync-runner.js');
+    const text = '學習紀錄 ' + 'abc'.repeat(2000);
+    const round = await gunzipText(await gzipText(text));
+    const tooLarge = await gzipText(Array.from({ length: 20000 }, (_, i) => (i * 2654435761 >>> 0).toString(36)).join(''), { maxBytes: 256 })
+      .then(() => 'sent', (error) => error.code);
+    return { same: round === text, tooLarge, limit: SNAPSHOT_MAX_BYTES, statuses: SYNC_STATUSES.length };
+  });
+  assert.deepEqual(gzip, { same: true, tooLarge: 'TOO_LARGE', limit: 8388608, statuses: 15 });
 }
