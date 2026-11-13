@@ -6,7 +6,9 @@
 日文各題型都能按 JLPT N5～N1 隔離題庫；每題也能產生一串問題回報代碼，
 用題目 ID、題面快照與當局設定定位資料問題，不會夾帶整份學習紀錄。
 
-純前端靜態網站——學習免登入、沒有後端，發布資源可直接由 GitHub Pages 提供。
+學習免登入，網站本身是靜態檔，仍可直接由 GitHub Pages 提供。
+選用的**雲端同步**改在 Cloudflare Workers 上提供：同一個網址加上小型後端（Google 登入、白名單、學習紀錄快照），
+不登入時行為與純靜態版完全相同，見下方「部署到 Cloudflare Workers」。
 FSRS 排程使用已納入專案的本機 vendor，不依賴 CDN；Google 授權僅於設定後主動連接才載入。
 把整個資料夾丟上 GitHub Pages 就能跑。已載入頁面可繼續操作，但目前沒有 Service Worker：關頁後離線重新開啟，不保證可用；完整離線 APP 仍在規劃。
 介面支援深色／淺色切換；桌機使用寬版閱讀區，手機維持單欄觸控排版。
@@ -56,6 +58,30 @@ repo 叫什麼名字都可以——全站使用相對路徑，放在子路徑底
 > 免費方案的 GitHub Pages **只支援公開 repo**。私人 repo 要發布 Pages 需要
 > GitHub Pro 以上的方案，或改用 Cloudflare Pages / Netlify（兩者免費方案都吃私人 repo）。
 
+GitHub Pages 版沒有雲端同步；在 `assets/js/config/cloud.js` 填好舊站與新網址後，舊站各頁會顯示搬家提示。
+
+---
+
+## 部署到 Cloudflare Workers（含雲端同步）
+
+靜態頁面與 `/api/*` 放在同一個 Worker：頁面請求直接由靜態資源回應，只有 `/api/*` 進 Worker。
+學習資料存在 Cloudflare D1。完整步驟、擁有者與白名單的 SQL、Google OAuth 設定見 [雲端同步部署手冊](docs/cloud-setup.md)。
+
+- `tools/build-site.mjs` 以**白名單**把網站檔案（各頁 html、`en/`、`ja/`、`assets/` 內的網站檔案類型）複製到 `dist-site/`（不進版控），`wrangler dev`／`wrangler deploy` 會自動先執行；新增頁面要加入它的 `SITE_ENTRIES`，否則不會發布（結構測試會提醒）。
+- Worker 原始碼在 `worker/src/`，D1 schema 在 `worker/migrations/`（全部 `IF NOT EXISTS`，可重複套用）。
+- Client Secret 只用 `npx wrangler secret put GOOGLE_CLIENT_SECRET` 保存；`ENVIRONMENT`、`GOOGLE_OAUTH_BASE` 只給測試使用，正式設定檔不得出現。
+- 網址會以 307 去掉 `.html`（例如 `/en/quiz.html` → `/en/quiz`），站內相對路徑與查詢字串都不受影響。
+
+本機執行 Worker（含 API 與本機 D1）：
+
+```bash
+npx wrangler d1 migrations apply lang-learn --local
+```
+
+```bash
+npm run dev:worker
+```
+
 ---
 
 ## 測試
@@ -93,6 +119,14 @@ npm run test:browser
 測試使用隔離 Chromium context 和本機隨機連接埠，不使用個人瀏覽器或真實學習紀錄。
 缺少 Chromium 會明確失敗，不會跳過後宣稱成功。Linux CI 若缺少系統函式庫，可在允許安裝的環境使用 `npx playwright install --with-deps chromium`。
 
+同一批瀏覽器套件也能改在本機 Worker（`wrangler` 的本機模擬，含靜態資源轉址與本機 D1）上跑，雲端同步的套件以本機假 Google 完成登入，不使用真實帳號：
+
+```bash
+node tests/browser/run.mjs --suite all --server wrangler
+```
+
+Worker 的 Node 測試（`tests/worker-*.test.js`）每個檔案各自建立暫存的本機 D1，已包含在 `npm test`。
+
 測試涵蓋三件事：
 
 | 類型 | 檔案 | 測什麼 |
@@ -119,6 +153,8 @@ npm run test:browser
 .
 ├── index.html              語言選擇
 ├── help.html               使用教學
+├── privacy.html            隱私權說明（雲端同步保存的內容與刪除方式）
+├── admin.html              雲端同步管理後台（擁有者與管理員）
 ├── en/                     英文區（index / alphabet / vocabulary / grammar / quiz）
 ├── ja/                     日文區（index / guide / kana / vocabulary / grammar / quiz）
 ├── assets/
@@ -128,7 +164,11 @@ npm run test:browser
 │       ├── core/           純函式，零 DOM，可被 node:test 直接測
 │       ├── ui/             DOM 綁定層
 │       └── data/           靜態題庫 ← 新增內容改這裡
+├── worker/                 Cloudflare Worker（/api：登入、session、白名單、快照、管理）與 D1 migrations
+├── tools/build-site.mjs    以白名單複製網站檔案到 dist-site/（Workers 靜態資源）
+├── wrangler.jsonc          Cloudflare Workers 設定
 ├── tests/
+├── docs/cloud-setup.md     雲端同步部署手冊
 ├── docs/logic-changes/     每次邏輯變更的索引、範本與紀錄
 ├── AGENTS.md              專案文件留存規則
 └── openspec/               進行中規格、已歸檔歷史與資料處理工具
@@ -147,6 +187,8 @@ Node 與瀏覽器共有的純運算 API 可以用——`TextEncoder`、`btoa`、
 | `lang-learn.stats.v1` | 舊版統計遷移來源，新版不雙寫 | 舊格式 |
 | `lang-learn.progress.v1` | 舊版進度遷移來源，新版不雙寫 | 舊格式 |
 | `lang-learn.prefs.v1` | UI 偏好（顯示主題、漢字模式、假名顯示…） | < 1 KB |
+| `lang-learn.cloud.v1` | 雲端同步基準（依帳號：雲端與本機的 revision、epoch、是否暫停）；不進備份 | < 1 KB |
+| `lang-learn.move-notice.v1` | 舊站搬家提示是否已關閉；不進備份 | < 1 KB |
 
 學習資料現在統一存 IndexedDB：統計、逐題摘要、能力排程、事件、固定題面與續答、
 每日清單、單字簿、筆記、成就及提醒設定。第一次載入將合法舊紀錄與完成標記同交易遷移，
@@ -158,6 +200,10 @@ Node 與瀏覽器共有的純運算 API 可以用——`TextEncoder`、`btoa`、
 三種容器裝的是同一份內容，匯入都走完整群組驗證、預覽與確認；學習整組替換前保存還原點（最多三份）。
 Google 是選用的多份手動備份，不自動同步或合併；目前 Client ID 留空，真帳號授權未驗。
 設定方法見 [Google 備份設定](docs/google-backup-setup.md)。
+
+雲端同步（只在 Cloudflare Workers 新網址啟用）把同一份 v2 備份 gzip 後上傳到 D1，伺服器只保存最新一份並以 revision 防止裝置互相覆蓋；
+兩邊都有變更時由使用者選擇保留哪一邊，不做合併。下載的雲端內容一律走上述深驗證、預覽與還原點流程。
+規格見 [add-cloud-sync](openspec/changes/add-cloud-sync/proposal.md)。
 
 題目下方另有 `langissue1:…` 問題回報代碼。它與備份代碼用途不同：只包含當前題目的
 `sourceId`、級別、題面／選項快照、顯示設定與使用者說明，不讀取上述三把 localStorage 鑰匙。

@@ -29,6 +29,16 @@ const groups = [
     tasks: 'add-jlpt-n1-reading/tasks.md',
     specs: ['add-jlpt-n1-reading/specs/jlpt-reading.md'],
   },
+  {
+    prefix: '[HACM]',
+    tasks: 'add-cloud-sync/tasks.md',
+    specs: [
+      'add-cloud-sync/specs/cloud-hosting.md',
+      'add-cloud-sync/specs/cloud-auth.md',
+      'add-cloud-sync/specs/cloud-sync.md',
+      'add-cloud-sync/specs/cloud-admin.md',
+    ],
+  },
 ];
 const errors = [];
 let totalIds = 0;

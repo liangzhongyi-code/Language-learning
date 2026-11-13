@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>隱私權說明 · 語言學習</title>
+<script src="./assets/js/ui/theme-boot.js"></script>
+<link rel="stylesheet" href="./assets/css/theme.css">
+</head>
+<body data-page="privacy">
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>隱私權說明</h1>
+    <p>這個網站保存了什麼、存在哪裡、怎麼刪除。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>沒有登入時</h2>
+  </div>
+  <div class="card">
+    <p>學習紀錄只存在<b>這台裝置的瀏覽器（本機）</b>：答對率統計、逐題作答、複習排程、每日清單、單字簿、筆記與偏好設定。
+      網站不會把這些資料傳到任何伺服器，也不會載入 Google 或其他第三方的腳本。</p>
+    <p>手動匯出的備份檔與備份代碼由你自己保管；選用的「Google 雲端備份」只有在你自己按下連接後才會使用，
+      細節見<a href="./help.html#google-backup">使用教學</a>。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>登入雲端同步後</h2>
+  </div>
+  <div class="card">
+    <p>雲端同步只在網站的新網址提供，而且只開放給管理者加入名單的 Google 帳號。登入後，本站會保存：</p>
+    <ul>
+      <li><b>Google 帳號的 email 與帳號識別碼</b>：用來確認你是誰、是否在開放名單內。本站拿不到你的 Google 密碼，也不會讀取你的 Google 雲端硬碟、信件或聯絡人。</li>
+      <li><b>學習紀錄的最新一份快照</b>：內容與首頁「下載檔案」匯出的備份相同（不含同步狀態與登入資訊），壓縮後保存，用來在你的其他裝置還原。</li>
+      <li><b>登入狀態</b>：瀏覽器裡一個只供本站使用的 cookie，30 天後失效；伺服器只保存它的雜湊值。</li>
+      <li><b>時間紀錄</b>：加入名單、最後登入與最後上傳的時間；管理者可以在後台看到名單、暱稱與這些時間，看不到你的學習內容。</li>
+    </ul>
+    <p>這些資料存放在 Cloudflare 提供的資料庫（D1）。快照<b>沒有端到端加密</b>：網站管理者在技術上能讀取資料庫內容，
+      本站不會宣稱伺服器看不到；請不要在單字筆記裡寫入不想讓他人看到的內容。</p>
+    <p>資料只用來讓你在不同裝置延續學習，不做廣告、不分析行為、不提供給第三方。</p>
+  </div>
+
+  <div class="sec-head">
+    <h2>怎麼刪除</h2>
+  </div>
+  <div class="card">
+    <ul>
+      <li><b>登出</b>：刪除這台裝置的登入狀態，雲端快照與本機紀錄都保留。</li>
+      <li><b>刪除我的雲端資料</b>：在導覽列的帳號選單確認後，立即刪除本站保存的你的快照、登入狀態與帳號資料列；本機紀錄保留不動。之後再登入會被當作第一次使用。</li>
+      <li><b>本機紀錄</b>：語言首頁的「清除紀錄」，或清除瀏覽器的網站資料。</li>
+    </ul>
+    <p class="note-line">被管理者移出名單時會立即登出，但你的雲端快照會保留，重新加入後登入仍能取回；
+      若希望一併刪除，請在被移出前自行按「刪除我的雲端資料」，或聯絡網站管理者。</p>
+  </div>
+
+  <div class="actions" style="margin-top:28px">
+    <a class="btn" href="./help.html">回到使用教學</a>
+  </div>
+</main>
+
+<script type="module">
+  import { renderRootNav } from './assets/js/ui/nav.js';
+
+  renderRootNav('privacy');
+</script>
+</body>
+</html>
