@@ -5,7 +5,7 @@
  */
 import { error } from './http.js';
 import { handleStart, handleCallback, handleLogout } from './auth.js';
-import { handleDeleteAccount } from './snapshot.js';
+import { handleDeleteAccount, handleMeta, handleDownload, handleUpload } from './snapshot.js';
 import { checkOrigin, handleMe } from './access.js';
 
 /**
@@ -17,6 +17,9 @@ const routes = new Map([
   ['GET /api/me', handleMe],
   ['POST /api/auth/logout', handleLogout],
   ['DELETE /api/account', handleDeleteAccount],
+  ['GET /api/snapshot/meta', handleMeta],
+  ['GET /api/snapshot', handleDownload],
+  ['PUT /api/snapshot', handleUpload],
 ]);
 
 export default {
@@ -29,6 +32,11 @@ export default {
     if (badOrigin) return badOrigin;
     const handler = routes.get(request.method + ' ' + url.pathname);
     if (!handler) return error('NOT_FOUND', 404);
-    return handler(request, env, ctx, url, {});
+    try {
+      return await handler(request, env, ctx, url, {});
+    } catch (cause) {
+      console.error('worker: unhandled error', cause?.name ?? 'Error');
+      return error('INTERNAL', 500);
+    }
   },
 };

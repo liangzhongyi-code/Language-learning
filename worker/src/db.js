@@ -133,3 +133,82 @@ export async function deleteAccount(db, userId) {
     db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ]);
 }
+
+/**
+ * 快照 meta 的欄位清單（SELECT 用）。
+ */
+const SNAPSHOT_META_COLUMNS = 'revision, upload_id, schema_version, byte_size, chunk_count, device_label, updated_at';
+
+/**
+ * 讀取某位使用者的快照 meta；沒有快照回 null。
+ */
+export async function findSnapshotMeta(db, userId) {
+  return db.prepare(`SELECT ${SNAPSHOT_META_COLUMNS} FROM snapshots WHERE user_id = ?`).bind(userId).first();
+}
+
+/**
+ * 在同一個交易內讀出 meta 與目前 revision 的全部分塊（依 idx 排序）。
+ * 回傳 { meta, chunks }；沒有快照時 meta 為 null。
+ */
+export async function readSnapshot(db, userId) {
+  const [metaResult, chunkResult] = await db.batch([
+    db.prepare(`SELECT ${SNAPSHOT_META_COLUMNS} FROM snapshots WHERE user_id = ?`).bind(userId),
+    db.prepare(
+      'SELECT idx, data FROM snapshot_chunks WHERE user_id = ? '
+        + 'AND revision = (SELECT revision FROM snapshots WHERE user_id = ?) ORDER BY idx',
+    ).bind(userId, userId),
+  ]);
+  return { meta: metaResult.results[0] ?? null, chunks: chunkResult.results };
+}
+
+/**
+ * 條件式寫入快照（design §4 的四步，一個 db.batch() 在同一個交易內）：
+ * 1. 以 revision = base + 1 插入每個分塊；同基準的並行上傳會在主鍵衝突，整批回滾。
+ * 2. 寫入 meta：沒有快照時只在 base = 0 才插入；已有快照時只在目前 revision = base 才更新。
+ * 3. 刪除該帳號中 revision 不等於 meta 目前 revision 的分塊（版本不符時也會刪掉這次插入的分塊）。
+ * 4. 讀回 meta。
+ * 回傳批次結束時的 meta（可能為 null）；主鍵衝突等錯誤會直接拋出，由呼叫端判斷。
+ */
+export async function writeSnapshot(db, { userId, base, chunks, uploadId, schemaVersion, byteSize, deviceLabel, now }) {
+  const next = base + 1;
+  const statements = chunks.map((chunk, idx) =>
+    db.prepare('INSERT INTO snapshot_chunks(user_id, revision, idx, data) VALUES (?, ?, ?, ?)').bind(userId, next, idx, chunk));
+  statements.push(
+    db.prepare(
+      'INSERT INTO snapshots(user_id, revision, upload_id, schema_version, byte_size, chunk_count, device_label, updated_at) '
+        + 'SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ? = 0 OR EXISTS (SELECT 1 FROM snapshots WHERE user_id = ?) '
+        + 'ON CONFLICT(user_id) DO UPDATE SET revision = excluded.revision, upload_id = excluded.upload_id, '
+        + 'schema_version = excluded.schema_version, byte_size = excluded.byte_size, chunk_count = excluded.chunk_count, '
+        + 'device_label = excluded.device_label, updated_at = excluded.updated_at '
+        + 'WHERE snapshots.revision = ?',
+    ).bind(userId, next, uploadId, schemaVersion, byteSize, chunks.length, deviceLabel, now, base, userId, base),
+    db.prepare(
+      'DELETE FROM snapshot_chunks WHERE user_id = ? '
+        + 'AND revision <> COALESCE((SELECT revision FROM snapshots WHERE user_id = ?), -1)',
+    ).bind(userId, userId),
+    db.prepare(`SELECT ${SNAPSHOT_META_COLUMNS} FROM snapshots WHERE user_id = ?`).bind(userId),
+  );
+  const results = await db.batch(statements);
+  return results[results.length - 1].results[0] ?? null;
+}
+
+/**
+ * 計算某位使用者自 since（不含）之後的成功上傳次數與其中最早的時間。
+ */
+export async function recentUploads(db, userId, since) {
+  const row = await db
+    .prepare('SELECT COUNT(*) AS count, MIN(at) AS oldest FROM upload_log WHERE user_id = ? AND at > ?')
+    .bind(userId, since)
+    .first();
+  return { count: row?.count ?? 0, oldest: row?.oldest ?? null };
+}
+
+/**
+ * 記錄一次成功上傳，並清掉這位使用者超過頻率視窗的舊紀錄。
+ */
+export async function logUpload(db, userId, now, since) {
+  await db.batch([
+    db.prepare('INSERT INTO upload_log(user_id, at) VALUES (?, ?)').bind(userId, now),
+    db.prepare('DELETE FROM upload_log WHERE user_id = ? AND at <= ?').bind(userId, since),
+  ]);
+}
