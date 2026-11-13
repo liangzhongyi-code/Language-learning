@@ -25,6 +25,8 @@ async function boot() {
       import('./learning-backup-view.js'), import('./google-backup-view.js')]);
     const backup = initLearningBackupPanel(document.getElementById('backup'));
     initGoogleBackupPanel(document.getElementById('google-backup'), backup);
+    const cloud = document.querySelector('[data-cloud-account]');
+    if (cloud) void import('./cloud-view.js').then(({ attachCloudBackup }) => attachCloudBackup(backup)).catch(() => {});
     return;
   }
   if (!['ja', 'en'].includes(lang)) throw new Error('不支援的語言。');

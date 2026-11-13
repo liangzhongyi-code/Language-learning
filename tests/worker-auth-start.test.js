@@ -58,14 +58,22 @@ test('A05 準備：302 到 Google 授權端點，參數齊全', async () => {
   assert.equal(params.has('client_secret'), false);
 });
 
-test('login_states 只存 state 的雜湊，verifier 符合 S256，10 分鐘後到期', async () => {
-  const { location } = await start('/en/quiz.html', { TEST_NOW: () => FIXED_NOW });
+test('登入以 10 分鐘的安全 cookie 綁定 state，資料庫只存綁定雜湊，verifier 符合 S256', async () => {
+  const { response, location } = await start('/en/quiz.html', { TEST_NOW: () => FIXED_NOW });
   const state = location.searchParams.get('state');
   const challenge = location.searchParams.get('code_challenge');
   const { results } = await DB.prepare('SELECT * FROM login_states').all();
   assert.equal(results.length, 1);
   const row = results[0];
-  assert.equal(row.state_hash, sha256Hex(state));
+  const cookie = response.headers.get('set-cookie');
+  const [pair, ...attrs] = cookie.split('; ');
+  assert.match(pair, /^__Host-ll_oauth=[A-Za-z0-9_-]{43}$/);
+  assert.deepEqual(new Set(attrs), new Set(['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Max-Age=600']));
+  const browserToken = pair.slice('__Host-ll_oauth='.length);
+  assert.notEqual(browserToken, state);
+  assert.equal(location.href.includes(browserToken), false);
+  assert.equal(row.state_hash, sha256Hex(`${state}.${browserToken}`));
+  assert.equal(JSON.stringify(row).includes(browserToken), false);
   assert.notEqual(row.state_hash, state);
   assert.equal(JSON.stringify(row).includes(state), false);
   assert.equal(s256(row.code_verifier), challenge);

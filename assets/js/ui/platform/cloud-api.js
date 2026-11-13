@@ -20,6 +20,7 @@ const GZIP_CHUNK_CHARS = 64 * 1024;
 const MESSAGES = {
   UNAUTHENTICATED: '登入已失效，請重新登入。',
   FORBIDDEN: '這個帳號目前沒有使用雲端同步的權限。',
+  ACCOUNT_CHANGED: '此分頁的帳號已變更，請重新整理後繼續。',
   NOT_FOUND: '雲端還沒有學習紀錄。',
   REVISION_MISMATCH: '雲端紀錄已被其他裝置更新。',
   TOO_LARGE: '紀錄太大，無法同步；請改用備份檔。',
@@ -165,6 +166,7 @@ export function createCloudApi({
   now = () => Date.now(), timeoutMs = DEFAULT_TIMEOUT_MS,
   setTimer = (fn, ms) => globalThis.setTimeout(fn, ms), clearTimer = (id) => globalThis.clearTimeout(id),
 } = {}) {
+  let accountId = null;
   /**
    * 送出請求並在逾時時中止；read(response) 也在同一個逾時範圍內執行。
    * unknownOnFailure 只用於上傳：沒收到明確回應時，請求可能已被伺服器接受。
@@ -177,7 +179,9 @@ export function createCloudApi({
     try {
       let response;
       try {
-        response = await fetchImpl(path, { method, headers, body, credentials: 'same-origin', cache: 'no-store', signal: controller?.signal });
+        const scoped = accountId && path !== '/api/me';
+        response = await fetchImpl(path, { method, headers: scoped ? { ...headers, 'X-Cloud-Account': accountId } : headers,
+          body, credentials: 'same-origin', cache: 'no-store', signal: controller?.signal });
       } catch {
         throw failure(timedOut ? 'TIMEOUT' : 'NETWORK', { outcomeUnknown: unknownOnFailure });
       }
@@ -198,7 +202,10 @@ export function createCloudApi({
   async function errorFrom(response, unknownOnFailure) {
     const status = response.status;
     if (status === 401) return failure('UNAUTHENTICATED', { status });
-    if (status === 403) return failure('FORBIDDEN', { status });
+    if (status === 403) {
+      const body = await readJson(response).catch(() => null);
+      return failure(body?.error === 'ACCOUNT_CHANGED' ? 'ACCOUNT_CHANGED' : 'FORBIDDEN', { status });
+    }
     if (status === 404) return failure('NOT_FOUND', { status });
     if (status === 413) return failure('TOO_LARGE', { status, limitBytes: SNAPSHOT_MAX_BYTES });
     if (status === 429) return failure('RATE_LIMITED', { status, retryAfterMs: parseRetryAfter(response.headers.get('Retry-After'), now()) });
@@ -238,10 +245,11 @@ export function createCloudApi({
         return await request('GET', '/api/me', { read: async (response) => {
           const body = await readJson(response);
           if (!isObject(body) || typeof body.accountId !== 'string' || !body.accountId || typeof body.email !== 'string') throw failure('BAD_RESPONSE');
-          return { accountId: body.accountId, email: body.email, role: typeof body.role === 'string' ? body.role : 'member' };
+          accountId = body.accountId;
+          return { accountId, email: body.email, role: typeof body.role === 'string' ? body.role : 'member' };
         } });
       } catch (error) {
-        if (error?.code === 'UNAUTHENTICATED') return null;
+        if (error?.code === 'UNAUTHENTICATED') { accountId = null; return null; }
         throw error;
       }
     },

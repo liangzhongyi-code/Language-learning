@@ -9,7 +9,18 @@
  */
 
 import { appearanceHtml, bindAppearance } from './appearance.js';
+import { CLOUD_CONFIG } from '../config/cloud.js';
+import { cloudMode } from '../core/cloud-origin.js';
 import { renderLegacyBanner } from './legacy-banner.js';
+
+function addCloudAccount(root) {
+  if (cloudMode(window.location.origin, CLOUD_CONFIG) !== 'cloud') return;
+  const host = document.createElement('div');
+  host.dataset.cloudAccount = '';
+  document.querySelector('.topbar-right')?.prepend(host);
+  void import('./cloud-view.js').then(({ mountCloudView }) => mountCloudView(host, { root }))
+    .catch(() => { host.textContent = '雲端暫時無法使用；仍可在本機學習。'; });
+}
 
 /**
  * 每個語言的頁面清單。key 相同者互為對方語言的同功能頁。
@@ -89,12 +100,13 @@ export function renderNav() {
   document.body.insertAdjacentHTML('afterbegin', html);
   renderLegacyBanner(document.querySelector('.topbar'), '../');
   bindAppearance();
+  addCloudAccount('../');
 }
 
 /**
  * 根目錄頁面（index.html / help.html）用的簡化導覽列
  */
-export function renderRootNav(currentKey) {
+export function renderRootNav(currentKey, { account = true } = {}) {
   const html = `
     <header class="topbar">
       <div class="topbar-in">
@@ -113,4 +125,5 @@ export function renderRootNav(currentKey) {
   document.body.insertAdjacentHTML('afterbegin', html);
   renderLegacyBanner(document.querySelector('.topbar'), './');
   bindAppearance();
+  if (account) addCloudAccount('./');
 }

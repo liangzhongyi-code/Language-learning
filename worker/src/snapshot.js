@@ -1,12 +1,12 @@
 /**
  * 學習紀錄快照：meta、下載、條件式上傳，以及刪除帳號（design TD-5、TD-6）。
- * 所有查詢都以 session 推得的 user_id 為條件，不接受前端傳入的帳號 ID。
+ * 所有查詢都以 session 推得的 user_id 為條件；X-Cloud-Account 只用來核對帳號。
  * 伺服器不解壓、不驗證 JSON（Worker 每次請求只有 10ms CPU），只複製 bytes。
  */
 import { json, error, noContent } from './http.js';
-import { requireUser } from './access.js';
+import { requireMatchingAccount } from './access.js';
 import { clearSessionCookie } from './session.js';
-import { nowSec } from './config.js';
+import { accessMode, nowSec } from './config.js';
 import * as db from './db.js';
 
 /**
@@ -48,7 +48,7 @@ function toMeta(row) {
 /**
  * GET /api/snapshot/meta。
  */
-export const handleMeta = requireUser(async (request, env, ctx, url, { user }) =>
+export const handleMeta = requireMatchingAccount(async (request, env, ctx, url, { user }) =>
   json(toMeta(await db.findSnapshotMeta(env.DB, user.id))));
 
 /**
@@ -64,7 +64,7 @@ function toBytes(data) {
 /**
  * GET /api/snapshot：回傳 gzip bytes（不設 Content-Encoding，避免瀏覽器自動解壓）與 X-Revision。
  */
-export const handleDownload = requireUser(async (request, env, ctx, url, { user }) => {
+export const handleDownload = requireMatchingAccount(async (request, env, ctx, url, { user }) => {
   const { meta, chunks } = await db.readSnapshot(env.DB, user.id);
   if (!meta) return error('NOT_FOUND', 404);
   if (chunks.length !== meta.chunk_count) return error('INTERNAL', 500);
@@ -147,56 +147,63 @@ function splitChunks(body) {
 }
 
 /**
+ * 回傳頻率限制錯誤及距離下次可上傳的秒數。
+ */
+function rateLimited(recent, now) {
+  const retryAfter = Math.max(1, recent.oldest + RATE_WINDOW - now);
+  return error('RATE_LIMITED', 429, { 'retry-after': String(retryAfter) });
+}
+
+/**
  * PUT /api/snapshot：條件式上傳。
  * 依序檢查：標頭（400）→ 宣告大小（413）→ 頻率（429）→ 實際大小（413）→ 條件式寫入（200 或 409）。
  * 只有成功的上傳計入頻率上限。
  */
-export const handleUpload = requireUser(async (request, env, ctx, url, { user }) => {
+export const handleUpload = requireMatchingAccount(async (request, env, ctx, url, { user, tokenHash }) => {
   const headers = parseUploadHeaders(request.headers);
   if (!headers) return error('BAD_REQUEST', 400);
   const declared = request.headers.get('content-length');
   if (declared !== null && Number(declared) > MAX_SNAPSHOT_BYTES) return error('TOO_LARGE', 413);
 
-  const now = nowSec(env);
-  const since = now - RATE_WINDOW;
+  const startedAt = nowSec(env);
+  const since = startedAt - RATE_WINDOW;
   const recent = await db.recentUploads(env.DB, user.id, since);
   if (recent.count >= RATE_LIMIT) {
-    const retryAfter = Math.max(1, recent.oldest + RATE_WINDOW - now);
-    return error('RATE_LIMITED', 429, { 'retry-after': String(retryAfter) });
+    return rateLimited(recent, startedAt);
   }
 
   const body = await readBodyCapped(request, MAX_SNAPSHOT_BYTES);
   if (body === null) return error('TOO_LARGE', 413);
   if (body.byteLength === 0) return error('BAD_REQUEST', 400);
 
-  let current;
-  try {
-    current = await db.writeSnapshot(env.DB, {
-      userId: user.id,
-      base: headers.base,
-      chunks: splitChunks(body),
-      uploadId: headers.uploadId,
-      schemaVersion: headers.schemaVersion,
-      byteSize: body.byteLength,
-      deviceLabel: headers.deviceLabel,
-      now,
-    });
-  } catch (cause) {
-    current = await db.findSnapshotMeta(env.DB, user.id);
-    if ((current?.revision ?? 0) === headers.base) throw cause;
-    return json({ error: 'REVISION_MISMATCH', current: toMeta(current) }, 409);
+  const now = nowSec(env);
+  const result = await db.writeSnapshot(env.DB, {
+    userId: user.id,
+    tokenHash,
+    mode: accessMode(env),
+    base: headers.base,
+    chunks: splitChunks(body),
+    uploadId: headers.uploadId,
+    schemaVersion: headers.schemaVersion,
+    byteSize: body.byteLength,
+    deviceLabel: headers.deviceLabel,
+    now,
+    since: now - RATE_WINDOW,
+    rateLimit: RATE_LIMIT,
+  });
+  if (!result.access) return error('UNAUTHENTICATED', 401);
+  if (!result.access.allowed) return error('NOT_ALLOWED', 403);
+  if (result.recent.count >= RATE_LIMIT) return rateLimited(result.recent, now);
+  if (!result.written) {
+    return json({ error: 'REVISION_MISMATCH', current: toMeta(result.current) }, 409);
   }
-  if (!current || current.revision !== headers.base + 1 || current.upload_id !== headers.uploadId) {
-    return json({ error: 'REVISION_MISMATCH', current: toMeta(current) }, 409);
-  }
-  await db.logUpload(env.DB, user.id, now, since);
-  return json({ revision: current.revision });
+  return json({ revision: result.current.revision });
 });
 
 /**
  * DELETE /api/account：刪除快照、分塊、全部 session 與使用者列，清除 cookie；白名單不變（A12）。
  */
-export const handleDeleteAccount = requireUser(async (request, env, ctx, url, { user }) => {
+export const handleDeleteAccount = requireMatchingAccount(async (request, env, ctx, url, { user }) => {
   await db.deleteAccount(env.DB, user.id);
   return noContent({ 'set-cookie': clearSessionCookie() });
 });

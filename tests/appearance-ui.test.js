@@ -34,6 +34,7 @@ function harness(initial = {}, fail = false, navEntry = null) {
   const media = { matches: true, addEventListener(type, callback) { this.change = callback; } };
   const window = {
     innerHeight: 568,
+    location: { origin: 'https://local.example.test' },
     localStorage: {
       getItem: (name) => values.get(name) ?? null,
       setItem(name, value) { if (blocked) throw new Error('quota'); values.set(name, value); },
@@ -47,7 +48,8 @@ function harness(initial = {}, fail = false, navEntry = null) {
   /* 搬家提示另有瀏覽器套件 cloud-gate；這裡只記錄導覽列有沒有用正確的位置與相對前綴呼叫它 */
   const banners = [];
   const renderLegacyBanner = (anchor, base) => { banners.push({ anchor, base }); return null; };
-  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});', { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance, renderLegacyBanner });
+  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});',
+    { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance, renderLegacyBanner, cloudMode: () => 'off', CLOUD_CONFIG: {} });
   if (navEntry) api[navEntry]();
   else api.bindAppearance();
   return { ...api, banners, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };

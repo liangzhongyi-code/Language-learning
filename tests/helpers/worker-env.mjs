@@ -118,12 +118,20 @@ export async function clearTables(DB) {
 }
 
 /**
+ * 取出單一 cookie 的 name=value，供測試模擬瀏覽器送出 Cookie。
+ */
+export function cookiePairFrom(response, name) {
+  const cookies = response.headers.getSetCookie();
+  const match = cookies.find((cookie) => cookie.startsWith(`${name}=`));
+  return match?.split(';', 1)[0] ?? null;
+}
+
+/**
  * 從 Set-Cookie 取出 __Host-ll_session 的值；沒有時回 null。
  */
 export function sessionTokenFrom(response) {
-  const header = response.headers.get('set-cookie') ?? '';
-  const match = /__Host-ll_session=([^;]*)/.exec(header);
-  return match ? match[1] : null;
+  const pair = cookiePairFrom(response, '__Host-ll_session');
+  return pair?.slice('__Host-ll_session='.length) || null;
 }
 
 /**
@@ -136,7 +144,9 @@ export async function signIn(worker, env, google, { returnTo = '/', user } = {})
     new Request(`${TEST_SITE}/api/auth/start?returnTo=${encodeURIComponent(returnTo)}`), env, {},
   );
   const callbackUrl = await google.authorize(start.headers.get('location'));
-  const response = await worker.fetch(new Request(callbackUrl.href), env, {});
+  const loginCookie = cookiePairFrom(start, '__Host-ll_oauth');
+  const headers = loginCookie ? { cookie: loginCookie } : {};
+  const response = await worker.fetch(new Request(callbackUrl.href, { headers }), env, {});
   const token = sessionTokenFrom(response);
   return { start, callbackUrl, response, token, cookie: token ? `__Host-ll_session=${token}` : null };
 }

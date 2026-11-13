@@ -16,6 +16,50 @@ const AT = 1_791_158_400_000;
 
 const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve)); };
 
+test('登出發生於壓縮期間時，不會再發出上傳', async () => {
+  let enter;
+  let release;
+  const entered = new Promise((resolve) => { enter = resolve; });
+  const held = new Promise((resolve) => { release = resolve; });
+  const t = setup({ compress: async () => { enter(); await held; return Uint8Array.of(1); } });
+  await answer(t.store);
+  const started = t.runner.start();
+  await entered;
+  t.runner.stop();
+  release();
+  await started;
+  assert.equal(t.cloud.state.puts.length, 0);
+  assert.equal(t.baseline.get(ACCOUNT), null);
+});
+
+test('衝突確認使用畫面看見的版本，不覆蓋確認前又更新的雲端紀錄', async () => {
+  const t = setup({ cloudRevision: 3 });
+  await answer(t.store);
+  await t.runner.start();
+  assert.equal(t.runner.getState().status, 'conflict');
+  t.cloud.state.revision = 4;
+  await t.runner.resolveConflict('local');
+  assert.equal(t.cloud.state.puts[0].ifMatch, 3);
+  assert.equal(t.cloud.state.revision, 4);
+  assert.equal(t.runner.getState().status, 'conflict');
+});
+
+test('等待另一分頁的同步鎖時，本機整組替換會使舊的覆蓋確認失效', async () => {
+  const t = setup({ cloudRevision: 3 });
+  await answer(t.store);
+  await t.runner.start();
+  let unlock;
+  const held = new Promise((resolve) => { unlock = resolve; });
+  const lock = t.locks.request('lang-learn.cloud-sync', () => held);
+  const requested = t.runner.resolveConflict('local');
+  try { await clearLearning(t.store); }
+  finally { unlock(); await lock; }
+  await requested;
+  await t.settle();
+  assert.equal(t.cloud.state.puts.length, 0);
+  t.runner.stop();
+});
+
 function fakeClock(start = AT) {
   let time = start;
   let nextId = 0;

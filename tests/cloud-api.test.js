@@ -21,6 +21,19 @@ function fakeFetch(routes) {
 const json = (status, body, headers = {}) => new Response(body === undefined ? null : JSON.stringify(body),
   { status, headers: { 'Content-Type': 'application/json', ...headers } });
 
+test('快照與刪除使用頁面原本確認的帳號，伺服器帳號不符時可辨識', async () => {
+  const fetch = fakeFetch({
+    'GET /api/me': json(200, { accountId: 'original', email: 'learner@example.test' }),
+    'GET /api/snapshot/meta': json(403, { error: 'ACCOUNT_CHANGED' }),
+    'DELETE /api/account': json(403, { error: 'ACCOUNT_CHANGED' }),
+  });
+  const api = createCloudApi({ fetch });
+  await api.me();
+  await assert.rejects(api.meta(), { code: 'ACCOUNT_CHANGED' });
+  await assert.rejects(api.deleteAccount(), { code: 'ACCOUNT_CHANGED' });
+  assert.deepEqual(fetch.calls.map(({ headers }) => headers['X-Cloud-Account']), [undefined, 'original', 'original']);
+});
+
 /**
  * 可重現的高熵文字：壓縮率低，用來測大小上限。
  */

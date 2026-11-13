@@ -267,9 +267,9 @@ docs/cloud-setup.md          Cloudflare 與 Google Cloud 設定手冊（不含�
 - **CSRF**：
   - `SameSite=Lax` 的 cookie 本身就會擋下跨站 POST。
   - 寫入類請求額外比對 `Origin`。
-  - 登入回呼以一次性的 state 加 PKCE 防止授權碼注入。
+  - 登入回呼以一次性的 state 加 PKCE 防止授權碼注入。Worker 以獨立的 `__Host-ll_oauth` cookie 把 state 綁定至發起的瀏覽器，效期 10 分鐘；只有綁定成功的回呼可以消耗 state。
 - **開放轉址**：`returnTo` 必須以單一 `/` 開頭，不含 `//`、`\` 或控制字元，最後以 `new URL(returnTo, siteOrigin)` 的結果仍是本站 origin 為準；不符就改成 `/`。
-- **存取**：所有快照查詢都以 session 推得的 `user_id` 為條件，不接受前端傳入的帳號 ID。
+- **存取**：所有快照查詢都以 session 推得的 `user_id` 為條件。`X-Cloud-Account` 只供核對頁面原先登入的帳號；不一致時回 403 `ACCOUNT_CHANGED`。快照寫入會在 D1 交易內再次核對 session、帳號資格、頻率與版號，並將成功的頻率紀錄放進同一交易。
 - **管理權限**：`/api/admin/*` 每次請求都重新讀取角色，依 `roles.js` 的權限總表判斷（M01、M08、M10、M12、M14）。後台 API 不接受 `owner` 這個角色值，也不能以擁有者為操作對象（M13）；最多一位擁有者由資料庫唯一索引保證。名單只回傳 email、暱稱、角色與時間資訊，不含 `google_sub`、session 或快照內容。
 - **濫用**：大小上限 8 MiB、每小時 60 次；白名單是預設模式。
 - **隱私**：伺服器只保存 email、Google `sub` 與學習快照。`privacy.html` 要說明保存內容、用途、刪除方式，以及「沒有端到端加密」。

@@ -238,3 +238,101 @@ test('擁有者可在同一個請求同時改暱稱與角色', async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { email: 'm2@example.test', nickname: '升級了', role: 'admin' });
 });
+
+/**
+ * 在 API 讀完目標資料後、執行寫入前，讓另一個操作變更資料庫。
+ */
+function afterTargetRead(email, change) {
+  env.DB = {
+    prepare(sql) {
+      const statement = DB.prepare(sql);
+      if (!sql.includes('SELECT email, nickname, role, created_at, added_by FROM allowed_emails')) return statement;
+      return {
+        bind(target) {
+          const bound = statement.bind(target);
+          if (target !== email) return bound;
+          return {
+            async first() {
+              const result = await bound.first();
+              await change();
+              return result;
+            },
+          };
+        },
+      };
+    },
+    batch: DB.batch.bind(DB),
+  };
+}
+
+test('M14 管理員在寫入前被降級，已開始的請求也不能改暱稱', async () => {
+  afterTargetRead('m1@example.test', () => DB.prepare(
+    "UPDATE allowed_emails SET role = 'member' WHERE email = 'helper@example.test'",
+  ).run());
+  const response = await patch('helper', 'm1@example.test', { nickname: '不得寫入' });
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'CONFLICT' });
+  assert.equal((await row('m1@example.test')).nickname, '成員一');
+});
+
+test('M14 工作人員的 session 在寫入前被撤銷，已開始的請求也不能改暱稱', async () => {
+  afterTargetRead('m1@example.test', () => DB.prepare(
+    "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = 'boss@example.test')",
+  ).run());
+  const response = await patch('boss', 'm1@example.test', { nickname: '不得寫入' });
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'CONFLICT' });
+  assert.equal((await row('m1@example.test')).nickname, '成員一');
+});
+
+test('M13 擁有者在移除寫入前已換人，保留目標白名單與 session', async () => {
+  afterTargetRead('m1@example.test', () => DB.batch([
+    DB.prepare("UPDATE allowed_emails SET role = 'admin' WHERE email = 'boss@example.test'"),
+    DB.prepare("UPDATE allowed_emails SET role = 'owner' WHERE email = 'helper2@example.test'"),
+  ]));
+  const response = await remove('boss', 'm1@example.test');
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'CONFLICT' });
+  assert.equal((await row('m1@example.test')).role, 'member');
+  assert.equal(await sessionsOf('m1@example.test'), 1);
+});
+
+
+test('M09 目標在寫入前已離開白名單，失敗的移除不撤銷其開放模式 session', async () => {
+  env.ACCESS_MODE = 'open';
+  afterTargetRead('m1@example.test', () => DB.prepare(
+    "DELETE FROM allowed_emails WHERE email = 'm1@example.test'",
+  ).run());
+  const response = await remove('boss', 'm1@example.test');
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'CONFLICT' });
+  assert.equal(await sessionsOf('m1@example.test'), 1);
+});
+
+test('新增成員讀取 body 後會拒絕已降級或失去 session 的管理員', async (t) => {
+  for (const [label, sql, status, code] of [
+    ['降級', "UPDATE allowed_emails SET role = 'member' WHERE email = 'helper@example.test'", 403, 'NOT_STAFF'],
+    ['撤銷', "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = 'helper@example.test')", 401, 'UNAUTHENTICATED'],
+  ]) {
+    await t.test(label, async () => {
+      const before = await snapshotAllowlist();
+      const request = new Request('https://site.test/api/admin/members', {
+        method: 'POST',
+        headers: { cookie: cookies.helper, origin: 'https://site.test' },
+        body: JSON.stringify({ email: 'late@example.test' }),
+      });
+      const readText = request.text.bind(request);
+      request.text = async () => {
+        const body = await readText();
+        await DB.prepare(sql).run();
+        return body;
+      };
+      const response = await worker.fetch(request, env, {});
+      assert.equal(response.status, status);
+      assert.deepEqual(await response.json(), { error: code });
+      assert.deepEqual(await snapshotAllowlist(), before.map((member) =>
+        label === '降級' && member.email === 'helper@example.test' ? { ...member, role: 'member' } : member));
+      await DB.prepare("UPDATE allowed_emails SET role = 'admin' WHERE email = 'helper@example.test'").run();
+    });
+  }
+});

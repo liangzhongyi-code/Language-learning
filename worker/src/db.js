@@ -162,55 +162,67 @@ export async function readSnapshot(db, userId) {
 }
 
 /**
- * 條件式寫入快照（design §4 的四步，一個 db.batch() 在同一個交易內）：
- * 1. 以 revision = base + 1 插入每個分塊；同基準的並行上傳會在主鍵衝突，整批回滾。
- * 2. 寫入 meta：沒有快照時只在 base = 0 才插入；已有快照時只在目前 revision = base 才更新。
- * 3. 刪除該帳號中 revision 不等於 meta 目前 revision 的分塊（版本不符時也會刪掉這次插入的分塊）。
- * 4. 讀回 meta。
- * 回傳批次結束時的 meta（可能為 null）；主鍵衝突等錯誤會直接拋出，由呼叫端判斷。
+ * 上傳交易使用與請求驗證相同的 session、帳號及白名單條件。
  */
-export async function writeSnapshot(db, { userId, base, chunks, uploadId, schemaVersion, byteSize, deviceLabel, now }) {
+const SNAPSHOT_ACCESS = "SELECT (? = 'open' OR a.email IS NOT NULL) AS allowed FROM sessions s "
+  + 'JOIN users u ON u.id = s.user_id LEFT JOIN allowed_emails a ON a.email = u.email '
+  + 'WHERE s.token_hash = ? AND s.expires_at > ? AND u.id = ?';
+
+const RECENT_UPLOADS_FILTER = 'FROM upload_log WHERE user_id = ? AND at > ?';
+const RECENT_UPLOADS = `SELECT COUNT(*) AS count, MIN(at) AS oldest ${RECENT_UPLOADS_FILTER}`;
+
+/**
+ * 在同一個交易內核對授權、頻率與版號，寫入分塊和 meta，並記錄成功上傳。
+ * 只有 meta 更新成功才記錄上傳並清理舊資料。條件失敗時回傳交易內的狀態供路由判斷。
+ */
+export async function writeSnapshot(db, {
+  userId, tokenHash, mode, base, chunks, uploadId, schemaVersion, byteSize, deviceLabel, now, since, rateLimit,
+}) {
+  const accessArgs = [mode, tokenHash, now, userId];
+  const rateArgs = [userId, since];
+  const canWrite = `(${SNAPSHOT_ACCESS}) AND (SELECT COUNT(*) ${RECENT_UPLOADS_FILTER}) < ?`;
+  const writeArgs = [...accessArgs, ...rateArgs, rateLimit];
+  const matchesBase = 'COALESCE((SELECT revision FROM snapshots WHERE user_id = ?), 0) = ?';
   const next = base + 1;
-  const statements = chunks.map((chunk, idx) =>
-    db.prepare('INSERT INTO snapshot_chunks(user_id, revision, idx, data) VALUES (?, ?, ?, ?)').bind(userId, next, idx, chunk));
-  statements.push(
+  const updateIndex = 3 + chunks.length;
+  const statements = [
+    db.prepare(SNAPSHOT_ACCESS).bind(...accessArgs),
+    db.prepare(RECENT_UPLOADS).bind(...rateArgs),
+    db.prepare(
+      `DELETE FROM upload_log WHERE user_id = ? AND at <= ? AND ${canWrite} AND ${matchesBase}`,
+    ).bind(userId, since, ...writeArgs, userId, base),
+    ...chunks.map((chunk, idx) => db.prepare(
+      'INSERT INTO snapshot_chunks(user_id, revision, idx, data) '
+        + `SELECT ?, ?, ?, ? WHERE ${canWrite} AND ${matchesBase}`,
+    ).bind(userId, next, idx, chunk, ...writeArgs, userId, base)),
     db.prepare(
       'INSERT INTO snapshots(user_id, revision, upload_id, schema_version, byte_size, chunk_count, device_label, updated_at) '
-        + 'SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ? = 0 OR EXISTS (SELECT 1 FROM snapshots WHERE user_id = ?) '
+        + `SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${canWrite} AND ${matchesBase} `
         + 'ON CONFLICT(user_id) DO UPDATE SET revision = excluded.revision, upload_id = excluded.upload_id, '
         + 'schema_version = excluded.schema_version, byte_size = excluded.byte_size, chunk_count = excluded.chunk_count, '
-        + 'device_label = excluded.device_label, updated_at = excluded.updated_at '
-        + 'WHERE snapshots.revision = ?',
-    ).bind(userId, next, uploadId, schemaVersion, byteSize, chunks.length, deviceLabel, now, base, userId, base),
+        + 'device_label = excluded.device_label, updated_at = excluded.updated_at',
+    ).bind(userId, next, uploadId, schemaVersion, byteSize, chunks.length, deviceLabel, now, ...writeArgs, userId, base),
+    db.prepare('INSERT INTO upload_log(user_id, at) SELECT ?, ? WHERE changes() = 1').bind(userId, now),
+    // changes() 依序讀取前一筆的影響列數：meta 更新成功才寫 log，log 寫入成功才清理舊分塊。
     db.prepare(
-      'DELETE FROM snapshot_chunks WHERE user_id = ? '
-        + 'AND revision <> COALESCE((SELECT revision FROM snapshots WHERE user_id = ?), -1)',
-    ).bind(userId, userId),
+      'DELETE FROM snapshot_chunks WHERE user_id = ? AND revision <> ? AND changes() = 1',
+    ).bind(userId, next),
     db.prepare(`SELECT ${SNAPSHOT_META_COLUMNS} FROM snapshots WHERE user_id = ?`).bind(userId),
-  );
+  ];
   const results = await db.batch(statements);
-  return results[results.length - 1].results[0] ?? null;
+  return {
+    access: results[0].results[0],
+    recent: results[1].results[0],
+    written: results[updateIndex].meta.changes === 1,
+    current: results.at(-1).results[0] ?? null,
+  };
 }
 
 /**
- * 計算某位使用者自 since（不含）之後的成功上傳次數與其中最早的時間。
+ * 讀取目前頻率，讓超過上限的請求不必先上傳 body。
  */
 export async function recentUploads(db, userId, since) {
-  const row = await db
-    .prepare('SELECT COUNT(*) AS count, MIN(at) AS oldest FROM upload_log WHERE user_id = ? AND at > ?')
-    .bind(userId, since)
-    .first();
-  return { count: row?.count ?? 0, oldest: row?.oldest ?? null };
-}
-
-/**
- * 記錄一次成功上傳，並清掉這位使用者超過頻率視窗的舊紀錄。
- */
-export async function logUpload(db, userId, now, since) {
-  await db.batch([
-    db.prepare('INSERT INTO upload_log(user_id, at) VALUES (?, ?)').bind(userId, now),
-    db.prepare('DELETE FROM upload_log WHERE user_id = ? AND at <= ?').bind(userId, since),
-  ]);
+  return db.prepare(RECENT_UPLOADS).bind(userId, since).first();
 }
 
 /**
@@ -243,24 +255,34 @@ export async function listMembers(db, { mode, now }) {
 }
 
 /**
- * 新增白名單成員（角色固定 member）；email 已存在時不覆蓋並回 false。
+ * 新增成員的授權核對與 INSERT 共用交易。保留重複 email 的原有回應。
  */
-export async function insertMember(db, { email, nickname, addedBy, now }) {
-  const result = await db
-    .prepare(
-      "INSERT INTO allowed_emails(email, nickname, role, created_at, added_by) VALUES (?, ?, 'member', ?, ?) "
-        + 'ON CONFLICT(email) DO NOTHING',
-    )
-    .bind(normalizeEmail(email), nickname, now, addedBy)
-    .run();
-  return (result.meta?.changes ?? 0) > 0;
+export async function insertMember(db, { email, nickname, actor, tokenHash, now }) {
+  const actorRole = 'SELECT a.role FROM sessions s JOIN users u ON u.id = s.user_id '
+    + 'LEFT JOIN allowed_emails a ON a.email = u.email '
+    + 'WHERE s.token_hash = ? AND s.expires_at > ? AND u.id = ? AND u.email = ?';
+  const args = [tokenHash, now, actor.id, actor.email];
+  const [session, inserted] = await db.batch([
+    db.prepare(actorRole).bind(...args),
+    db.prepare(
+      "INSERT INTO allowed_emails(email, nickname, role, created_at, added_by) SELECT ?, ?, 'member', ?, ? "
+        + `WHERE (${actorRole}) = ? ON CONFLICT(email) DO NOTHING`,
+    ).bind(normalizeEmail(email), nickname, now, actor.id, ...args, actor.role),
+  ]);
+  return { session: session.results[0], inserted: inserted.meta.changes === 1 };
 }
 
 /**
- * 更新白名單成員的暱稱及（或）角色。只在目標目前角色仍等於 expectedRole 且不是擁有者時才寫入，
- * 避免「讀取角色後、寫入前」被別的請求改掉。回傳更新後的列；條件不符回 null。
+ * 寫入當下確認操作者仍有同一角色和有效的 session。
  */
-export async function updateMember(db, { email, expectedRole, changes }) {
+const ADMIN_WRITE_AUTH = 'EXISTS (SELECT 1 FROM sessions s '
+  + 'JOIN users u ON u.id = s.user_id JOIN allowed_emails a ON a.email = u.email '
+  + 'WHERE s.token_hash = ? AND s.expires_at > ? AND u.email = ? AND a.role = ?)';
+
+/**
+ * 只在目標與操作者仍符合已核准的條件時更新暱稱或角色。
+ */
+export async function updateMember(db, { email, expectedRole, changes, actor, tokenHash, now }) {
   const sets = [];
   const values = [];
   if ('nickname' in changes) {
@@ -273,33 +295,25 @@ export async function updateMember(db, { email, expectedRole, changes }) {
   }
   return db
     .prepare(
-      `UPDATE allowed_emails SET ${sets.join(', ')} WHERE email = ? AND role = ? AND role <> 'owner' `
+      `UPDATE allowed_emails SET ${sets.join(', ')} WHERE email = ? AND role = ? AND ${ADMIN_WRITE_AUTH} `
         + 'RETURNING email, nickname, role',
     )
-    .bind(...values, normalizeEmail(email), expectedRole)
+    .bind(...values, normalizeEmail(email), expectedRole, tokenHash, now, actor.email, actor.role)
     .first();
 }
 
 /**
- * 從白名單移除一個人（擁有者除外），並刪除他對應使用者的全部 session；雲端快照保留。
- * 回傳是否真的刪除了白名單列。
+ * 在同一個交易內刪除符合條件的成員或管理員及其所有 session。
+ * 先撤銷目標的 session，再移除白名單。目標不可能是發出請求的擁有者。
  */
-export async function removeMember(db, email) {
+export async function removeMember(db, { email, expectedRole, actor, tokenHash, now }) {
   const target = normalizeEmail(email);
-  const [deleted] = await db.batch([
-    db.prepare("DELETE FROM allowed_emails WHERE email = ? AND role <> 'owner'").bind(target),
+  const guard = `email = ? AND role = ? AND role <> 'owner' AND ${ADMIN_WRITE_AUTH}`;
+  const args = [target, expectedRole, tokenHash, now, actor.email, 'owner'];
+  const [, deleted] = await db.batch([
     db.prepare('DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = ?) '
-      + 'AND NOT EXISTS (SELECT 1 FROM allowed_emails WHERE email = ?)').bind(target, target),
+      + `AND EXISTS (SELECT 1 FROM allowed_emails WHERE ${guard})`).bind(target, ...args),
+    db.prepare(`DELETE FROM allowed_emails WHERE ${guard}`).bind(...args),
   ]);
   return (deleted.meta?.changes ?? 0) > 0;
-}
-
-/**
- * 只更新擁有者的暱稱（擁有者可以改自己的暱稱；角色永遠不經後台變更）。
- */
-export async function updateOwnerNickname(db, { email, nickname }) {
-  return db
-    .prepare("UPDATE allowed_emails SET nickname = ? WHERE email = ? AND role = 'owner' RETURNING email, nickname, role")
-    .bind(nickname, normalizeEmail(email))
-    .first();
 }

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>成員管理｜語言學習</title>
+<script src="./assets/js/ui/theme-boot.js"></script>
+<link rel="stylesheet" href="./assets/css/theme.css">
+</head>
+<body>
+<main class="wrap">
+  <h1>成員管理</h1>
+  <div id="app"></div>
+</main>
+<script type="module">
+  import { renderRootNav } from './assets/js/ui/nav.js';
+  import { initAdminPage } from './assets/js/ui/admin-view.js';
+  import { CLOUD_CONFIG } from './assets/js/config/cloud.js';
+  import { cloudMode } from './assets/js/core/cloud-origin.js';
+  renderRootNav('admin', { account: false });
+  void initAdminPage({ mount: document.querySelector('#app'),
+    cloudEnabled: cloudMode(location.origin, CLOUD_CONFIG) === 'cloud' });
+</script>
+</body>
+</html>

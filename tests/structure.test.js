@@ -52,17 +52,12 @@ test('來源掃描只進入頁面與 assets 白名單，不碰工具目錄；來
   assert.throws(() => collect(fixtureRoot, '.js', [], { ...fs, readdirSync() { throw new Error('source denied'); } }, fixtureRoot), /source denied/);
 });
 
-/**
- * 只屬於網站版（Cloudflare Workers）的頁面：雲端同步的隱私說明與管理後台，不打包進 APP。
- */
-const WEB_ONLY_PAGES = ['privacy.html', 'admin.html'];
-
-test('21 個學習頁面都存在，另加存在的網站版專屬頁', () => {
+test('所有網站頁面都存在', () => {
   /* 每日學習、練習、單字簿、歷程兩種語言各一頁（add-offline-study-suite） */
   const study = ['daily', 'practice', 'library', 'history'];
   const expected = [
     'index.html',
-    'help.html',
+    'help.html', 'privacy.html', 'admin.html',
     'en/index.html', 'en/alphabet.html', 'en/vocabulary.html', 'en/grammar.html', 'en/quiz.html',
     /* guide 只有日文有——英文對中文使用者沒有「三套文字混著寫」這種要先解釋的門檻 */
     'ja/index.html', 'ja/guide.html', 'ja/kana.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/quiz.html',
@@ -71,9 +66,7 @@ test('21 個學習頁面都存在，另加存在的網站版專屬頁', () => {
   for (const page of expected) {
     assert.ok(existsSync(join(ROOT, page)), `缺少頁面：${page}`);
   }
-  const webOnly = WEB_ONLY_PAGES.filter((page) => existsSync(join(ROOT, page)));
-  assert.equal(htmlFiles.length, expected.length + webOnly.length,
-    `HTML 檔數應為 ${expected.length + webOnly.length}，實際 ${htmlFiles.length}`);
+  assert.equal(htmlFiles.length, expected.length, `HTML 檔數應為 ${expected.length}，實際 ${htmlFiles.length}`);
 });
 
 /**

@@ -61,7 +61,7 @@ function summaryOf(counts) {
 /**
  * 可攜偏好：只帶 learning-backup 白名單內的欄位，外觀等設定才能在別台裝置套用。
  */
-function portablePrefs() {
+export function portablePrefs() {
   const allowed = new Set(['reducedEffects', 'grammarLines', 'keyboardSeen', 'hideKanji', 'quietMode',
     'voiceEnabled', 'effectsEnabled', 'hapticsEnabled', 'theme', 'palette', 'background', 'kanaMode',
     'readingAskIn', 'kanjiMode']);
@@ -98,6 +98,15 @@ export function initLearningBackupPanel(mount) {
   let points = [];
   let generation = 0;
   let sharing = false;
+  let cloudPreview = null;
+  let confirming = false;
+
+  function releaseCloudPreview(applied) {
+    const callbacks = cloudPreview;
+    cloudPreview = null;
+    if (applied) return callbacks?.onApplied?.(applied);
+    callbacks?.onDismiss?.();
+  }
 
   const focusInside = () => mount.contains(document.activeElement);
   const refocus = (selector, wasInside) => { if (wasInside) mount.querySelector(selector)?.focus(); };
@@ -187,7 +196,7 @@ export function initLearningBackupPanel(mount) {
 
   function previewHtml(p) {
     return `<div class="backup-preview">
-      <p><b>這份備份的內容</b>${p.source === 'google' ? '（來自 Google 雲端快照）' : ''}</p>
+      <p><b>這份備份的內容</b>${p.source === 'google' ? '（來自 Google 雲端快照）' : p.source === 'cloud' ? '（來自本站雲端同步）' : ''}</p>
       <p class="backup-now">匯出於 ${esc(formatTime(p.exportedAt))}<br>${esc(summaryOf(p.counts))}</p>
       ${p.warnings.length ? `<p class="backup-warn">${p.warnings.map(esc).join('<br>')}</p>` : ''}
       ${p.errors.length ? `<p class="backup-warn">${p.errors.map(esc).join('<br>')}</p>` : ''}
@@ -198,7 +207,7 @@ export function initLearningBackupPanel(mount) {
       </fieldset>
       <p class="backup-note">還原學習紀錄時會先把目前的紀錄存成還原點，之後可在下方回到確認前的狀態；只還原偏好不建立還原點。</p>
       <div class="backup-actions">
-        <button class="btn sm" type="button" data-confirm>確認還原</button>
+        <button class="btn sm" type="button" data-confirm ${confirming ? 'disabled' : ''}>確認還原</button>
         <button class="btn ghost sm" type="button" data-cancel>取消</button>
       </div>
     </div>`;
@@ -227,6 +236,7 @@ export function initLearningBackupPanel(mount) {
       if (shown !== generation) return;
       const wasInside = focusInside();
       try { controller.cancel(); } catch (error) { message = error.message; draw(); return; }
+      releaseCloudPreview();
       generation++;
       preview = null;
       reading = false;
@@ -316,8 +326,11 @@ export function initLearningBackupPanel(mount) {
   /**
    * 三種來源共用：開始新讀取立即撤下舊預覽；舊讀取晚到時由 controller 拋 STALE_PREVIEW 而忽略。
    */
-  async function previewFrom(readText, source, focusSelector = '[data-confirm]') {
+  async function previewFrom(readText, source, callbacks = null) {
+    if (!controller || confirming) return null;
     const wasInside = focusInside();
+    releaseCloudPreview();
+    cloudPreview = source === 'cloud' ? callbacks : null;
     const mine = ++generation;
     preview = null;
     reading = true;
@@ -330,23 +343,27 @@ export function initLearningBackupPanel(mount) {
       message = '';
     } catch (error) {
       if (mine !== generation || error?.code === 'STALE_PREVIEW') return null;
+      releaseCloudPreview();
       preview = null;
       message = error?.message || '讀不出這份備份，沒有動任何資料。';
     } finally {
       if (mine === generation) reading = false;
     }
     draw();
-    refocus(preview ? focusSelector : '[data-file]', wasInside);
+    refocus(preview ? '[data-confirm]' : '[data-file]', wasInside);
     return preview;
   }
 
   async function pickFile(event) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
-    if (!file) return;
+    if (!file || confirming) return;
     if (file.size > BACKUP_JSON_MAX_BYTES) {
+      try { controller?.cancel(); } catch { return; }
+      releaseCloudPreview();
       generation++;
       preview = null;
+      reading = false;
       message = '備份資料超過 10 MiB 上限，沒有動任何資料。';
       draw();
       return;
@@ -362,13 +379,16 @@ export function initLearningBackupPanel(mount) {
   }
 
   async function doConfirm(shown) {
-    if (shown !== generation || !preview) return;
+    if (confirming || shown !== generation || !preview) return;
     const learning = mount.querySelector('[data-pick="learning"]')?.checked ?? false;
     const preferences = mount.querySelector('[data-pick="preferences"]')?.checked ?? false;
     const wasInside = focusInside();
+    confirming = true;
     message = '正在保存，請不要關閉頁面…';
     draw();
     try {
+      await cloudPreview?.beforeConfirm?.();
+      if (shown !== generation || !preview) return;
       const result = await controller.confirm({ learning, preferences });
       generation++;
       preview = null;
@@ -379,11 +399,27 @@ export function initLearningBackupPanel(mount) {
         window.dispatchEvent(new Event(PREFS_IMPORTED_EVENT));
       }
       message = `已還原：${parts.join('、') || '無'}。${result.preferenceError || ''}${result.learningSaved ? '原本的紀錄已存成還原點。' : ''}`;
+      try { await releaseCloudPreview(result.learningSaved ? result.committed : null); }
+      catch { message += ' 本機已還原，但未能記下雲端同步狀態。'; }
+      if (result.learningSaved) store.notifyRestored(result.committed);
     } catch (error) {
-      if (error?.code === 'STALE_PREVIEW') { generation++; preview = null; }
+      if (shown !== generation) return;
+      if (cloudPreview && ['FORBIDDEN', 'UNAUTHENTICATED', 'ACCOUNT_CHANGED'].includes(error?.code)) {
+        releaseCloudPreview();
+        generation++;
+        preview = null;
+        try { controller.cancel(); } catch { /* 預覽已撤下 */ }
+      }
+      if (error?.code === 'STALE_PREVIEW') { releaseCloudPreview(); generation++; preview = null; }
       message = error?.code === 'STALE_PREVIEW'
-        ? '確認前紀錄已在其他分頁變動，這份預覽失效了；請重新選擇備份。'
-        : `沒有還原任何學習紀錄：${storageMessage(error)}`;
+        ? '確認前本機或雲端紀錄已變動，這份預覽失效了；請重新讀取備份。'
+        : `沒有還原任何學習紀錄：${error?.code === 'ACCOUNT_CHANGED' ? error.message : storageMessage(error)}`;
+    } finally {
+      confirming = false;
+      if (preview) {
+        const confirm = mount.querySelector('[data-confirm]');
+        if (confirm) confirm.disabled = false;
+      }
     }
     await loadCounts();
     draw();
@@ -405,15 +441,18 @@ export function initLearningBackupPanel(mount) {
   }
 
   const api = {
-    previewFrom: (readText, source) => previewFrom(readText, source),
+    previewFrom,
     /**
      * 來源失效（例如 Google 切換帳號）時撤下該來源的預覽；確認中的交易不受影響。
      */
     dismissPreview(source) {
-      if (!preview || preview.source !== source || !controller) return;
+      if ((!preview || preview.source !== source) && !(source === 'cloud' && cloudPreview)) return;
+      if (!controller) return;
       try { controller.cancel(); } catch { return; }
+      releaseCloudPreview();
       generation++;
       preview = null;
+      reading = false;
       message = '帳號已變更，來自雲端的預覽已撤下。';
       draw();
     },

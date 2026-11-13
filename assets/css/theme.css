@@ -1868,3 +1868,17 @@ html.has-keyboard .cz-word .key { display: inline-flex; }
 .badge-list li { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--mute); font-size: 13.5px; }
 .badge-list li.is-unlocked { border-color: var(--ok); color: var(--text); }
 .badge-list b { display: block; font-size: 14.5px; }
+.cloud-menu { position: relative; }
+.cloud-menu-panel { position: absolute; top: 100%; right: 0; z-index: 5; width: min(22rem, calc(100vw - 2rem)); overflow-wrap: anywhere; }
+.cloud-menu summary { cursor: pointer; }
+.admin-panel { min-width: 0; border: 1px solid var(--border); }
+.admin-table-wrap { max-width: 100%; overflow-x: auto; margin-top: 1rem; }
+.admin-table { width: 100%; border-collapse: collapse; }
+.admin-table th, .admin-table td { padding: .5rem; text-align: left; border-bottom: 1px solid var(--border); }
+.admin-add-form, .admin-nickname-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin-bottom: .5rem; }
+.admin-nickname-form[hidden] { display: none; }
+.admin-panel input, .admin-panel select { max-width: 100%; }
+@media (max-width: 640px) {
+  .cloud-menu { position: static; }
+  .cloud-menu-panel { position: absolute; right: 1rem; }
+}

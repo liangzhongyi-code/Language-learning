@@ -39,7 +39,7 @@ export function renderLegacyBanner(anchor, base, { origin = window.location.orig
       <div class="move-notice-text">
         <p><b>本站已搬到新網址：</b><a data-new-site rel="noopener"></a>。這裡仍可照常使用，但兩邊的紀錄不會自動互通。</p>
         <p>用備份代碼搬移紀錄：在這裡的<a href="${base}index.html#backup">首頁「備份與還原」</a>按「複製代碼」，
-          到新網址的首頁貼上並按「讀取代碼」。詳細步驟見<a href="${base}help.html">使用教學</a>的「紀錄會存多久」。</p>
+          到新網址的首頁貼上並按「讀取代碼」，檢查預覽後按「確認還原」。詳細步驟見<a href="${base}help.html#backup-code-guide">使用教學</a>。</p>
       </div>
       <button class="move-notice-close" type="button" data-legacy-banner-close aria-label="關閉搬家提示">✕</button>
     </div>`;

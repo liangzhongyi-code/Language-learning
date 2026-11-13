@@ -85,6 +85,20 @@ export function requireUser(handler) {
 }
 
 /**
+ * 驗證 session 後，核對舊分頁帶來的帳號 ID，再執行路由。
+ * 未帶 X-Cloud-Account 的客戶端仍可使用。
+ */
+export function requireMatchingAccount(handler) {
+  return requireUser((request, env, ctx, url, auth) => {
+    const expectedAccount = request.headers.get('X-Cloud-Account');
+    if (expectedAccount !== null && expectedAccount !== auth.user.id) {
+      return error('ACCOUNT_CHANGED', 403);
+    }
+    return handler(request, env, ctx, url, auth);
+  });
+}
+
+/**
  * GET /api/me：回傳 { accountId, email, role }。accountId 是 users.id，不是 email 或 google_sub。
  */
 export const handleMe = requireUser(async (request, env, ctx, url, { user }) =>

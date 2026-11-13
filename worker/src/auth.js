@@ -3,9 +3,12 @@
  * 前端只是一般連結到 /api/auth/start，Worker 負責 state、verifier 與換 token，前端不碰任何 token。
  */
 import { siteOrigin, nowSec, oauthEndpoints } from './config.js';
-import { randomToken, sha256Hex, sha256Bytes, base64url, createSession, sessionCookie, clearSessionCookie } from './session.js';
+import {
+  randomToken, sha256Hex, sha256Bytes, base64url, createSession, sessionCookie, clearSessionCookie,
+  loginCookie, readLoginCookie,
+} from './session.js';
 import * as db from './db.js';
-import { isEmailAllowed, requireUser } from './access.js';
+import { isEmailAllowed, requireMatchingAccount } from './access.js';
 import { noContent } from './http.js';
 
 /**
@@ -52,12 +55,13 @@ export async function handleStart(request, env, ctx, url) {
   const origin = siteOrigin(env);
   const returnTo = normalizeReturnTo(url.searchParams.get('returnTo'), origin);
   const state = randomToken(32);
+  const browserToken = randomToken(32);
   const verifier = randomToken(32);
   const challenge = base64url(await sha256Bytes(verifier));
   const now = nowSec(env);
   await db.purgeExpiredLoginStates(env.DB, now);
   await db.insertLoginState(env.DB, {
-    stateHash: await sha256Hex(state),
+    stateHash: await boundStateHash(state, browserToken),
     codeVerifier: verifier,
     returnTo,
     expiresAt: now + LOGIN_STATE_TTL,
@@ -73,7 +77,14 @@ export async function handleStart(request, env, ctx, url) {
     code_challenge: challenge,
     code_challenge_method: 'S256',
   }).toString();
-  return redirect(target.href);
+  return redirect(target.href, { 'set-cookie': loginCookie(browserToken, LOGIN_STATE_TTL) });
+}
+
+/**
+ * 以 state 與瀏覽器專用隨機值衍生資料庫查詢鍵。
+ */
+function boundStateHash(state, browserToken) {
+  return sha256Hex(`${state}.${browserToken}`);
 }
 
 /**
@@ -84,15 +95,20 @@ const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.
 /**
  * GET /api/auth/callback：取出一次性 state、以授權碼加 verifier 加 secret 換 token、
  * 驗證 id_token 欄位、查白名單、建立使用者與 session。
- * 成功 302 回 returnTo；失敗 302 回 returnTo#cloud-error=<CODE>，不設定 cookie。
+ * 驗證綁定後清除登入 cookie；成功回 returnTo，失敗回 returnTo#cloud-error=<CODE>。
  */
 export async function handleCallback(request, env, ctx, url) {
   const origin = siteOrigin(env);
-  const back = (returnTo, code) => redirect(`${origin}${returnTo}#cloud-error=${code}`);
   const state = url.searchParams.get('state');
-  const loginState = state ? await db.consumeLoginState(env.DB, await sha256Hex(state)) : null;
-  if (!loginState) return back('/', 'STATE_INVALID');
+  const browserToken = readLoginCookie(request);
+  const loginState = /^[A-Za-z0-9_-]{43}$/.test(state ?? '') && browserToken
+    ? await db.consumeLoginState(env.DB, await boundStateHash(state, browserToken))
+    : null;
+  if (!loginState) return redirect(`${origin}/#cloud-error=STATE_INVALID`);
 
+  const headers = new Headers();
+  headers.append('set-cookie', loginCookie('', 0));
+  const back = (returnTo, code) => redirect(`${origin}${returnTo}#cloud-error=${code}`, headers);
   const now = nowSec(env);
   const returnTo = normalizeReturnTo(loginState.return_to, origin);
   if (!(loginState.expires_at > now)) return back(returnTo, 'STATE_INVALID');
@@ -109,7 +125,8 @@ export async function handleCallback(request, env, ctx, url) {
   const userId = await db.upsertUser(env.DB, { newId: crypto.randomUUID(), googleSub: claims.sub, email, now });
   await db.purgeExpiredSessions(env.DB, now);
   const token = await createSession(env.DB, userId, now);
-  return redirect(`${origin}${returnTo}`, { 'set-cookie': sessionCookie(token) });
+  headers.append('set-cookie', sessionCookie(token));
+  return redirect(`${origin}${returnTo}`, headers);
 }
 
 /**
@@ -174,13 +191,16 @@ function decodeJwtPayload(jwt) {
  * 302 轉址，不快取；可附帶額外標頭（例如 Set-Cookie）。
  */
 export function redirect(location, headers = {}) {
-  return new Response(null, { status: 302, headers: { location, 'cache-control': 'no-store', ...headers } });
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set('location', location);
+  responseHeaders.set('cache-control', 'no-store');
+  return new Response(null, { status: 302, headers: responseHeaders });
 }
 
 /**
  * POST /api/auth/logout：刪除這個 session 並清除 cookie；同帳號其他裝置的 session 不受影響。
  */
-export const handleLogout = requireUser(async (request, env, ctx, url, { tokenHash }) => {
+export const handleLogout = requireMatchingAccount(async (request, env, ctx, url, { tokenHash }) => {
   await db.deleteSession(env.DB, tokenHash);
   return noContent({ 'set-cookie': clearSessionCookie() });
 });

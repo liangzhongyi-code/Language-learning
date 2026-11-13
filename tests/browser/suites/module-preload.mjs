@@ -19,39 +19,54 @@ const VARIANTS = [
 ];
 
 /**
- * 每頁先拿掉預載區塊，記下頁面啟動實際載入的模組（程式與題庫）；再用原頁核對預載清單與它完全一致：
- * 沒有漏掉（否則線上又會逐層等待），也沒有多抓頁面用不到的模組。
+ * 先讓瀏覽器走完頁面轉址，取得正式網址與預載清單。再直接開啟正式網址，
+ * 移除預載區塊並記下啟動實際載入的模組，核對兩者完全一致。
  */
-export async function run({ page, context, origin }) {
+export async function run({ page, context, origin, serverKind }) {
   let strip = false;
-  await context.route(/\.html(?:\?.*)?$/, async (route) => {
-    const response = await route.fetch();
+  await context.route((url) => url.origin === origin, async (route) => {
+    const request = route.request();
+    if (request.resourceType() !== 'document') return route.fallback();
+    const response = await route.fetch({ maxRedirects: 0 });
+    if (!strip || !response.ok()) return route.fulfill({ response });
     const body = await response.text();
-    await route.fulfill({ response, body: strip ? body.replace(BLOCK, '') : body });
+    await route.fulfill({ response, body: body.replace(BLOCK, '') });
   });
   let requested = new Set();
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (path.startsWith('/assets/js/') && path.endsWith('.js') && !path.endsWith('/theme-boot.js')) requested.add(path);
   });
-  const load = async (name) => {
+  const load = async (url) => {
     requested = new Set();
-    await page.goto(`${origin}/${name}`);
+    const response = await page.goto(url);
+    assert.ok(response?.ok(), url + ' 最終頁應成功載入');
     await page.waitForLoadState('networkidle');
     await page.waitForFunction(() => !document.querySelector('#app')?.textContent.includes('正在載入'));
-    return [...requested].filter((path) => !onDemand(name.split('?')[0], path)).sort();
+    return response;
   };
   const verify = async (name, prefs) => {
-    await page.goto(`${origin}/index.html`);
+    await page.goto(origin + '/index.html');
     await page.evaluate((value) => {
       if (value) localStorage.setItem('lang-learn.prefs.v1', JSON.stringify(value));
       else localStorage.removeItem('lang-learn.prefs.v1');
     }, prefs ?? null);
-    strip = true;
-    const needed = await load(name);
-    strip = false;
-    await load(name);
+    const initialUrl = origin + '/' + name;
+    const response = await load(initialUrl);
+    const finalUrl = page.url();
+    if (serverKind === 'wrangler' && name === 'en/index.html') {
+      assert.equal(response.request().redirectedFrom()?.url(), initialUrl, 'Worker 的轉址應由瀏覽器跟隨');
+    }
     const preloaded = await page.$$eval('link[rel="modulepreload"]', (links) => links.map((link) => new URL(link.href).pathname).sort());
+    strip = true;
+    try {
+      await load(finalUrl);
+      assert.equal(page.url(), finalUrl, name + ' 應在同一正式網址比對預載');
+      assert.equal(await page.locator('link[rel="modulepreload"]').count(), 0, name + ' 應先移除預載區塊');
+    } finally {
+      strip = false;
+    }
+    const needed = [...requested].filter((path) => !onDemand(name.split('?')[0], path)).sort();
     assert.ok(needed.length > 0, `${name} 應至少載入一個模組`);
     assert.deepEqual(preloaded, needed, `${name} ${prefs ? JSON.stringify(prefs) : ''} 的預載與實際載入不一致：程式模組請執行 node tools/build-preload.mjs 並更新 bootModules；題庫請對齊 data-preload.js`);
   };

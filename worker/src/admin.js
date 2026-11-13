@@ -4,7 +4,7 @@
  * 名單只回傳 email、暱稱、角色與時間資訊，不含 google_sub、使用者 id、session 或快照內容。
  */
 import { json, error, noContent } from './http.js';
-import { requireUser } from './access.js';
+import { requireMatchingAccount } from './access.js';
 import { accessMode, nowSec } from './config.js';
 import { can, isStaff } from './roles.js';
 import * as db from './db.js';
@@ -29,7 +29,7 @@ const EMAIL_PATTERN = /^[^\s@\u0000-\u001f\u007f]+@[^\s@\u0000-\u001f\u007f]+\.[
  * 只讓工作人員通過：成員（含開放模式下不在名單的人）一律 403 NOT_STAFF。
  */
 export function requireStaff(handler) {
-  return requireUser(async (request, env, ctx, url, auth) => {
+  return requireMatchingAccount(async (request, env, ctx, url, auth) => {
     if (!isStaff(auth.user.role)) return error('NOT_STAFF', 403);
     return handler(request, env, ctx, url, auth);
   });
@@ -106,7 +106,7 @@ export const handleListMembers = requireStaff(async (request, env, ctx, url, { u
 /**
  * POST /api/admin/members：新增成員，角色固定 member，忽略請求夾帶的 role（M03、M04）。
  */
-export const handleAddMember = requireStaff(async (request, env, ctx, url, { user }) => {
+export const handleAddMember = requireStaff(async (request, env, ctx, url, { user, tokenHash }) => {
   if (!can(user.role, 'add', 'member')) return error('NOT_STAFF', 403);
   const body = await readJsonObject(request);
   if (!body) return error('BAD_REQUEST', 400);
@@ -114,7 +114,12 @@ export const handleAddMember = requireStaff(async (request, env, ctx, url, { use
   if (!email) return error('INVALID_EMAIL', 400);
   const { ok, nickname } = parseNickname(body.nickname);
   if (!ok) return error('INVALID_NICKNAME', 400);
-  const inserted = await db.insertMember(env.DB, { email, nickname, addedBy: user.id, now: nowSec(env) });
+  const { session, inserted } = await db.insertMember(env.DB, {
+    email, nickname, actor: user, tokenHash, now: nowSec(env),
+  });
+  if (!session) return error('UNAUTHENTICATED', 401);
+  if (!can(session.role, 'add', 'member')) return error('NOT_STAFF', 403);
+  if (session.role !== user.role) return error('CONFLICT', 409);
   if (!inserted) return error('ALREADY_EXISTS', 409);
   return json({ email, nickname, role: 'member' }, 201);
 });
@@ -142,7 +147,7 @@ function targetEmail(params) {
  * 角色：目標是擁有者或要設成 owner 回 409 OWNER_PROTECTED；非擁有者回 403 OWNER_ONLY；值不合法 400 INVALID_ROLE。
  * 暱稱：依權限總表，不允許回 403 FORBIDDEN；超過 40 字 400 INVALID_NICKNAME。
  */
-export const handleUpdateMember = requireStaff(async (request, env, ctx, url, { user, params }) => {
+export const handleUpdateMember = requireStaff(async (request, env, ctx, url, { user, tokenHash, params }) => {
   const email = targetEmail(params);
   if (!email) return error('INVALID_EMAIL', 400);
   const body = await readJsonObject(request);
@@ -168,25 +173,26 @@ export const handleUpdateMember = requireStaff(async (request, env, ctx, url, { 
     changes.nickname = nickname;
   }
 
-  if (target.role === 'owner') {
-    const updated = await db.updateOwnerNickname(env.DB, { email, nickname: changes.nickname });
-    return updated ? json(updated) : error('CONFLICT', 409);
-  }
-  const updated = await db.updateMember(env.DB, { email, expectedRole: target.role, changes });
-  return updated ? json({ email: updated.email, nickname: updated.nickname, role: updated.role }) : error('CONFLICT', 409);
+  const updated = await db.updateMember(env.DB, {
+    email, expectedRole: target.role, changes, actor: user, tokenHash, now: nowSec(env),
+  });
+  return updated ? json(updated) : error('CONFLICT', 409);
 });
 
 /**
  * DELETE /api/admin/members/:email：只有擁有者可以移除成員或管理員，並讓對方的 session 立即失效。
  * 目標是擁有者回 409 OWNER_PROTECTED；其他人回 403 OWNER_ONLY。
  */
-export const handleRemoveMember = requireStaff(async (request, env, ctx, url, { user, params }) => {
+export const handleRemoveMember = requireStaff(async (request, env, ctx, url, { user, tokenHash, params }) => {
   const email = targetEmail(params);
   if (!email) return error('INVALID_EMAIL', 400);
   const target = await db.findAllowed(env.DB, email);
   if (!target) return error('NOT_FOUND', 404);
   if (target.role === 'owner') return error('OWNER_PROTECTED', 409);
   if (!can(user.role, 'remove', target.role, { self: target.email === user.email })) return error('OWNER_ONLY', 403);
-  if (!(await db.removeMember(env.DB, email))) return error('CONFLICT', 409);
+  const removed = await db.removeMember(env.DB, {
+    email, expectedRole: target.role, actor: user, tokenHash, now: nowSec(env),
+  });
+  if (!removed) return error('CONFLICT', 409);
   return noContent();
 });

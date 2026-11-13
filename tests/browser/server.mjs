@@ -51,7 +51,7 @@ export async function startFixtureServer() {
         return;
       }
       const name = pathname === '/' ? '/index.html' : pathname;
-      if (!/^\/(?:index\.html$|help\.html$|assets\/|en\/|ja\/)/.test(name) ||
+      if (!/^\/(?:index\.html$|help\.html$|admin\.html$|privacy\.html$|assets\/|en\/|ja\/)/.test(name) ||
           name.includes('\\') || name.split('/').some((part) => part.startsWith('.'))) {
         send(403); return;
       }
@@ -81,9 +81,10 @@ const HOP_HEADERS = new Set(['host', 'connection', 'keep-alive', 'transfer-encod
  * - 其餘請求原樣轉送，狀態碼、標頭、內容與 3xx 轉址都不改寫、不跟隨；
  * - 記錄每一次轉址（redirects）與 404（notFound），供 run.mjs 統計 auto-trailing-slash 的影響。
  * Worker 的 SITE_ORIGIN 設成這一層的 origin，與瀏覽器看到的一致。
+ * 可注入 startWorker 以準備該案例專用的資源與資料庫。
  */
-export async function startWorkerServer({ vars = {} } = {}) {
-  const { startLocalWorker } = await import('../helpers/worker-env.mjs');
+export async function startWorkerServer({ vars = {}, startWorker } = {}) {
+  startWorker ??= (await import('../helpers/worker-env.mjs')).startLocalWorker;
   const redirects = [];
   const notFound = [];
   let worker;
@@ -121,7 +122,7 @@ export async function startWorkerServer({ vars = {} } = {}) {
   });
   const origin = await listen(server);
   try {
-    worker = await startLocalWorker({ vars: { SITE_ORIGIN: origin, ...vars } });
+    worker = await startWorker({ vars: { SITE_ORIGIN: origin, ...vars } });
   } catch (error) {
     await closeServer(server);
     throw error;

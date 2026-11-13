@@ -8,7 +8,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { createTestDb, workerEnv, sessionTokenFrom, ROOT, TEST_SITE } from './helpers/worker-env.mjs';
+import { createTestDb, workerEnv, cookiePairFrom, sessionTokenFrom, ROOT, TEST_SITE } from './helpers/worker-env.mjs';
 import { startFakeGoogle } from './helpers/fake-google.mjs';
 import worker from '../worker/src/index.js';
 
@@ -90,7 +90,9 @@ test('A13 完整流程：回應 body、導回網址與 console 都不含機密�
       const start = await send(new Request(`${TEST_SITE}/api/auth/start?returnTo=%2Fja%2F`));
       const callbackUrl = await google.authorize(start.headers.get('location'));
       if (callbackUrl.searchParams.get('code')) authCodes.push(callbackUrl.searchParams.get('code'));
-      const callback = await send(new Request(callbackUrl.href));
+      const loginCookie = cookiePairFrom(start, '__Host-ll_oauth');
+      assert.ok(loginCookie);
+      const callback = await send(new Request(callbackUrl.href, { headers: { cookie: loginCookie } }));
       const token = sessionTokenFrom(callback);
       return token ? `__Host-ll_session=${token}` : null;
     };

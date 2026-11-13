@@ -277,6 +277,7 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now,
      * 回傳取消訂閱的函式。通知只是提示，訂閱者仍應自行重讀 meta 為準。
      */
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    notifyRestored({ revision, dataEpoch }) { changed(revision, dataEpoch); },
     /**
      * 關閉跨分頁通道（測試或頁面卸載時使用）；不影響已完成的寫入。
      */

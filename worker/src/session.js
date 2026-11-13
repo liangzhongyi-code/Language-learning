@@ -61,6 +61,34 @@ export function clearSessionCookie() {
 }
 
 /**
+ * 登入期間使用的瀏覽器綁定 cookie，與 session cookie 分開。
+ */
+const LOGIN_COOKIE = '__Host-ll_oauth';
+const LOGIN_COOKIE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * 設定或清除瀏覽器綁定 cookie；清除時傳空值及 0 秒。
+ */
+export function loginCookie(token, maxAge) {
+  return `${LOGIN_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+}
+
+/**
+ * 讀取綁定值；缺少、格式錯誤或有同名 cookie 時回 null。
+ */
+export function readLoginCookie(request) {
+  let token = null;
+  for (const part of (request.headers.get('cookie') ?? '').split(';')) {
+    const cookie = part.trim();
+    if (!cookie.startsWith(`${LOGIN_COOKIE}=`)) continue;
+    const value = cookie.slice(LOGIN_COOKIE.length + 1);
+    if (token !== null || !LOGIN_COOKIE_PATTERN.test(value)) return null;
+    token = value;
+  }
+  return token;
+}
+
+/**
  * 為使用者建立新 session，回傳 token 原文（只用於 Set-Cookie）。
  * 資料庫只保存 token 的 SHA-256。
  */

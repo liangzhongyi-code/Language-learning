@@ -1,6 +1,6 @@
 # 雲端主機、Google 登入與同步任務
 
-> 2026-11-13 · 分支 `feature/add-cloud-sync`（自 origin/main `51d36b9`）· 設計已核准，任務待核准。
+> 2026-11-13 · 分支 `feature/add-cloud-sync`（自 origin/main `51d36b9`）· 設計及任務均已核准。
 > 每個任務都照 RED → GREEN → REFACTOR：先寫會失敗的測試並親眼看到失敗，再寫最小實作。核准不代表完成，完成以驗證紀錄為準。
 > 驗收情境見 [specs/](specs/)；每個情境只對應一個主要任務（見文末「情境對照」）。
 
@@ -15,6 +15,13 @@
 - **提交方式**：每個任務完成後交付 commit 訊息；是否由 Claude 直接 commit 依使用者在第二道核准時的指示。
 
 ## 任務
+
+2026-11-13 狀態：T01～T22 已實作並完成本機驗證。T23 正式部署及真實帳號／實體裝置驗收尚未進行。
+
+- Node 全量：`node --test --test-concurrency=3`，1,458 項通過。
+- Chromium 全站：`npm run test:browser`，3 項執行器檢查與 31 個套件通過。
+- 本機 Worker 全站：`node tests/browser/run.mjs --suite all --server wrangler`，31 個套件通過；289 次 307，38 次帶查詢字串均保留，4 次 404 均為刻意查詢非網站路徑。H02 另驗 35 個非網站路徑全部 404。
+- 本機 Worker、D1、假 Google 及兩個隔離瀏覽器：`node tests/browser/cloud-worker-sync.mjs` 通過，涵蓋首次同步、取消預覽零寫入、雲端較新、衝突三個選項及壞快照。
 
 ### 第 1 段：主機骨架（Cloudflare Workers）
 

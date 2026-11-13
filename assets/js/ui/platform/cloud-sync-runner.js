@@ -207,17 +207,20 @@ export function createCloudSyncRunner({
   }
 
   /**
-   * 匯出、壓縮並上傳。force 用於使用者明確選擇（C08 選是、用這台的），不再比對 epoch。
+   * 匯出、壓縮並上傳。整組替換一律使尚未送出的舊上傳失效。
    * 回傳 'epoch-changed' 表示匯出期間本機被整組替換，需要重新判斷。
    */
-  async function upload(ifMatch, local, force) {
+  async function upload(ifMatch, local) {
     setState({ status: 'uploading', cloudRevision: ifMatch });
     const payload = await exportBackup();
     const exported = payload?.learning?.meta;
     const localRevision = isRevision(exported?.revision) ? exported.revision : local.revision;
     const localEpoch = isEpoch(exported?.dataEpoch) ? exported.dataEpoch : local.dataEpoch;
-    if (!force && localEpoch !== local.dataEpoch) return 'epoch-changed';
+    if (localEpoch !== local.dataEpoch) return 'epoch-changed';
     const bytes = await compress(JSON.stringify(payload), { maxBytes });
+    if (stopped || holding) return 'stopped';
+    if ((await store.ready()).dataEpoch !== localEpoch) return 'epoch-changed';
+    if (stopped || holding) return 'stopped';
     const uploadId = newUploadId();
     pendingUpload = { uploadId, ifMatch, localRevision, localEpoch };
     let result;
@@ -228,6 +231,7 @@ export function createCloudSyncRunner({
       throw error;
     }
     pendingUpload = null;
+    if (stopped) return 'stopped';
     baseline.set(accountId, { cloudRevision: result.revision, localRevision, localEpoch, origin: 'upload', paused: false });
     failures = 0;
     notBefore = 0;
@@ -253,10 +257,11 @@ export function createCloudSyncRunner({
       setState({ status: 'conflict', reason: 'revision-mismatch', cloudRevision: isRevision(error.current?.revision) ? error.current.revision : null, deferred: false });
       return;
     }
-    if (code === 'UNAUTHENTICATED' || code === 'FORBIDDEN') {
+    if (code === 'UNAUTHENTICATED' || code === 'FORBIDDEN' || code === 'ACCOUNT_CHANGED') {
       blocked = 'reauth';
       clearAllTimers();
-      setState({ status: 'reauth', reason: code === 'FORBIDDEN' ? 'forbidden' : 'unauthenticated' });
+      const reason = code === 'ACCOUNT_CHANGED' ? 'account-changed' : code === 'FORBIDDEN' ? 'forbidden' : 'unauthenticated';
+      setState({ status: 'reauth', reason });
       return;
     }
     if (code === 'TOO_LARGE') {
@@ -289,6 +294,7 @@ export function createCloudSyncRunner({
         for (let round = 0; round < 3; round++) {
           if (stopped || holding) return;
           const cloud = await api.meta();
+          if (stopped || holding) return;
           const meta = await store.ready();
           knownEpoch = meta.dataEpoch;
           let known = baseline.get(accountId);
@@ -304,7 +310,7 @@ export function createCloudSyncRunner({
           }
           pendingUpload = null;
           if (decision.action === 'upload') {
-            if (await upload(decision.ifMatch, local, false) === 'epoch-changed') continue;
+            if (await upload(decision.ifMatch, local) === 'epoch-changed') continue;
           } else {
             applyDecision(decision, cloud);
           }
@@ -321,21 +327,27 @@ export function createCloudSyncRunner({
    * 使用者明確要求的上傳（C08 選是、衝突時用這台的）；ifMatch 由 pickIfMatch 在鎖內決定。
    */
   function forcedUpload(pickIfMatch) {
-    if (stopped) return Promise.resolve(getState());
-    blocked = blocked === 'reauth' ? blocked : null;
+    if (stopped || blocked === 'reauth') return Promise.resolve(getState());
+    if (clock.now() < notBefore) return check();
+    const expectedEpoch = knownEpoch;
+    blocked = null;
+    let reconsider = false;
     return enqueue(async () => {
       try {
         await withLock(async () => {
+          if (stopped || holding || blocked === 'reauth') return;
+          if (clock.now() < notBefore) { reconsider = true; return; }
           const ifMatch = await pickIfMatch();
           const meta = await store.ready();
+          if (meta.dataEpoch !== expectedEpoch) { reconsider = true; return; }
           knownEpoch = meta.dataEpoch;
-          await upload(ifMatch, { revision: meta.revision, dataEpoch: meta.dataEpoch }, true);
+          reconsider = (await upload(ifMatch, { revision: meta.revision, dataEpoch: meta.dataEpoch })) === 'epoch-changed';
         });
         failures = 0;
       } catch (error) {
         handleError(error);
       }
-    }).then(() => getState());
+    }).then(() => reconsider ? check() : getState());
   }
 
   function beginHold() {
@@ -473,7 +485,11 @@ export function createCloudSyncRunner({
      */
     async resolveConflict(choice) {
       if (stopped) return getState();
-      if (choice === 'local') return forcedUpload(async () => (await api.meta()).revision);
+      if (choice === 'local') {
+        const expected = state.cloudRevision;
+        if (!isRevision(expected)) return check();
+        return forcedUpload(async () => expected);
+      }
       if (choice === 'cloud') { beginHold(); return getState(); }
       if (choice === 'later') {
         if (state.status === 'conflict') setState({ ...state, deferred: true });
@@ -494,7 +510,7 @@ export function createCloudSyncRunner({
         return result;
       } catch (error) {
         endHold();
-        if (error?.code === 'UNAUTHENTICATED' || error?.code === 'FORBIDDEN') handleError(error);
+        if (['UNAUTHENTICATED', 'FORBIDDEN', 'ACCOUNT_CHANGED'].includes(error?.code)) handleError(error);
         else check();
         throw error;
       }
@@ -504,6 +520,7 @@ export function createCloudSyncRunner({
      * revision、dataEpoch 是還原交易回傳的值；cloudRevision 省略時使用最近一次下載的雲端 revision。
      */
     recordCloudApplied({ revision, dataEpoch, cloudRevision = lastDownloadRevision } = {}) {
+      if (stopped) return Promise.resolve(getState());
       if (!isRevision(revision) || !isEpoch(dataEpoch) || !isRevision(cloudRevision)) {
         return Promise.reject(new TypeError('套用雲端後的版本資訊不合法。'));
       }
@@ -513,7 +530,9 @@ export function createCloudSyncRunner({
       knownEpoch = dataEpoch;
       if (blocked === 'too-large') blocked = null;
       endHold();
-      return check();
+      setState({ status: 'synced', reason: 'applied', cloudRevision });
+      void check();
+      return Promise.resolve(getState());
     },
     /**
      * 使用者取消套用雲端（或預覽失敗）：解除套用中並重新判斷；本機資料不變。

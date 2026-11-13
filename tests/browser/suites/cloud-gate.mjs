@@ -32,9 +32,14 @@ export async function run({ page, context, origin }) {
   const forbidden = () => requests.filter((url) => isApi(url) || isGoogle(url)).map((url) => url.href);
 
   const open = async (name, target = page) => {
-    await target.goto(`${origin}/${name}`);
+    await target.goto(`${origin}/${name}`, { waitUntil: 'domcontentloaded' });
     await target.locator('.topbar').waitFor();
-    await target.waitForLoadState('networkidle');
+    if (config?.siteOrigin === origin) {
+      await target.waitForFunction(() => {
+        const account = document.querySelector('[data-cloud-account]');
+        return account?.textContent.trim();
+      });
+    }
   };
   const loginEntries = (target = page) => target.locator('a[href*="api/"], [data-cloud-login]').count();
 
@@ -48,7 +53,6 @@ export async function run({ page, context, origin }) {
   await open('ja/quiz.html');
   await page.locator('[data-start]:not([disabled])').click();
   await page.locator('[data-start]').waitFor({ state: 'detached' });
-  await page.waitForLoadState('networkidle');
   assert.deepEqual(forbidden(), [], 'H05 未設定時不得發出 /api 或 Google 請求');
   console.log(`  H05 未設定：${PAGES.length} 頁共 ${requests.length} 個請求，/api 與 Google 0 個`);
 
@@ -65,20 +69,46 @@ export async function run({ page, context, origin }) {
       === document.querySelector(selector), BANNER), true, `H06 ${name} 搬家提示應緊接在導覽列下方`);
     const hrefs = await banner.locator('a').evaluateAll((links) => links.map((link) => link.href));
     assert.ok(hrefs.includes(NEW_SITE), `H06 ${name} 應有新網址連結：${hrefs}`);
-    assert.ok(hrefs.includes(`${origin}/help.html`), `H06 ${name} 應連到使用教學：${hrefs}`);
+    assert.ok(hrefs.includes(`${origin}/help.html#backup-code-guide`), `H06 ${name} 應連到代碼搬移教學：${hrefs}`);
     assert.ok(hrefs.includes(`${origin}/index.html#backup`), `H06 ${name} 應連到首頁的備份與還原：${hrefs}`);
     assert.match(await banner.innerText(), /備份代碼/, `H06 ${name} 應說明用備份代碼搬移紀錄`);
     assert.equal(await loginEntries(), 0, `H05 ${name} 舊站不得出現登入入口`);
   }
   assert.deepEqual(forbidden(), [], 'H05 舊站不得發出 /api 或 Google 請求');
 
-  /* 學習與備份照常：測驗能開始，首頁備份面板的匯出與匯入按鈕都在 */
+  /* 學習與備份照常：啟動測驗並透過首頁面板實際匯出、讀取及確認還原 */
   await open('en/quiz.html');
   await page.locator('[data-start]:not([disabled])').click();
   await page.locator('[data-start]').waitFor({ state: 'detached' });
   await open('index.html');
-  await page.locator('#backup button').first().waitFor();
-  assert.ok(await page.locator('#backup button').count() >= 2, 'H06 舊站的備份與還原面板應照常可用');
+
+  const backup = page.locator('#backup');
+  const confirmRestore = async () => {
+    await backup.locator('[data-confirm]').click();
+    await backup.getByText(/^已還原：/).waitFor();
+  };
+  await backup.locator('[data-file]').setInputFiles({
+    name: 'cloud-gate-fixture.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      format: 'lang-learn.backup', version: 1, exportedAt: 123,
+      progress: { schemaVersion: 1, items: { 'en-w-001': { n: 2, w: 1 } } },
+    })),
+  });
+  await confirmRestore();
+  await backup.locator('[data-copy-code]').click();
+  await page.waitForFunction(() => /^langlearn[01]:/.test(document.querySelector('#backup [data-code]')?.value));
+  const code = await backup.locator('[data-code]').inputValue();
+  await open('index.html');
+  await backup.locator('[data-code]').fill(code);
+  await backup.locator('[data-read-code]').click();
+  await confirmRestore();
+  assert.deepEqual(forbidden(), [], 'H05 舊站操作測驗及匯出、還原備份時不得發出 /api 或 Google 請求');
+
+  await page.locator(BANNER).getByRole('link', { name: '使用教學' }).click();
+  assert.equal(new URL(page.url()).hash, '#backup-code-guide', 'H06 教學連結應直接開啟備份代碼段落');
+  assert.match(await page.locator('#backup-code-guide').innerText(), /用一串代碼/);
+  await open('index.html');
 
   /* 關閉後同一瀏覽器不再顯示；關閉狀態只存在獨立 key，不進偏好（備份）*/
   const prefsBefore = await page.evaluate((key) => localStorage.getItem(key), PREFS_KEY);
