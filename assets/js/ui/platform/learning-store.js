@@ -53,11 +53,73 @@ export function storageMessage(error) {
 }
 
 /**
- * repository 與時間、舊來源皆可注入，供 Node 假 repository 與真瀏覽器共用同一份邏輯。
+ * 同源分頁之間傳遞學習資料變更的 BroadcastChannel 名稱。
  */
-export function createLearningStore({ repository, legacyStorage, now = Date.now }) {
+export const LEARNING_CHANNEL = 'lang-learn.learning';
+
+const CHANGE_MESSAGE = 'learning-change';
+
+/**
+ * 建立跨分頁通知用的 BroadcastChannel；環境不支援或建立失敗時回傳 null，呼叫端不必另外判斷。
+ */
+export function openLearningChannel(Channel = globalThis.BroadcastChannel, name = LEARNING_CHANNEL) {
+  if (typeof Channel !== 'function') return null;
+  try { return new Channel(name); } catch { return null; }
+}
+
+/**
+ * 其他分頁送來的訊息只接受固定形狀，其餘一律忽略。
+ */
+function changeFromMessage(data) {
+  if (!data || typeof data !== 'object' || data.type !== CHANGE_MESSAGE) return null;
+  if (!Number.isSafeInteger(data.revision) || data.revision < 0) return null;
+  if (typeof data.dataEpoch !== 'string' || !data.dataEpoch || data.dataEpoch.length > 128) return null;
+  return { revision: data.revision, dataEpoch: data.dataEpoch };
+}
+
+/**
+ * repository 與時間、舊來源皆可注入，供 Node 假 repository 與真瀏覽器共用同一份邏輯。
+ * channel 是選用的 BroadcastChannel（或同介面的物件）：本頁寫入成功後通知其他分頁，
+ * 其他分頁的通知則以 source: 'remote' 轉給本頁的 onChange 訂閱者。
+ */
+export function createLearningStore({ repository, legacyStorage, now = Date.now, channel = null }) {
   let readyPromise = null;
   const listeners = new Set();
+
+  /**
+   * 通知訂閱者 { revision, dataEpoch, source }；訂閱者的例外不得影響已完成的寫入。
+   */
+  function emit(change, source) {
+    const event = { revision: change.revision, dataEpoch: change.dataEpoch, source };
+    for (const listener of [...listeners]) {
+      try { listener({ ...event }); } catch { /* 訂閱者自己的錯誤不影響寫入結果 */ }
+    }
+  }
+
+  /**
+   * 寫入成功後才呼叫：先通知本頁，再廣播給同源的其他分頁；廣播失敗安全略過。
+   */
+  function changed(revision, dataEpoch) {
+    if (!Number.isSafeInteger(revision) || typeof dataEpoch !== 'string') return;
+    emit({ revision, dataEpoch }, 'local');
+    try { channel?.postMessage({ type: CHANGE_MESSAGE, revision, dataEpoch }); } catch { /* 分頁通知只是提示，失敗不影響寫入 */ }
+  }
+
+  /**
+   * 沒有 epoch 的寫入結果（例如清除）在寫入後重讀 meta 補上；讀取失敗就不通知。
+   */
+  async function changedAfter(result) {
+    try {
+      const meta = await repository.ready();
+      changed(result?.revision ?? meta.revision, result?.dataEpoch ?? meta.dataEpoch);
+    } catch { /* 通知失敗不影響已完成的寫入 */ }
+  }
+
+  function onRemote(event) {
+    const change = changeFromMessage(event?.data);
+    if (change) emit(change, 'remote');
+  }
+  try { channel?.addEventListener?.('message', onRemote); } catch { /* 不支援時只少了跨分頁通知 */ }
 
   /**
    * 遷移只做一次；之後每次呼叫都重讀 meta，revision／epoch 不會停在第一次的快照。
@@ -117,7 +179,7 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
       try {
         const result = await repository.commit({ operationId, epoch: meta.dataEpoch,
           expectedRevision: meta.revision, payload: { changes } }, { large });
-        for (const listener of listeners) listener(result);
+        changed(result?.revision, meta.dataEpoch);
         return { ...result, value: built?.value };
       } catch (error) {
         if (error?.code !== 'REVISION_CONFLICT' || attempt >= 3) throw error;
@@ -167,6 +229,7 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
     const result = await repository.clearLearning({ operationId: newOperationId('fresh', now()),
       epoch: meta.dataEpoch, expectedRevision: meta.revision });
     readyPromise = null;
+    await changedAfter(result);
     return result;
   }
 
@@ -175,7 +238,7 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
     const fresh = await repository.ready();
     const result = await repository.clearLearning({ operationId: newOperationId('clear', now()),
       epoch: fresh.dataEpoch, expectedRevision: fresh.revision });
-    for (const listener of listeners) listener(result);
+    await changedAfter(result);
     return { ...result, previousEpoch: meta.dataEpoch };
   }
 
@@ -202,14 +265,24 @@ export function createLearningStore({ repository, legacyStorage, now = Date.now 
     const meta = await repository.ready();
     const result = await repository.restoreLearning({ operationId: newOperationId('revert', now()),
       epoch: meta.dataEpoch, expectedRevision: meta.revision, payload: { restorePointKey } }, { reason: 'before-revert' });
-    for (const listener of listeners) listener(result);
+    await changedAfter(result);
     return result;
   }
 
   return {
     repository, ready, read, querySnapshot, commit, legacyView, recordQuizSession, clearAll, startFresh, exportBackup,
     restorePoints, revertToRestorePoint, now,
+    /**
+     * 訂閱寫入成功的通知：listener({ revision, dataEpoch, source })，source 為 'local' 或 'remote'（其他分頁）。
+     * 回傳取消訂閱的函式。通知只是提示，訂閱者仍應自行重讀 meta 為準。
+     */
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    /**
+     * 關閉跨分頁通道（測試或頁面卸載時使用）；不影響已完成的寫入。
+     */
+    close() {
+      try { channel?.removeEventListener?.('message', onRemote); channel?.close?.(); } catch { /* 已關閉 */ }
+    },
   };
 }
 
@@ -229,6 +302,7 @@ export function getLearningStore() {
         ? createNativeRepository({ invoke: native, timeZone: deviceTimeZone() })
         : createWebRepository({ timeZone: deviceTimeZone() }),
       legacyStorage,
+      channel: openLearningChannel(),
     });
     shared.storageKind = native ? 'native-sqlite' : 'indexeddb';
   }
