@@ -112,3 +112,24 @@ export async function findSession(db, tokenHash) {
 export async function deleteUserSessions(db, userId) {
   await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run();
 }
+
+/**
+ * 刪除單一 session。
+ */
+export async function deleteSession(db, tokenHash) {
+  await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run();
+}
+
+/**
+ * 刪除一位使用者在雲端的全部資料（快照、分塊、上傳紀錄、session、使用者列），同一個交易內完成。
+ * 白名單不在此處理。
+ */
+export async function deleteAccount(db, userId) {
+  await db.batch([
+    db.prepare('DELETE FROM snapshot_chunks WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM snapshots WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM upload_log WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
+  ]);
+}

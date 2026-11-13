@@ -4,7 +4,8 @@
  * 寫入類請求在找路由與讀 body 之前先檢查 Origin（A11）。
  */
 import { error } from './http.js';
-import { handleStart, handleCallback } from './auth.js';
+import { handleStart, handleCallback, handleLogout } from './auth.js';
+import { handleDeleteAccount } from './snapshot.js';
 import { checkOrigin, handleMe } from './access.js';
 
 /**
@@ -14,6 +15,8 @@ const routes = new Map([
   ['GET /api/auth/start', handleStart],
   ['GET /api/auth/callback', handleCallback],
   ['GET /api/me', handleMe],
+  ['POST /api/auth/logout', handleLogout],
+  ['DELETE /api/account', handleDeleteAccount],
 ]);
 
 export default {

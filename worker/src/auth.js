@@ -3,9 +3,10 @@
  * 前端只是一般連結到 /api/auth/start，Worker 負責 state、verifier 與換 token，前端不碰任何 token。
  */
 import { siteOrigin, nowSec, oauthEndpoints } from './config.js';
-import { randomToken, sha256Hex, sha256Bytes, base64url, createSession, sessionCookie } from './session.js';
+import { randomToken, sha256Hex, sha256Bytes, base64url, createSession, sessionCookie, clearSessionCookie } from './session.js';
 import * as db from './db.js';
-import { isEmailAllowed } from './access.js';
+import { isEmailAllowed, requireUser } from './access.js';
+import { noContent } from './http.js';
 
 /**
  * login_states 的有效期（秒）。
@@ -175,3 +176,11 @@ function decodeJwtPayload(jwt) {
 export function redirect(location, headers = {}) {
   return new Response(null, { status: 302, headers: { location, 'cache-control': 'no-store', ...headers } });
 }
+
+/**
+ * POST /api/auth/logout：刪除這個 session 並清除 cookie；同帳號其他裝置的 session 不受影響。
+ */
+export const handleLogout = requireUser(async (request, env, ctx, url, { tokenHash }) => {
+  await db.deleteSession(env.DB, tokenHash);
+  return noContent({ 'set-cookie': clearSessionCookie() });
+});

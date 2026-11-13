@@ -18,3 +18,10 @@ export function json(body, status = 200, headers = {}) {
 export function error(code, status, headers = {}) {
   return json({ error: code }, status, headers);
 }
+
+/**
+ * 回傳 204（無內容）；可附帶額外標頭（例如清除 cookie）。
+ */
+export function noContent(headers = {}) {
+  return new Response(null, { status: 204, headers: { 'cache-control': 'no-store', ...headers } });
+}
