@@ -11,7 +11,10 @@
     "check:preload": "node tools/build-preload.mjs --check",
     "test": "node --test",
     "test:browser": "node --test tests/browser/runner-checks.mjs && node tests/browser/run.mjs --suite all",
-    "serve": "npx -y serve ."
+    "serve": "npx -y serve .",
+    "build:site": "node tools/build-site.mjs",
+    "dev:worker": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "keywords": [
     "language-learning",
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "playwright": "1.62.1",
-    "ts-fsrs": "5.4.2"
+    "ts-fsrs": "5.4.2",
+    "wrangler": "4.156.0"
   }
 }

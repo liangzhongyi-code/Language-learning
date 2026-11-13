@@ -18,3 +18,7 @@ app/src-tauri/target/
 app/src-tauri/gen/schemas/
 *.keystore
 *.jks
+
+# Cloudflare Workers 靜態資源（由 tools/build-site.mjs 產生）與 wrangler 本機狀態
+dist-site/
+.wrangler/

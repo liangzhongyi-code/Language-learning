@@ -76,10 +76,10 @@
   1. 留在 GitHub Pages，API 另放 Workers。缺點是跨站 cookie，會被 Safari 等瀏覽器擋，還要處理 CORS。
   2. Cloudflare Pages 加 Functions。可行，但官方近年新功能主推 Workers。
   3. Workers 靜態資源加同一個 Worker 的 `/api/*`。
-- **Decision**：選 3。設定 `assets.directory: "."`，用 `.assetsignore` 排除非網站檔案，`run_worker_first: ["/api/*"]`。
-- **Rationale**：同網域 cookie 最單純，沒有 CORS。官方說明靜態資源請求「免費且不限量」，只有 API 請求消耗每天 10 萬次的額度。網站本身不需要建置步驟，可以直接發布。
+- **Decision**：選 3。`run_worker_first: ["/api/*"]`；靜態資源目錄是 `dist-site/`，由 `tools/build-site.mjs` 以白名單從專案複製網站檔案，wrangler 的 `build.command` 會在 dev 與 deploy 前自動執行。（實作時修訂，原本是 `directory: "."` 加 `.assetsignore`，見 Change Log v5。）
+- **Rationale**：同網域 cookie 最單純，沒有 CORS。官方說明靜態資源請求「免費且不限量」，只有 API 請求消耗每天 10 萬次的額度。網站本身仍不需要編譯，只做一次複製。
 - **Consequences**：
-  - `.assetsignore` 漏寫就會公開原始碼，由 H02 守住。
+  - 公開範圍由白名單決定，新增的資料夾預設不公開，由 H02 守住；新頁面要加入 `SITE_ENTRIES`。
   - 預設的 `html_handling: auto-trailing-slash` 會把 `/en/quiz.html` 以 307 轉到 `/en/quiz`。站內相對路徑仍然正確（同一層目錄），但每次站內換頁會多一次轉址、網址列不帶 `.html`。由 H01 實測，結果不可接受時改 Open Questions 的替代方案。
   - GitHub Pages 與 Workers 會是兩個 origin，瀏覽器資料不共通，需要搬家（H06）。
 
@@ -244,7 +244,7 @@ WHERE s.token_hash = ? AND s.expires_at > ?
 
 ```
 wrangler.jsonc               name、main、compatibility_date、assets（directory "."、run_worker_first）、d1_databases、vars
-.assetsignore                node_modules、app、tests、openspec、docs、tools、worker、.*、*.md、package*.json、wrangler.jsonc
+tools/build-site.mjs         以白名單複製 index／help／privacy／admin.html 與 en、ja、assets 到 dist-site/（不進版控）
 worker/src/index.js          路由
 worker/src/{auth,session,access,snapshot,admin,roles,db,http}.js
 admin.html                   管理後台頁
@@ -260,7 +260,7 @@ tests/browser/suites/cloud-*.mjs   wrangler dev 加假 Google 的端到端測試
 docs/cloud-setup.md          Cloudflare 與 Google Cloud 設定手冊（不含個人 email 或網址）
 ```
 
-`README.md`、`help.html` 與 `tests/structure.test.js` 要配合調整：`.assetsignore` 的覆蓋檢查要加入結構測試；`privacy.html` 要納入相對路徑與外部資源的檢查。
+`README.md`、`help.html` 與 `tests/structure.test.js` 要配合調整：結構測試要檢查每個頂層 html 都在白名單內；`privacy.html` 要納入相對路徑與外部資源的檢查。
 
 ## 7. Security
 - **機密**：Client Secret 只用 `wrangler secret put GOOGLE_CLIENT_SECRET` 保存；`GOOGLE_CLIENT_ID` 屬公開值，可以放 `vars`。Worker 不記錄 token、授權碼或 cookie 的原文。
@@ -291,7 +291,7 @@ docs/cloud-setup.md          Cloudflare 與 Google Cloud 設定手冊（不含�
 | 情境 | 層級 | 方法 |
 |---|---|---|
 | H01 | 端到端 | `wrangler dev` 上跑既有瀏覽器套件，部署後再對線上網址跑一次 |
-| H02 | 結構測試、端到端 | 檢查 `.assetsignore` 涵蓋清單；`wrangler dev` 逐一請求應回 404 |
+| H02 | 結構測試、端到端 | 檢查 `dist-site/` 只含白名單項目；本機 Worker 逐一請求應回 404 |
 | H03、H04 | Miniflare | 讀設定檔，並請求頁面與未知 API |
 | H05–H07 | 瀏覽器 | 以不同 origin（`serve` 本機、假舊站 origin）開頁，檢查網路紀錄與 DOM |
 | A01 | 瀏覽器 | 未登入時記錄全部請求：只有 `/api/me`，沒有 Google 網域 |
@@ -352,3 +352,4 @@ docs/cloud-setup.md          Cloudflare 與 Google Cloud 設定手冊（不含�
 - 2026-11-13：初版，待使用者核准。
 - 2026-11-13（v2）：使用者採用 TD-2、TD-4、TD-5、TD-6 與 C08 的方向，確認取代舊規格「不做自架伺服器」。追加管理後台：新增 [specs/cloud-admin.md](specs/cloud-admin.md)（M01–M10）、TD-9，白名單表加入 `nickname`、`is_admin`、`added_by`，並補上管理 API、安全、測試與部署步驟。
 - 2026-11-13（v3）：使用者要求改成三層角色。`is_admin` 改為 `role`（owner／admin／member）加上「最多一位擁有者」的唯一索引；擁有者是站長本人、只能用 SQL 設定且後台無法移除或降級；管理員可以新增成員但不能刪除；新增的人預設為成員。規格改為 M01–M14，TD-9 重寫，新增 `roles.js` 權限總表。
+- 2026-11-13（v5，實作 T01 時修訂）：靜態資源改由 `tools/build-site.mjs` 白名單複製到 `dist-site/`，取代 `directory: "."` 加 `.assetsignore`。原因：wrangler 會遞迴讀取整個資料夾後才過濾，專案內 17GB 的 `app/src-tauri/target` 讓本機 Worker 每次啟動要 68 秒；改用白名單後約 3 秒，且新增資料夾預設不公開。規格情境不變。

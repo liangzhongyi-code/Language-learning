@@ -19,7 +19,7 @@
 ### 第 1 段：主機骨架（Cloudflare Workers）
 
 **T01 wrangler 與 Worker 骨架**（標準，30 分）
-- 檔案：`package.json`（wrangler 鎖定版本、`dev:worker`、`deploy` 腳本）、`wrangler.jsonc`、`worker/src/index.js`、`worker/src/http.js`、`tests/worker-routing.test.js`、`tests/helpers/worker-env.mjs`。
+- 檔案：`package.json`（wrangler 鎖定版本、`build:site`、`dev:worker`、`deploy` 腳本）、`wrangler.jsonc`、`tools/build-site.mjs`、`worker/src/index.js`、`worker/src/http.js`、`tests/worker-routing.test.js`、`tests/helpers/worker-env.mjs`。
 - 相依：無。
 - 做法：
   - 設定 `assets.directory: "."` 與 `run_worker_first: ["/api/*"]`。
@@ -29,10 +29,10 @@
 - 成功：H03、H04 的測試先紅後綠；`npx wrangler dev` 能在本機開啟首頁。
 
 **T02 不公開非網站檔案**（簡單，15 分）
-- 檔案：`.assetsignore`、`tests/structure.test.js`。
+- 檔案：`tools/build-site.mjs`（T01 已建立）、`tests/structure.test.js`、`tests/build-site.test.js`。
 - 相依：T01。
 - 做法：
-  - 結構測試列出 repo 的頂層項目，逐一要求「網站需要」或「已被 `.assetsignore` 排除」二選一。之後新增資料夾卻沒有分類，測試就會失敗。
+  - 測試 `dist-site/` 只含白名單項目；結構測試要求每個頂層 `.html` 都在 `SITE_ENTRIES` 中，避免新頁面忘了發布。
   - 在 `wrangler dev` 上逐一請求 H02 列出的路徑。
 - 驗證：`node --test tests/structure.test.js`，以及 `node tests/browser/run.mjs --suite cloud-hosting`。
 - 成功：H02 先紅後綠。
