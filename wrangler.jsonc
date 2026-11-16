@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "lang-learn",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "71b237b9-227f-41d5-a357-94071fb24fec",
       "migrations_dir": "worker/migrations"
     }
   ],
