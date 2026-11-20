@@ -8,7 +8,7 @@
  * 只填 origin（協定＋主機＋port），不含路徑；部署步驟見設計文件 §10。
  */
 export const CLOUD_CONFIG = Object.freeze({
-  siteOrigin: '',
-  legacyOrigins: Object.freeze([]),
-  newSiteUrl: '',
+  siteOrigin: 'https://lang-learn.lang-learn.workers.dev',
+  legacyOrigins: Object.freeze(['https://liangzhongyi-code.github.io']),
+  newSiteUrl: 'https://lang-learn.lang-learn.workers.dev/',
 });

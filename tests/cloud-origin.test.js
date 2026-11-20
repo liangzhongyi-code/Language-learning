@@ -12,16 +12,25 @@ const CONFIG = {
   newSiteUrl: 'https://lang-learn.example.workers.dev/',
 };
 
-test('H05 預設設定全空、凍結，任何 origin 都不啟用雲端', () => {
+test('H05 正式設定凍結且合法；本機、APP 與其他網址一律不啟用雲端', () => {
   assert.deepEqual(Object.keys(CLOUD_CONFIG).sort(), ['legacyOrigins', 'newSiteUrl', 'siteOrigin']);
-  assert.equal(CLOUD_CONFIG.siteOrigin, '');
-  assert.deepEqual(CLOUD_CONFIG.legacyOrigins, []);
-  assert.equal(CLOUD_CONFIG.newSiteUrl, '');
   assert.ok(Object.isFrozen(CLOUD_CONFIG));
   assert.ok(Object.isFrozen(CLOUD_CONFIG.legacyOrigins));
-  for (const origin of ['https://lang-learn.example.workers.dev', 'https://someone.github.io', 'http://localhost:3000', 'null', '']) {
+  assert.equal(normalizeOrigin(CLOUD_CONFIG.siteOrigin), CLOUD_CONFIG.siteOrigin);
+  assert.equal(cloudMode(CLOUD_CONFIG.siteOrigin, CLOUD_CONFIG), 'cloud');
+  for (const origin of CLOUD_CONFIG.legacyOrigins) assert.equal(cloudMode(origin, CLOUD_CONFIG), 'legacy', origin);
+  assert.equal(newSiteHref(CLOUD_CONFIG), CLOUD_CONFIG.newSiteUrl);
+  for (const origin of ['http://localhost:3000', 'http://127.0.0.1:8787', 'tauri://localhost', 'http://tauri.localhost', 'https://someone.github.io', 'null', '']) {
     assert.equal(cloudMode(origin, CLOUD_CONFIG), 'off', origin);
   }
+});
+
+test('H05 設定全空時任何 origin 都不啟用雲端', () => {
+  const empty = { siteOrigin: '', legacyOrigins: [], newSiteUrl: '' };
+  for (const origin of ['https://lang-learn.example.workers.dev', 'https://someone.github.io', 'http://localhost:3000', 'null', '']) {
+    assert.equal(cloudMode(origin, empty), 'off', origin);
+  }
+  assert.equal(newSiteHref(empty), '');
 });
 
 test('H05／H07 origin 完全相同才算新網址；子網域、相似網域、不同 port 或協定都不算', () => {

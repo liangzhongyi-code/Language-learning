@@ -23,8 +23,8 @@
   ],
   "vars": {
     "ACCESS_MODE": "allowlist",
-    "GOOGLE_CLIENT_ID": "",
-    "SITE_ORIGIN": ""
+    "GOOGLE_CLIENT_ID": "621300033629-bf4tcqujr8ip46djqtn17mr97c579pmg.apps.googleusercontent.com",
+    "SITE_ORIGIN": "https://lang-learn.lang-learn.workers.dev"
   },
   "observability": {
     "enabled": true,

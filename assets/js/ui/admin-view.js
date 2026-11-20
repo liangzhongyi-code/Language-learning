@@ -15,7 +15,9 @@ const ERROR_MESSAGES = new Map([
   ['NOT_FOUND', '找不到這位成員，請重新整理名單。'],
   ['CONFLICT', '名單已變更，請重新整理後再試。'],
 ]);
-const DATE_FORMAT = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' });
+const DATE_FORMAT = new Intl.DateTimeFormat('zh-TW', {
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
 
 /**
  * 後台請求保留 Worker 錯誤碼，讓畫面能區分重複成員與權限失效。
@@ -198,15 +200,31 @@ export async function initAdminPage({
     cell.append(edit, form);
   }
 
+  /**
+   * 填入 email，只允許在 @ 前換行，避免長 email 撐寬表格或從字中間斷開。
+   */
+  function appendEmail(cell, email) {
+    if (typeof email !== 'string' || !email) {
+      cell.textContent = '—';
+      return;
+    }
+    const at = email.indexOf('@');
+    if (at <= 0) {
+      cell.textContent = email;
+      return;
+    }
+    cell.append(email.slice(0, at), doc.createElement('wbr'), email.slice(at));
+  }
+
   function renderMember(member) {
     const row = doc.createElement('tr');
-    row.insertCell().textContent = member.email;
+    appendEmail(row.insertCell(), member.email);
     row.insertCell().textContent = member.nickname ?? '—';
     const role = row.insertCell();
     role.textContent = ROLE_LABELS.get(member.role) ?? '—';
     if (!member.inAllowlist) role.append(' ', element('span', '不在名單'));
     appendTime(row.insertCell(), member.createdAt);
-    row.insertCell().textContent = member.addedBy ?? '—';
+    appendEmail(row.insertCell(), member.addedBy);
     appendTime(row.insertCell(), member.lastLoginAt, '尚未登入');
     row.insertCell().textContent = member.activeSessions > 0 ? '登入中' : '未登入';
     appendTime(row.insertCell(), member.snapshotUpdatedAt);
