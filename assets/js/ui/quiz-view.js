@@ -24,6 +24,8 @@ import { sessionCount, countChip, scopeState, scopeTotals, strandedReason } from
 import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
 import { levelLabel, levelsOf } from '../data/shared/levels.js';
 import { JLPT_KIND_KEYS, jlptKindKeyOf, jlptKindsAt } from '../core/jlpt-mondai.js';
+import { KANA_SCRIPTS, KANA_SCRIPT_KEYS, KANA_SCRIPT_LABEL, KANA_GROUPS, KANA_GROUP_KEYS, kanaEntries, kanaFilter } from '../core/kana-quiz.js';
+import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { awaitLearningStore } from './storage-gate.js';
@@ -36,7 +38,7 @@ const DIRECTION_LABEL = {
   mixed: { en: '混合', ja: '混合' },
 };
 
-const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀', jlpt: 'JLPT 模擬' };
+const SOURCE_LABEL = { words: '單字', sentences: '句型', mixed: '單字 + 句型', cloze: '填空', scene: '情境', reading: '閱讀', jlpt: 'JLPT 模擬', kana: '五十音' };
 
 /**
  * 一個題源至少要有幾題才能開局。
@@ -50,6 +52,12 @@ const minPoolOf = (source) => (source === 'jlpt' ? 1 : MIN_POOL);
  * 其餘題型的題面與選項語言是固定的，選了方向也不會有任何變化。
  */
 const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
+
+/**
+ * 五十音的出題方向。內部沿用 target2zh／zh2target，學習紀錄才不必新增方向；
+ * 畫面上說的是「看假名」「看羅馬音」，沒有中文的事。
+ */
+const KANA_DIRECTION_LABEL = { target2zh: '看假名選羅馬音', zh2target: '看羅馬音選假名', mixed: '兩種都出' };
 
 /**
  * 換不成假名的題源，各自的原因。
@@ -157,10 +165,10 @@ function underlinedHtml(text, underline) {
   return `<span>${esc(text.slice(0, at))}<u>${esc(underline)}</u>${esc(text.slice(at + underline.length))}</span>`;
 }
 
-export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], jlptReading = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
-  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'] };
+export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], jlptReading = [], kana = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
+  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana'] };
   const lazy = typeof dataProvider === 'function';
-  const loadedKeys = new Set(lazy ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt', 'jlptReading']);
+  const loadedKeys = new Set(lazy ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt', 'jlptReading', 'kana']);
   /**
    * JLPT 題庫按級別分檔載入：只練 N5 的人不下載 N1 讀解。
    * 這裡記已載入的級別與各級資料，jlpt／jlptReading 永遠是已載入各級的合集。
@@ -227,6 +235,14 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 不記進偏好：題型是這一局想加強什麼，跟漢字模式那種長期習慣不同。
      */
     mondai: [...JLPT_KIND_KEYS],
+    /**
+     * 五十音：哪一套、哪些範圍、哪個方向。預設是完全沒學過的人該開始的地方——
+     * 平假名、最前面 15 個、看假名選羅馬音。模式可由網址的 script 帶入，供對照表頁的按鈕使用。
+     * 方向另外存，不跟單字題的「中翻日」共用，兩邊的預設不同。
+     */
+    kanaScript: KANA_SCRIPT_KEYS.includes(params.get('script')) ? params.get('script') : 'hiragana',
+    kanaGroups: [KANA_GROUP_KEYS[0]],
+    kanaDirection: 'target2zh',
   };
 
   /**
@@ -234,7 +250,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
    * 其餘地方（級別、範圍、題數）就能跟其他題源走同一套計算。
    */
   const sourcePool = (source) => {
-    const pool = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading);
+    const pool = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana);
+    if (source === 'kana') return kanaFilter(pool, { script: config.kanaScript, groups: config.kanaGroups });
     return source === 'jlpt' ? pool.filter((item) => config.mondai.includes(jlptKindKeyOf(item))) : pool;
   };
 
@@ -268,6 +285,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
   let phase = 'setup';
   /* 閱讀短文的展開狀態，以 passageId 為鍵。重繪要靠它才不會把使用者的操作蓋掉 */
   let passageOpen = {};
+  /**
+   * 五十音題的對照表小抄。used 只在作答前翻開時成立，這一題會記成用過提示；
+   * 作答後再翻是對答案，不影響紀錄。key 換題就重來。
+   */
+  let kanaPeek = { key: null, open: false, used: false };
   /* 每題的回報說明與產生過的代碼；作答造成重繪時不能把使用者剛打的字洗掉 */
   const issueStates = new Map();
   /* 設定畫面最後一次算出來的範圍 id 與上限，start() 直接用它，畫面與實際才不會分家 */
@@ -307,6 +329,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         poolSizeCache.set(source, [1, 2, 3, 4, 5].reduce((sum, level) => sum + jlptCountAt(level), 0));
         return poolSizeCache.get(source);
       }
+      /* 五十音膠囊顯示假名總數，不受模式與範圍影響——沒選範圍時膠囊不能跟著消失 */
+      if (source === 'kana') return sourceReady(source) ? kana.length : dataMeta.kana || 0;
       const counts = { words: dataMeta.words, sentences: dataMeta.sentences,
         cloze: dataMeta.cloze ?? dataMeta.sentences, scene: dataMeta.scenes, reading: dataMeta.readingQuestions,
         mixed: source === 'mixed' ? poolSize('words') + poolSize('sentences') : 0 };
@@ -372,6 +396,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         if (sourceKeys[source].includes('sentences')) sentences = dataset.sentences;
         if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
         if (sourceKeys[source].includes('readings')) readings = dataset.readings;
+        if (sourceKeys[source].includes('kana')) kana = dataset.kana;
         sourceKeys[source].forEach((key) => loadedKeys.add(key));
       }
       poolSizeCache.clear();
@@ -507,6 +532,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         : [1, 2, 3, 4, 5].reduce((sum, level) => sum + mondaiCountAt(k.key, level), 0) }))
       .filter((k) => k.count > 0);
     const jlptPicked = jlptKinds.some((k) => config.mondai.includes(k.key));
+    const isKana = config.source === 'kana';
+    const kanaPicked = config.kanaGroups.length > 0;
+    /* 各範圍在目前模式下有幾題；混合模式一個音算兩題 */
+    const kanaAll = isKana ? kanaEntries(kana) : [];
+    const kanaCountOf = (key) => kanaFilter(kanaAll, { script: config.kanaScript, groups: [key] }).length;
 
     /**
      * 切換題型後，原本的級別可能不足四題。
@@ -563,6 +593,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         <div class="setting">
           <label>題型</label>
           <div class="chips">${chips('source', [
+            /* 五十音排最前面：它是其他題型的前提，只有日文有 */
+            ...(poolSize('kana') ? [['kana', `五十音（${poolSize('kana')}）`]] : []),
             ['words', `單字（${poolSize('words')}）`],
             ['sentences', `句型（${poolSize('sentences')}）`],
             ['mixed', `混合（${poolSize('mixed')}）`],
@@ -603,7 +635,37 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         }
 
         ${
-          lang === 'ja'
+          /**
+           * 五十音的模式、範圍與方向。假名是 N5 之前的東西，沒有 JLPT 難度可分，
+           * 也沒有漢字，所以下面那兩排都收起來。
+           */
+          isKana
+            ? `<div class="setting">
+          <label>模式</label>
+          <div class="chips">${chips('kanaScript', KANA_SCRIPTS.map((s) => [s.key, s.label]), config.kanaScript)}</div>
+          <p class="setting-note">${esc(KANA_SCRIPTS.find((s) => s.key === config.kanaScript).note)}</p>
+          <p class="setting-note">一個字都不認得也沒關係：先看一遍<a href="./kana.html">五十音對照表</a>，再回來猜猜看，答完會告訴你正解。</p>
+        </div>
+        <div class="setting">
+          <label>範圍（可複選）</label>
+          <div class="chips">${KANA_GROUPS.map(({ key, label }) =>
+            `<button class="chip" type="button" data-kana-group="${key}" aria-pressed="${config.kanaGroups.includes(key)}">${esc(label)}${
+              sourceReady('kana') ? `（${kanaCountOf(key)}）` : ''}</button>`
+          ).join('')}</div>
+          <p class="setting-note">${kanaPicked
+            ? KANA_GROUPS.filter((g) => config.kanaGroups.includes(g.key)).map((g) => esc(g.note)).join('<br>')
+            : '至少要選一個範圍才能開始。'}</p>
+        </div>
+        <div class="setting">
+          <label>怎麼考</label>
+          <div class="chips">${chips('kanaDirection', Object.entries(KANA_DIRECTION_LABEL), config.kanaDirection)}</div>
+          <p class="setting-note">羅馬音是用英文字母標出來的唸法，例如 あ 唸 a、か 唸 ka。</p>
+        </div>`
+            : ''
+        }
+
+        ${
+          lang === 'ja' && !isKana
             ? `<div class="setting">
           <label>JLPT 難度</label>
           <div class="chips">${chips(
@@ -660,7 +722,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
            * 開了也不會有任何變化——與其擺一顆按了沒反應的按鈕，
            * 不如收起來，另外用一行字說明為什麼這一局仍然是漢字。
            */
-          lang !== 'ja'
+          lang !== 'ja' || isKana
             ? ''
             : hasKanaVersion(config.source)
               ? `<div class="setting">
@@ -743,7 +805,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
 
         <div class="actions">
           <button class="btn" type="button" data-start ${sourceLoading || sourceError || !sourceReady(config.source)
-            || (config.source === 'jlpt' && !jlptPicked) ? 'disabled' : ''}>開始測驗</button>
+            || (config.source === 'jlpt' && !jlptPicked) || (isKana && !kanaPicked) ? 'disabled' : ''}>開始測驗</button>
         </div>
         <p class="setting-note quiz-backup-link">測驗紀錄會自動保存在這個瀏覽器；要匯出請到<a href="../index.html#backup">全站首頁的「備份與還原」</a>。</p>
       </div>`;
@@ -794,6 +856,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       });
     });
 
+    /* 五十音範圍複選，規則與 JLPT 題型相同 */
+    mount.querySelectorAll('[data-kana-group]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const key = chip.dataset.kanaGroup;
+        config.kanaGroups = KANA_GROUP_KEYS.filter((k) => (k === key) !== config.kanaGroups.includes(k));
+        lastSetup = null;
+        renderSetup();
+      });
+    });
+
     mount.querySelector('[data-start]').addEventListener('click', start);
     mount.querySelector('[data-source-retry]')?.addEventListener('click', () => {
       if (typeof onDataRetry === 'function') onDataRetry(config.source);
@@ -833,9 +905,12 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         readings,
         jlpt,
         jlptReading,
+        kana,
         source: config.source,
         mondai: config.source === 'jlpt' ? config.mondai : null,
-        direction: config.direction,
+        kanaScript: config.kanaScript,
+        kanaGroups: config.kanaGroups,
+        direction: config.source === 'kana' ? config.kanaDirection : config.direction,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
         level: null,
@@ -875,7 +950,25 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       session = saved.quiz;
       savedSessionId = saved.sessionId;
       config.source = session.source;
-      config.direction = session.direction;
+      if (session.source === 'kana') {
+        /* 保存的是題面不是設定：模式與範圍由題目反推，按「再玩一局」才會接著練同一類 */
+        const scripts = new Set(session.questions.map((q) => q.kanaScript));
+        config.kanaScript = scripts.size === 1 && KANA_SCRIPT_KEYS.includes([...scripts][0]) ? [...scripts][0] : 'mixed';
+        config.kanaDirection = session.direction;
+        /* 續答不經過選題源，對照表小抄要的假名表在這裡補載；載不到就只給連結，不擋續答 */
+        if (lazy && !loadedKeys.has('kana')) {
+          try {
+            kana = (await dataProvider('kana')).kana;
+            loadedKeys.add('kana');
+            poolSizeCache.clear();
+            levelIdCache.clear();
+          } catch {
+            /* 小抄改顯示對照表頁的連結 */
+          }
+        }
+        const groups = new Set(kanaEntries(kana).filter((e) => session.questions.some((q) => q.sourceId === e.id)).map((e) => e.group));
+        if (groups.size) config.kanaGroups = KANA_GROUP_KEYS.filter((k) => groups.has(k));
+      } else config.direction = session.direction;
       config.level = session.level ?? 'all';
       config.kanjiMode = saved.kanjiMode;
       config.count = session.questions.length;
@@ -1046,6 +1139,26 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     });
   }
 
+  /**
+   * 五十音題的對照表小抄：只放這一題那一套假名，收合著，需要才翻。
+   *
+   * 作答前翻開不擋也不扣分——完全不認得的人本來就該邊看邊記；
+   * 但這題等於是抄的，不能當作記住了，所以保存時標成用過提示，排程會早點再問一次。
+   */
+  function kanaPeekHtml(q, index, answered) {
+    const key = `${index}:${q.sourceId}`;
+    if (kanaPeek.key !== key) kanaPeek = { key, open: false, used: false };
+    if (!kana.length) return '<p class="setting-note"><a href="./kana.html">打開五十音對照表</a></p>';
+    const grids = KANA_SECTIONS.map((section) =>
+      `<p class="setting-label">${esc(section.label)}</p>${kanaGridHtml(section, kana, q.kanaScript, { compact: true })}`).join('');
+    return `
+      <details class="kana-peek" data-kana-peek ${kanaPeek.open ? 'open' : ''}>
+        <summary>${answered ? '對照五十音表' : '想不起來？翻五十音表'}</summary>
+        ${answered ? '' : '<p class="setting-note">先翻表再作答，對錯照樣記錄，但這題會當作還沒記住，早點再排回來複習。</p>'}
+        ${grids}
+      </details>`;
+  }
+
   function renderChoiceQuestion() {
     const index = session.cursor;
     const q = session.questions[index];
@@ -1058,8 +1171,10 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
      * 閱讀題的 speakText 是 null（整篇短文不提供朗讀），也要一起擋掉，
      * 否則會畫出一顆按了唸不出東西的按鈕。
      */
+    /* 五十音題由題面欄位判斷。唸出來就是答案，所以題面不放朗讀鍵，作答後才出現在正解旁 */
+    const isKana = Boolean(q.kanaScript);
     const promptSpeak =
-      q.direction === 'target2zh' && q.speakText
+      !isKana && q.direction === 'target2zh' && q.speakText
         ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
              data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">🔊</button>`
         : '';
@@ -1203,7 +1318,9 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         : '';
 
     /* 題型標籤：閱讀、JLPT 與情境有自己的名字，其餘顯示出題方向 */
-    const topLabel = isReading
+    const topLabel = isKana
+      ? `${SOURCE_LABEL.kana} · ${KANA_SCRIPT_LABEL[q.kanaScript]}`
+      : isReading
       ? SOURCE_LABEL.reading
       : isJlpt
         ? `${SOURCE_LABEL.jlpt} ${q.mondaiLabel}`
@@ -1220,14 +1337,18 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           ? `<div class="prompt jlpt-ask" lang="ja"><span>${esc(q.prompt)}</span></div>`
           : isJlpt
             ? `<div class="prompt jlpt-stem" lang="ja">${underlinedHtml(q.prompt, q.underline)}</div>`
-            : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
+            : isKana
+              ? `<div class="prompt kana-prompt" lang="${q.direction === 'target2zh' ? 'ja' : 'en'}">${esc(q.prompt)}</div>`
+              : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
         <div class="prompt-sub">${
           isReading ? '依短文內容作答'
             : isJlptReading ? `依文章內容作答${q.focusLabel ? `　·　考點：${esc(q.focusLabel)}` : ''}`
-              : isJlpt ? '選出最適合的答案' : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
+              : isJlpt ? '選出最適合的答案'
+                : isKana ? (q.direction === 'target2zh' ? `這個${KANA_SCRIPT_LABEL[q.kanaScript]}怎麼唸？選出它的羅馬音` : `哪一個${KANA_SCRIPT_LABEL[q.kanaScript]}唸作「${esc(q.prompt)}」？`)
+                  : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
         }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>
 
-        <div class="opts${
+        <div class="opts${isKana ? ' kana-opts' : ''}${
           /* 有一顆標了漢字，四顆就一起加行距——否則會排成高低不一的階梯 */
           q.options.some((o) => o.ruby?.some((p) => p.ruby)) ? ' has-ruby' : ''
         }">${options}</div>
@@ -1242,11 +1363,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           }</button>
           <button class="btn ghost" type="button" data-quit ${['saving', 'failed'].includes(saveState) ? 'disabled' : ''}>暫停這局</button>
         </div>
+        ${isKana ? kanaPeekHtml(q, index, answered) : ''}
       </div>`;
 
     /* 朗讀一律走 bindSpeakButtons 的事件委派，這裡只綁作答與流程控制 */
     mount.querySelectorAll('[data-opt]').forEach((button) => {
       button.addEventListener('click', () => choose(Number(button.dataset.opt)));
+    });
+    mount.querySelector('[data-kana-peek]')?.addEventListener('toggle', (event) => {
+      kanaPeek.open = event.currentTarget.open;
+      if (kanaPeek.open && q.answeredIndex === null) kanaPeek.used = true;
     });
     mount.querySelector('[data-passage]')?.addEventListener('toggle', (event) => {
       passageOpen[event.currentTarget.dataset.passage] = event.currentTarget.open;
@@ -1301,6 +1427,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
   function resetPlayState() {
     draft = null;
     passageOpen = {};
+    kanaPeek = { key: null, open: false, used: false };
     issueStates.clear();
   }
 
@@ -1657,6 +1784,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
 
         <div class="actions">
           <button class="btn" type="button" data-again>再玩一局</button>
+          ${session.source === 'kana' ? '<a class="btn ghost" href="./kana.html">看五十音對照表</a>' : ''}
           <a class="btn ghost" href="./index.html">回首頁</a>
         </div>
       </div>`;
@@ -1718,7 +1846,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       return;
     }
     if (!pendingReview) pendingReview = { sessionId: savedSessionId, index: target.cursor, response,
-      reviewId: newOperationId('quiz-rv'), answeredAt: Date.now() };
+      reviewId: newOperationId('quiz-rv'), answeredAt: Date.now(),
+      hintUsed: Boolean(target.questions[target.cursor].kanaScript) && kanaPeek.used };
     saveState = 'saving';
     updateQuestionSave();
     try {

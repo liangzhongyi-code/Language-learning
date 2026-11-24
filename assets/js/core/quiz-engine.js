@@ -15,6 +15,7 @@
 import { shuffle, sample } from './shuffle.js';
 import { speakTextOf } from './speech-text.js';
 import { kanaPool } from './kana.js';
+import { KANA_SCRIPT_KEYS, kanaEntries, kanaFilter, buildKanaQuestion } from './kana-quiz.js';
 import { jlptMondaiOf, jlptReadingTypeOf, jlptKindKeyOf, JLPT_READING_FOCUS } from './jlpt-mondai.js';
 
 /**
@@ -48,6 +49,7 @@ const SOURCE_KIND = {
   scene: 'choice',
   reading: 'choice',
   jlpt: 'choice',
+  kana: 'choice',
 };
 
 /**
@@ -220,8 +222,10 @@ export function pickDistractors(
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading) {
+export function poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana) {
   if (source === 'words') return [...(words || [])];
+  /* 五十音：一個音攤成平假名與片假名兩筆，各有自己的 id 與學習紀錄 */
+  if (source === 'kana') return kanaEntries(kana);
   /**
    * JLPT 讀解跟閱讀題一樣是「一篇對多題」，攤平成一題一筆，每一筆帶著自己那篇短文。
    * 題目 id 就是 sourceId，所以同一篇的不同題各自排程、互不影響。
@@ -723,12 +727,20 @@ export function buildSession({
   jlpt,
   /* JLPT 讀解短文組，與 jlpt 同屬 jlpt 題源 */
   jlptReading,
+  /* 五十音的假名表，只有 kana 題源會用到 */
+  kana,
   source = 'words',
   /**
    * JLPT 模擬題只出這些題型（core/jlpt-mondai.js 的 key，例如 moji-2）。
    * null 表示全部題型；其他題源忽略此參數。
    */
   mondai = null,
+  /**
+   * 五十音要練哪一套（core/kana-quiz.js 的 key）與哪些範圍，其他題源忽略這兩個參數。
+   * 範圍連選項一起限制：只學過あ行的人不該在選項裡看到沒學過的字。
+   */
+  kanaScript = 'hiragana',
+  kanaGroups = [],
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
   /**
@@ -754,16 +766,22 @@ export function buildSession({
   count = 10,
   rng = Math.random,
 }) {
-  const all = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading);
+  const all = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana);
   if (level !== null && (!Number.isInteger(level) || level < 1 || level > 5)) {
     throw new Error(`難度不合法：${level}。請選 N5 到 N1。`);
   }
   if (source === 'jlpt' && mondai !== null && (!Array.isArray(mondai) || !mondai.length)) {
     throw new Error('至少要選一種題型才能出題。');
   }
+  if (source === 'kana') {
+    if (!KANA_SCRIPT_KEYS.includes(kanaScript)) throw new Error('不認得的五十音模式，請選平假名、片假名或混合。');
+    if (!Array.isArray(kanaGroups) || !kanaGroups.length) throw new Error('至少要選一個範圍才能出題。');
+  }
   const base = source === 'jlpt' && mondai !== null
     ? all.filter((item) => mondai.includes(jlptKindKeyOf(item)))
-    : all;
+    : source === 'kana'
+      ? kanaFilter(all, { script: kanaScript, groups: kanaGroups })
+      : all;
 
   /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
   const leveled = level === null ? base : base.filter((item) => item.level === level);
@@ -823,7 +841,7 @@ export function buildSession({
    * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。
    * 一局 10 題感覺不出來，但題數選「全部」時是 7608 題 × 7608 筆的差別。
    */
-  const byCategory = kind === 'choice' && !['scene', 'reading', 'jlpt'].includes(source)
+  const byCategory = kind === 'choice' && !['scene', 'reading', 'jlpt', 'kana'].includes(source)
     ? indexByCategory(pool)
     : null;
 
@@ -833,6 +851,7 @@ export function buildSession({
     if (source === 'jlpt') return buildJlptQuestion(item, { rng });
     if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
+    if (source === 'kana') return buildKanaQuestion(item, pool, { direction: dir, rng });
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });
   });
 

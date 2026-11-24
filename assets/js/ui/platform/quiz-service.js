@@ -10,7 +10,7 @@ import { canonicalJson } from '../../core/learning-operations.js';
 import { loadReviewContext, reviewChanges } from './review-commit.js';
 import { newOperationId } from './learning-store.js';
 
-const SOURCES = ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading', 'jlpt'];
+const SOURCES = ['words', 'sentences', 'mixed', 'cloze', 'scene', 'reading', 'jlpt', 'kana'];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const fail = (code, message) => { throw new LearningError(code, message); };
 
@@ -100,8 +100,9 @@ export function createQuizService({ store, lang, now = Date.now }) {
   /**
    * 使用已保存題面判題，不接受外部替換選項。重送核對原題次、答案與漢字模式；
    * 同題另一個 reviewId 拒絕，清除／還原後舊頁不能重新提交。
+   * hintUsed 表示作答前翻過對照表：對錯照實記，排程當作還沒記住，與練習頁的提示同一規則。
    */
-  async function submit({ sessionId, index, response, reviewId, answeredAt = now() }) {
+  async function submit({ sessionId, index, response, reviewId, answeredAt = now(), hintUsed = false }) {
     const epoch = epochs.get(sessionId);
     if (!epoch) fail('STALE_PLAN', '請先重新開啟這一局。');
     const responseSnapshot = clone(response);
@@ -130,7 +131,7 @@ export function createQuizService({ store, lang, now = Date.now }) {
         }
         if (isAnswered(original) || index !== round.quiz.cursor || session.status !== 'active') fail('ENTRY_CONFLICT', '這題已提交或尚未輪到。');
         const event = createReviewEvent({ sessionId, entryId, planId: null, question: q, lang, source: session.source,
-          now: answeredAt, reviewId, answerContext: { submitted: true, kanjiMode: round.kanjiMode } });
+          now: answeredAt, reviewId, answerContext: { submitted: true, kanjiMode: round.kanjiMode, hintUsed } });
         const { applied, changes } = reviewChanges({ event, context: rows.context, timeZone: meta.timeZone, now: answeredAt });
         session.questionSnapshots[entryId] = { ...q, ...(index === 0 ? { quizSettings: rows.session.questionSnapshots[entryId].quizSettings } : {}) };
         session.submittedReviewIds.push(reviewId);

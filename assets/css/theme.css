@@ -984,6 +984,36 @@ html.no-speech .speak { display: none !important; }
 .kana.blank { visibility: hidden; pointer-events: none; }
 .kana .glyph { font-size: 25px; font-family: var(--font-display); line-height: 1.2; }
 .kana .glyph em { font-style: normal; color: var(--mute); font-size: 17px; margin-left: 5px; }
+/* 並列時兩套一樣大，只用顏色分左右：片假名不是附註，是要一起背的另一套 */
+.kana .glyph { display: block; }
+.kana .glyph .hira + .kata { margin-left: 8px; color: var(--accent); }
+.kana .romaji, .kana .sub, .kana .example { display: block; }
+.kana-table { align-items: stretch; }
+.kana-col, .kana-rowhead {
+  color: var(--dim);
+  font-size: 13px;
+  text-align: center;
+  align-self: center;
+  white-space: nowrap;
+}
+.kana-col { font-family: var(--font-mono); }
+.kana-table .glyph { font-size: 30px; }
+.kana-table .romaji { font-size: 15px; }
+/* 仍以整個詞為單位換行；只有「ほんをよむ」這種比格子還寬的詞才從中間折 */
+.kana-table .example { font-size: 13px; overflow-wrap: anywhere; }
+.kana-table.is-compact .romaji { font-size: 13px; }
+.kana-table.is-compact { gap: 4px; padding: var(--size-2) 0; }
+.kana-table.is-compact .kana { padding: 6px 3px; box-shadow: none; }
+.kana-table.is-compact .glyph { font-size: 20px; }
+.kana-intro ul { margin: 0 0 var(--size-3); padding-left: 1.2em; line-height: 1.8; }
+.kana-intro h2 { font-size: 18px; margin: 0 0 var(--size-2); }
+.kana-intro { margin-bottom: var(--size-4); }
+
+/* 測驗頁的五十音題：假名是題目本身，要大；選項也放大一級 */
+.prompt.kana-prompt { font-size: 72px; line-height: 1.25; justify-content: center; margin: var(--size-3) 0 var(--size-2); }
+.kana-opts .opt { font-size: 22px; }
+.kana-peek { margin-top: var(--size-4); }
+.kana-peek > summary { cursor: pointer; color: var(--accent); font-size: 14px; padding: 12px 0; }
 .kana .romaji { font-size: 11px; color: var(--accent); letter-spacing: 0.06em; margin-top: 4px; }
 .kana .sub { font-size: 10px; color: var(--mute); margin-top: 2px; }
 /**
@@ -1631,6 +1661,18 @@ html.no-lines .gap-mid svg { display: none; }
   .kana .romaji, .kana .example { font-size: 11px; }
   /* 這一格裡是假名字元（が ← か），不是純裝飾，要看得清楚 */
   .kana .sub { font-size: 11px; }
+  /**
+   * 對照表多一欄行標題，並列時一格要放兩個字：
+   * 字縮到 20px、間距縮小，375 寬的手機五欄仍排得下。
+   */
+  .kana-table { gap: 4px; }
+  .kana-table .kana { padding: 10px 2px; }
+  .kana-table .glyph { font-size: 20px; }
+  .kana-table.is-compact .glyph { font-size: 19px; }
+  .kana .glyph .hira + .kata { margin-left: 3px; }
+  .kana-table .romaji { font-size: 13px; }
+  .kana-table .example { font-size: 11px; }
+  .kana-col, .kana-rowhead { font-size: 12px; }
 
   /* 字母卡只有一欄一個字母，沒有五十音的欄數限制，維持原本的寬鬆排版 */
   .letter-grid { gap: var(--size-2); }
@@ -1663,6 +1705,10 @@ html.no-lines .gap-mid svg { display: none; }
   .kana .glyph { font-size: 20px; }
   .kana .glyph em { font-size: 13px; margin-left: 2px; }
   .kana .romaji, .kana .example { font-size: 10px; }
+  .kana-table .example { font-size: 10px; }
+  .kana-table { gap: 3px; }
+  .kana-table .kana { padding: 8px 1px; }
+  .kana-table .glyph { font-size: 18px; }
 }
 
 /* 標籤的上限只在真的擠的時候才給 */

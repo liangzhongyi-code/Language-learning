@@ -3,7 +3,7 @@
  *
  * 兩頁共用同一組視覺元件（.kana-grid / .kana），差別只在格子內容與排法：
  *   - 英文：26 張卡，auto-fill 流式排列，卡上多一行 IPA 與可獨立朗讀的例字
- *   - 日文：四個 <details> 區塊，每個區塊是固定欄數的假名表，缺的段位補空白格
+ *   - 日文：五十音對照表，四個 <details> 區塊；格子由 kana-chart.js 產生，與測驗頁的小抄共用
  *
  * 朗讀全部交給 speech.js 的 bindSpeakButtons 事件委派處理。
  * 卡片本身也帶 data-speak，所以「點卡片唸單元、點例字喇叭唸例字」
@@ -13,6 +13,8 @@
 
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
+import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
+import { KANA_SCRIPTS } from '../core/kana-quiz.js';
 
 /**
  * HTML 逸出，避免資料裡的角括號或引號破壞結構
@@ -70,108 +72,13 @@ export function initAlphabetPage({ letters, mount, noticeHost } = {}) {
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 五段（清音／濁音／半濁音共用）
- */
-const VOWEL_COLUMNS = ['a', 'i', 'u', 'e', 'o'];
-
-/**
- * 拗音的三段
- */
-const YOUON_COLUMNS = ['ya', 'yu', 'yo'];
-
-/**
- * 四個區塊的行列定義。
- * rows 用資料檔的 row 欄位，columns 用 column 欄位，
- * 交集找不到資料的位置就是表格裡該留的空位。
- */
-const SECTIONS = [
-  {
-    type: 'seion',
-    label: '清音',
-    rows: ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ', 'ん'],
-    columns: VOWEL_COLUMNS,
-  },
-  {
-    type: 'dakuon',
-    label: '濁音',
-    rows: ['が', 'ざ', 'だ', 'ば'],
-    columns: VOWEL_COLUMNS,
-  },
-  {
-    type: 'handakuon',
-    label: '半濁音',
-    rows: ['ぱ'],
-    columns: VOWEL_COLUMNS,
-  },
-  {
-    type: 'youon',
-    label: '拗音',
-    rows: ['き', 'し', 'ち', 'に', 'ひ', 'み', 'り', 'ぎ', 'じ', 'び', 'ぴ'],
-    columns: YOUON_COLUMNS,
-  },
-];
-
-/**
  * 假名顯示模式
  */
 const MODES = [
   { key: 'hiragana', label: '平假名' },
   { key: 'katakana', label: '片假名' },
-  { key: 'both', label: '兩者並列' },
+  { key: 'both', label: '平假名＋片假名' },
 ];
-
-/**
- * 依模式決定 glyph 要顯示什麼。
- * both 模式把片假名放進 <em>，CSS 會把它縮小並淡化成附註。
- */
-function glyphHtml(item, mode) {
-  if (mode === 'hiragana') return esc(item.hiragana);
-  if (mode === 'katakana') return esc(item.katakana);
-  return `${esc(item.hiragana)}<em>${esc(item.katakana)}</em>`;
-}
-
-/**
- * 一格假名。item 為 null 代表這個段位沒有假名，
- * output 一個 .kana.blank 佔位格讓後面的格子不會往前遞補。
- *
- * 拗音的 hiragana／katakana 本來就是兩個字元，直接整串交給語音引擎，
- * 不會被拆成兩次朗讀。
- */
-function kanaCellHtml(item, mode) {
-  if (!item) return '<div class="kana blank"></div>';
-
-  const speakText = mode === 'katakana' ? item.katakana : item.hiragana;
-  const sub = item.seionSource ? `<div class="sub">← ${esc(item.seionSource)}</div>` : '';
-
-  return (
-    `<button class="kana" data-speak="${esc(speakText)}" data-speak-lang="ja">` +
-    `<div class="glyph">${glyphHtml(item, mode)}</div>` +
-    `<div class="romaji">${esc(item.romaji)}</div>` +
-    sub +
-    `<div class="example">${esc(item.exampleWord)} ${esc(item.exampleZh)}</div>` +
-    '</button>'
-  );
-}
-
-/**
- * 產生一個區塊的所有格子。
- * 每一行固定輸出 columns.length 格，缺的補空白格，表格才會真的對齊成格狀。
- */
-function sectionGridHtml(section, items, mode) {
-  return section.rows
-    .map((row) => {
-      const cells = section.columns
-        .map((column) => {
-          const item = items.find(
-            (k) => k.type === section.type && k.row === row && k.column === column
-          );
-          return kanaCellHtml(item || null, mode);
-        })
-        .join('');
-      return `<div class="kana-row">${cells}</div>`;
-    })
-    .join('');
-}
 
 /**
  * 模式切換列
@@ -186,7 +93,25 @@ function chipsHtml(mode) {
 }
 
 /**
- * 掛載日文假名頁。
+ * 給第一次看這張表的人的說明
+ */
+function introHtml() {
+  return `
+    <div class="card kana-intro">
+      <h2>怎麼看這張表</h2>
+      <ul>
+        <li>日文的每個音有兩種寫法：<b>平假名</b>（左邊，<span lang="ja">あ</span>）和<b>片假名</b>（右邊，<span lang="ja">ア</span>），唸法一模一樣。下面的英文字母是<b>羅馬音</b>，也就是唸法。</li>
+        <li>橫著看是同一行、同一個子音（か行：ka ki ku ke ko）；直著看是同一個母音（a 那一直排：a ka sa ta…）。</li>
+        <li>點格子會唸給你聽。先背清音 46 個平假名，其他都是從它變出來的。</li>
+      </ul>
+      <p class="setting-label">看過一遍就來練選擇題</p>
+      <div class="actions">${KANA_SCRIPTS.map((s, i) =>
+        `<a class="btn${i ? ' ghost' : ''}" href="./quiz.html?source=kana&amp;script=${s.key}">練${esc(s.label)}</a>`).join('')}</div>
+    </div>`;
+}
+
+/**
+ * 掛載五十音對照表頁。
  *
  * 四個區塊只建立一次，切換模式時僅重填格子內容，
  * 這樣 <details> 的展開／收合狀態不會被重繪洗掉。
@@ -198,27 +123,26 @@ export function initKanaPage({ kana, mount, noticeHost } = {}) {
   const known = MODES.some((m) => m.key === loadPrefs().kanaMode);
   let mode = known ? loadPrefs().kanaMode : 'both';
 
-  const sectionsHtml = SECTIONS.map((section, index) => {
+  const sectionsHtml = KANA_SECTIONS.map((section, index) => {
     const count = items.filter((k) => k.type === section.type).length;
-    const columns = section.columns.length;
     return (
       `<details class="kana-section"${index === 0 ? ' open' : ''}>` +
       `<summary>${esc(section.label)}<span class="n">${count} 個</span></summary>` +
-      `<div class="kana-grid" data-section="${section.type}"` +
-      ` style="grid-template-columns:repeat(${columns},minmax(0,1fr))"></div>` +
+      `<p class="setting-note">${esc(section.note)}</p>` +
+      `<div data-grid="${section.type}"></div>` +
       '</details>'
     );
   }).join('');
 
-  mount.innerHTML = chipsHtml(mode) + sectionsHtml;
+  mount.innerHTML = introHtml() + chipsHtml(mode) + sectionsHtml;
 
   /**
    * 依目前模式重填四個區塊的格子
    */
   const paint = () => {
-    SECTIONS.forEach((section) => {
-      const grid = mount.querySelector(`.kana-grid[data-section="${section.type}"]`);
-      if (grid) grid.innerHTML = sectionGridHtml(section, items, mode);
+    KANA_SECTIONS.forEach((section) => {
+      const host = mount.querySelector(`[data-grid="${section.type}"]`);
+      if (host) host.innerHTML = kanaGridHtml(section, items, mode);
     });
   };
 

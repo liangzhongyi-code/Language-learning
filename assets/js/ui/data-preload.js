@@ -17,14 +17,16 @@
   let files = [`${lang}-words-${level}`];
   if (page === 'quiz') {
     /**
-     * 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題與 JLPT 模擬題），否則單字全庫。
+     * 與 quiz-view 相同：網址題源有效且這個語言有題才採用（英文沒有情境題、JLPT 模擬題與五十音），否則單字全庫。
      * JLPT 題庫按級別分檔，測驗頁選 JLPT 時預設今日學習的級別，所以只預載那一級。
      */
     const source = new URLSearchParams(window.location.search).get('source');
     const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
-      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'] };
+      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'], kana: lang === 'ja' ? ['kana'] : ['words'] };
     const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
-    files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`) : [`${lang}-${field}`]);
+    /* 五十音沿用對照表頁的資料檔，不在 catalog 目錄底下 */
+    files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`)
+      : field === 'kana' ? [`../${lang}/kana`] : [`${lang}-${field}`]);
   }
   for (const name of files) {
     const link = document.createElement('link');
