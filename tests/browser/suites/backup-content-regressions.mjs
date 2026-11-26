@@ -70,7 +70,7 @@ export async function run({ page, origin }) {
       ...(await import('/assets/js/core/feedback-policy.js')).defaultFeedbackPrefs(),
     }));
     const alternatives = { theme: ['dark', 'light'], palette: ['classic', 'forest'], background: ['aurora', 'plain'],
-      kanaMode: ['both', 'hiragana'], readingAskIn: ['zh', 'target'], kanjiMode: ['show', 'kana'] };
+      style: ['modern', 'soft'], kanaMode: ['both', 'hiragana'], readingAskIn: ['zh', 'target'], kanjiMode: ['show', 'kana'] };
     for (const [key, value] of Object.entries(defaults)) {
       const changed = typeof value === 'boolean' ? !value : alternatives[key]?.find(candidate => candidate !== value);
       assert.notEqual(changed, undefined, `新增偏好 ${key} 須補合法變更案例與備份判定`);

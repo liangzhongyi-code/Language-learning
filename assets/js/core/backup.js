@@ -11,7 +11,7 @@
 
 import { validatePlainJson, validateStats, validateProgress } from './learning-schema.js';
 import { BACKUP_JSON_MAX_BYTES } from './backup-limits.js';
-import { PALETTES, BACKGROUNDS } from './appearance.js';
+import { PALETTES, BACKGROUNDS, STYLES } from './appearance.js';
 
 /**
  * 檔案的識別字串。
@@ -38,6 +38,7 @@ const prefModes = {
   theme: ['dark', 'light'],
   palette: PALETTES.map(item => item.value),
   background: BACKGROUNDS.map(item => item.value),
+  style: STYLES.map(item => item.value),
   kanaMode: ['hiragana', 'katakana', 'both'],
   readingAskIn: ['zh', 'target'],
   kanjiMode: ['show', 'ruby', 'kana'],

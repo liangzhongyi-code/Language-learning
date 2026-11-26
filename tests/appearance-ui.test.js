@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { PALETTES, BACKGROUNDS, normalizeAppearance } from '../assets/js/core/appearance.js';
+import { PALETTES, BACKGROUNDS, STYLES, normalizeAppearance } from '../assets/js/core/appearance.js';
 
 /**
  * 執行真實 prefs 與外觀模組，僅用小型 DOM／儲存替身測跨模組事件。
@@ -17,6 +17,7 @@ function harness(initial = {}, fail = false, navEntry = null) {
     ...['dark', 'light'].map((value) => ({ type: 'radio', value, dataset: { appearance: 'theme' } })),
     ...PALETTES.map(({ value }) => ({ type: 'radio', value, dataset: { appearance: 'palette' } })),
     ...BACKGROUNDS.map(({ value }) => ({ type: 'radio', value, dataset: { appearance: 'background' } })),
+    ...STYLES.map(({ value }) => ({ type: 'radio', value, dataset: { appearance: 'style' } })),
     { type: 'checkbox', dataset: { appearance: 'reducedEffects' } },
   ];
   const status = { textContent: '' };
@@ -49,7 +50,7 @@ function harness(initial = {}, fail = false, navEntry = null) {
   const banners = [];
   const renderLegacyBanner = (anchor, base) => { banners.push({ anchor, base }); return null; };
   const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});',
-    { window, document, Event, PALETTES, BACKGROUNDS, normalizeAppearance, renderLegacyBanner, cloudMode: () => 'off', CLOUD_CONFIG: {} });
+    { window, document, Event, PALETTES, BACKGROUNDS, STYLES, normalizeAppearance, renderLegacyBanner, cloudMode: () => 'off', CLOUD_CONFIG: {} });
   if (navEntry) api[navEntry]();
   else api.bindAppearance();
   return { ...api, banners, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
@@ -81,14 +82,18 @@ test('外觀設定寫入同一份 prefs，且保留漢字與學習設定', () =>
   const h = harness({ kanjiMode: 'kana', grammarLines: false });
   h.setAppearance('palette', 'forest');
   h.setAppearance('background', 'dust');
+  h.setAppearance('style', 'editorial');
   h.setAppearance('theme', 'light');
   const prefs = JSON.parse(h.values.get(h.key));
   assert.equal(prefs.kanjiMode, 'kana');
   assert.equal(prefs.grammarLines, false);
   assert.equal(prefs.palette, 'forest');
   assert.equal(prefs.background, 'dust');
+  assert.equal(prefs.style, 'editorial');
+  assert.equal(h.document.documentElement.dataset.style, 'editorial');
   assert.equal(h.document.documentElement.dataset.theme, 'light');
   assert.equal(h.controls.find((c) => c.value === 'forest').checked, true);
+  assert.equal(h.controls.find((c) => c.value === 'editorial').checked, true);
   assert.match(h.status.textContent, /已套用並儲存/);
 });
 

@@ -11,7 +11,7 @@
  * 同一次點擊被處理兩次（stopPropagation 擋不住同一節點上的其他監聽器）。
  */
 
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
 import { KANA_SCRIPTS } from '../core/kana-quiz.js';
@@ -45,7 +45,7 @@ function letterCardHtml(letter) {
     '<div class="ex-row">' +
     `<span class="example">${esc(letter.exampleWord)} ${esc(letter.exampleZh)}</span>` +
     `<span class="speak" data-speak="${esc(letter.exampleWord)}" data-speak-lang="en"` +
-    ' title="朗讀例字" aria-label="朗讀例字">🔊</span>' +
+    ` title="朗讀例字" aria-label="朗讀例字">${SPEAK_ICON}</span>` +
     '</div>' +
     '</button>'
   );

@@ -21,6 +21,7 @@ const DEFAULTS = {
   theme: 'dark',
   palette: 'classic',
   background: 'aurora',
+  style: 'modern',
   reducedEffects: false,
   /* 文法頁的兩排連接線 */
   grammarLines: true,

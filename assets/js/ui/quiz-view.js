@@ -29,7 +29,7 @@ import { COMBO_RULES, COMBO_RULE_KEYS, comboEntries, comboFilter } from '../core
 import { KANJI_SCOPES, KANJI_SCOPE_KEYS, kanjiFilter } from '../core/kanji-quiz.js';
 import { GRAMMAR_BLANK } from '../core/grammar-quiz.js';
 import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { awaitLearningStore } from './storage-gate.js';
 import { newOperationId, storageMessage } from './platform/learning-store.js';
@@ -1306,7 +1306,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     const promptSpeak =
       !isKana && q.direction === 'target2zh' && q.speakText
         ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
-             data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">🔊</button>`
+             data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">${SPEAK_ICON}</button>`
         : '';
 
     const options = q.options
@@ -1336,7 +1336,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         return needsSpeak
           ? `<div class="opt-row">${button}<button class="speak tall" type="button"
                data-speak="${esc(q.speakText)}" data-speak-lang="${lang}"
-               title="朗讀正解" aria-label="朗讀正解">🔊</button></div>`
+               title="朗讀正解" aria-label="朗讀正解">${SPEAK_ICON}</button></div>`
           : button;
       })
       .join('');
@@ -1686,7 +1686,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     /* 提交後補一顆朗讀鍵，讓使用者聽完整正確的句子 */
     const answerSpeak = answered
       ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}"
-           data-speak-lang="${lang}" title="朗讀整句" aria-label="朗讀整句">🔊</button>`
+           data-speak-lang="${lang}" title="朗讀整句" aria-label="朗讀整句">${SPEAK_ICON}</button>`
       : '';
 
     mount.innerHTML = `
@@ -1899,7 +1899,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           <div class="q">${esc(w.prompt)}${
             w.speakText
               ? `<button class="speak" type="button" data-speak="${esc(w.speakText)}"
-                   data-speak-lang="${lang}" title="朗讀正確說法" aria-label="朗讀正確說法">🔊</button>`
+                   data-speak-lang="${lang}" title="朗讀正確說法" aria-label="朗讀正確說法">${SPEAK_ICON}</button>`
               : ''
           }</div>
           <div class="ans">
@@ -1911,11 +1911,24 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       )
       .join('');
 
+    const pct = Math.max(0, Math.min(100, Number(s.accuracy) || 0));
+    const ringTier = pct >= 80 ? 'is-great' : pct >= 50 ? 'is-mid' : 'is-low';
+    const ringOffset = (263.89 * (1 - pct / 100)).toFixed(2);
+
     mount.innerHTML = `
       <div class="card">
-        <div class="score">
-          <b>${s.correct} / ${s.total}</b>
-          <span>正確率 ${s.accuracy}%　·　${esc(SOURCE_LABEL[session.source])}</span>
+        <div class="score-hero">
+          <div class="score-ring ${ringTier}" aria-hidden="true">
+            <svg viewBox="0 0 100 100">
+              <circle class="ring-track" cx="50" cy="50" r="42" />
+              <circle class="ring-fill" cx="50" cy="50" r="42" stroke-dasharray="263.89" stroke-dashoffset="${ringOffset}" />
+            </svg>
+            <span class="ring-pct">${pct}%</span>
+          </div>
+          <div class="score">
+            <b>${s.correct} / ${s.total}</b>
+            <span>正確率 ${s.accuracy}%　·　${esc(SOURCE_LABEL[session.source])}</span>
+          </div>
         </div>
 
         ${

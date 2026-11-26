@@ -63,7 +63,7 @@ function summaryOf(counts) {
  */
 export function portablePrefs() {
   const allowed = new Set(['reducedEffects', 'grammarLines', 'keyboardSeen', 'hideKanji', 'quietMode',
-    'voiceEnabled', 'effectsEnabled', 'hapticsEnabled', 'theme', 'palette', 'background', 'kanaMode',
+    'voiceEnabled', 'effectsEnabled', 'hapticsEnabled', 'theme', 'palette', 'background', 'style', 'kanaMode',
     'readingAskIn', 'kanjiMode']);
   const prefs = loadPrefs();
   return Object.fromEntries(Object.entries(prefs).filter(([key, value]) => allowed.has(key)

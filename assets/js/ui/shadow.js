@@ -14,7 +14,11 @@
  */
 
 import { compareSpeech } from '../core/shadow-compare.js';
-import { speak, cancel as cancelSpeech } from './speech.js';
+import { speak, cancel as cancelSpeech, SPEAK_ICON } from './speech.js';
+
+const MIC_ICON = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5"/><path d="M8 22h8"/></svg>';
+const PLAY_ICON = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+const STOP_ICON = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 
 const MODE_KEY = 'lang-learn.shadow.v1';
 const MAX_RECORD_MS = 8000;
@@ -51,7 +55,7 @@ function saveMode(mode) {
  */
 export function shadowButtonHtml({ target = '', reading = '', label = '跟讀' } = {}) {
   return `<button class="shadow-btn" type="button" data-shadow data-shadow-target="${esc(target)}"
-    data-shadow-reading="${esc(reading || target)}" aria-expanded="false" title="跟著唸一遍">🎤 ${esc(label)}</button>`;
+    data-shadow-reading="${esc(reading || target)}" aria-expanded="false" title="跟著唸一遍">${MIC_ICON}<span>${esc(label)}</span></button>`;
 }
 
 const VERDICT = {
@@ -109,10 +113,10 @@ export function bindShadow(container, { lang = 'ja' } = {}) {
     return `
       <div class="shadow-line"><span lang="ja">${esc(target || reading)}</span>${target && reading && target !== reading ? `<span class="shadow-reading" lang="ja">${esc(reading)}</span>` : ''}</div>
       <div class="actions">
-        <button class="btn ghost" type="button" data-shadow-play>🔊 聽一次</button>
+        <button class="btn ghost" type="button" data-shadow-play>${SPEAK_ICON}<span>聽一次</span></button>
         ${(effective || recordable) && !choose && (recognizable || recordable)
-          ? `<button class="btn" type="button" data-shadow-rec>🎤 開始跟讀</button>` : ''}
-        <button class="btn ghost" type="button" data-shadow-mine hidden>▶ 聽我唸的</button>
+          ? `<button class="btn" type="button" data-shadow-rec>${MIC_ICON}<span>開始跟讀</span></button>` : ''}
+        <button class="btn ghost" type="button" data-shadow-mine hidden>${PLAY_ICON}<span>聽我唸的</span></button>
       </div>
       ${choose}${unsupported}
       <p class="shadow-status setting-note" aria-live="polite">${!recognizable && recordable ? '這個瀏覽器沒有語音辨識，錄音後自己跟原句對照。' : ''}</p>
@@ -156,7 +160,7 @@ export function bindShadow(container, { lang = 'ja' } = {}) {
     cancelSpeech();
     state.panel.querySelector('.shadow-result').innerHTML = '';
     if (rec) {
-      rec.textContent = '■ 停止';
+      rec.innerHTML = `${STOP_ICON}<span>停止</span>`;
       rec.dataset.recording = '1';
     }
     status('請開始唸……');
@@ -168,7 +172,7 @@ export function bindShadow(container, { lang = 'ja' } = {}) {
       clearTimeout(current.timer);
       try { if (current.recorder?.state === 'recording') current.recorder.stop(); } catch { /* 已停 */ }
       if (rec) {
-        rec.textContent = '🎤 再唸一次';
+        rec.innerHTML = `${MIC_ICON}<span>再唸一次</span>`;
         delete rec.dataset.recording;
       }
     };

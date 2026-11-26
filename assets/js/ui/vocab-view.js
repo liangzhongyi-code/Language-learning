@@ -20,7 +20,7 @@ import {
 import { CATEGORY_GROUPS } from '../data/shared/categories.js';
 import { levelLabel, SCALE_NAME, SCALE_NOTE } from '../data/shared/levels.js';
 import { speakTextOf } from '../core/speech-text.js';
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { FAVORITES_BOOK_ID } from '../core/library.js';
 import { createLibraryService } from './platform/library-service.js';
 import { getLearningStore, storageMessage } from './platform/learning-store.js';
@@ -103,7 +103,7 @@ function wordCard(word, lang, favorites, disabled, saving) {
           ${favoriteIcon(favorites.has(word.id))}
         </button>
         <button type="button" class="speak" data-speak="${esc(speakTextOf(word, lang))}"
-                data-speak-lang="${esc(lang)}" title="朗讀">🔊</button>
+                data-speak-lang="${esc(lang)}" title="朗讀" aria-label="朗讀">${SPEAK_ICON}</button>
       </div>
     </div>`;
 }

@@ -10,6 +10,7 @@ import { createLibraryService } from '../assets/js/ui/platform/library-service.j
 import { FAVORITES_BOOK_ID } from '../assets/js/core/library.js';
 import { emptyLearning } from '../assets/js/core/learning-schema.js';
 import { storageMessage } from '../assets/js/ui/platform/learning-store.js';
+import { SPEAK_ICON } from '../assets/js/ui/speech.js';
 
 const now = Date.parse('2026-10-07T00:00:00Z');
 const word = (lang = 'en', n = 1) => ({ id: `${lang}-w-${n}`, target: lang === 'ja' ? '雨' : `word${n}`,
@@ -82,7 +83,7 @@ function harness({ lang = 'en', words = [word(lang)], favoriteIds = [], readyWai
   const init = vm.runInNewContext(source + '\ninitVocabPage;', {
     ...filters, CATEGORY_GROUPS, levelLabel, SCALE_NAME, SCALE_NOTE, speakTextOf,
     createLibraryService, FAVORITES_BOOK_ID, storageMessage, getLearningStore: () => store,
-    applySpeechFallback() {}, bindSpeakButtons() {}, document,
+    applySpeechFallback() {}, bindSpeakButtons() {}, SPEAK_ICON, document,
     window: { addEventListener(type, handler) { pageListeners.set(type, handler); } },
     setTimeout, clearTimeout,
   });

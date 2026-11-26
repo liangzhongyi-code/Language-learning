@@ -52,10 +52,10 @@ test('舊備份：外殼只接受實際整數 v0／v1，壞版本不借合法 pr
 });
 
 test('舊備份：偏好只接受目前可操作的合法模式與布林，不允許未知或危險鍵', () => {
-  const prefs = { theme: 'light', palette: 'forest', background: 'dust', reducedEffects: true,
+  const prefs = { theme: 'light', palette: 'forest', background: 'dust', style: 'editorial', reducedEffects: true,
     grammarLines: false, kanaMode: 'both', readingAskIn: 'target', kanjiMode: 'ruby', keyboardSeen: false, hideKanji: true };
   assert.deepEqual(parse({ prefs }).data.prefs, prefs);
-  for (const bad of [{ theme: 'neon' }, { palette: 'unknown' }, { background: 'rain' },
+  for (const bad of [{ theme: 'neon' }, { palette: 'unknown' }, { background: 'rain' }, { style: 'glass' },
     { kanaMode: 'romaji' }, { readingAskIn: 'ja' }, { kanjiMode: true }, { grammarLines: 'false' },
     { extra: 'setting' }, JSON.parse('{"__proto__":{"theme":"light"}}')]) {
     const result = parse({ prefs: bad, progress });

@@ -13,7 +13,7 @@ import { buildLayout } from '../core/grammar-layout.js';
 import { listPatterns, filterSentences } from '../core/filter.js';
 import { speakTextOf } from '../core/speech-text.js';
 import { patternsOf } from '../data/shared/patterns.js';
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -106,7 +106,7 @@ function cardHtml(sentence, { lang, patternName }) {
         <span>${esc(sentence.target)}</span>
         ${readingHtml}
         <button class="speak" type="button" data-speak="${esc(fullSpeech)}"
-                data-speak-lang="${esc(lang)}" title="朗讀整句">🔊</button>
+                data-speak-lang="${esc(lang)}" title="朗讀整句" aria-label="朗讀整句">${SPEAK_ICON}</button>
         <span class="meta">${esc(sentence.id)} · ${esc(patternName)}</span>
       </div>
     </div>`;

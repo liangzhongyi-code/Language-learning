@@ -11,7 +11,7 @@ import { resumeStudySession } from '../core/study-session.js';
 import { levelsOf, levelLabel } from '../data/shared/levels.js';
 import { ACHIEVEMENTS } from '../core/achievements.js';
 import { loadPrefs, setPref } from './prefs.js';
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { mountDailyPracticeQuestion } from './daily-practice-question.js';
 
 const esc = (s) =>
@@ -219,7 +219,7 @@ export function initDailyPage({ lang, words = [], wordProvider, practiceProvider
     const examples = Array.isArray(word.examples) ? word.examples : word.example ? [word.example] : [];
     return `
       <div class="prompt" lang="${lang}">${esc(word.target)}
-        <button class="speak" type="button" data-speak="${esc(word.reading || word.target)}" data-speak-lang="${lang}" title="朗讀" aria-label="朗讀">🔊</button>
+        <button class="speak" type="button" data-speak="${esc(word.reading || word.target)}" data-speak-lang="${lang}" title="朗讀" aria-label="朗讀">${SPEAK_ICON}</button>
       </div>
       ${word.reading && word.reading !== word.target ? `<div class="prompt-sub" lang="${lang}">${esc(word.reading)}${word.romaji ? `　${esc(word.romaji)}` : ''}</div>` : ''}
       <div class="daily-meaning">${esc(word.zh)}</div>
@@ -323,7 +323,7 @@ export function initDailyPage({ lang, words = [], wordProvider, practiceProvider
           <span class="progress-text">第 ${position + 1} / ${view.plan.orderedEntries.length} 項 · ${esc(KIND_LABEL[current.kind])}</span>
         </div>
         <div class="prompt" lang="${q.promptLang === 'zh' ? 'zh-Hant' : lang}">${esc(q.prompt)}
-          ${q.promptLang !== 'zh' ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}" data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">🔊</button>` : ''}
+          ${q.promptLang !== 'zh' ? `<button class="speak" type="button" data-speak="${esc(q.speakText)}" data-speak-lang="${lang}" title="朗讀題目" aria-label="朗讀題目">${SPEAK_ICON}</button>` : ''}
         </div>
         ${lang === 'ja' && q.promptLang !== 'zh' && q.reading && q.reading !== q.prompt ? `<div class="prompt-sub" lang="ja">${esc(q.reading)}</div>` : ''}
         <div class="prompt-sub">選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { normalizeAppearance, PALETTES, BACKGROUNDS } from '../assets/js/core/appearance.js';
+import { normalizeAppearance, PALETTES, BACKGROUNDS, STYLES } from '../assets/js/core/appearance.js';
 import { exportPayload, parseBackup } from '../assets/js/core/backup.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,27 +38,30 @@ test('主題啟動腳本對深色、壞資料與停用儲存都安全退回深�
   assert.equal(boot(null, true).theme, 'dark');
 });
 
-test('外觀啟動腳本與模組正規化在全部 96 種組合一致', () => {
+test('外觀啟動腳本與模組正規化在全部 288 種組合一致', () => {
   assert.equal(PALETTES.length, 8);
+  assert.equal(STYLES.length, 3);
   for (const theme of ['dark', 'light']) for (const { value: palette } of PALETTES) {
-    for (const { value: background } of BACKGROUNDS) for (const reducedEffects of [false, true]) {
-      const value = { theme, palette, background, reducedEffects };
-      assert.deepEqual(boot(JSON.stringify(value)), { ...normalizeAppearance(value), reducedEffects: String(reducedEffects) });
+    for (const { value: background } of BACKGROUNDS) for (const { value: style } of STYLES) {
+      for (const reducedEffects of [false, true]) {
+        const value = { theme, palette, background, style, reducedEffects };
+        assert.deepEqual(boot(JSON.stringify(value)), { ...normalizeAppearance(value), reducedEffects: String(reducedEffects) });
+      }
     }
   }
 });
 
 test('外觀拒絕未知值與假布林，舊備份缺欄位仍可用', () => {
-  for (const value of [null, [], 9, {}, { theme: 'light' }, { palette: 'constructor', background: '__proto__', reducedEffects: 'false' }]) {
+  for (const value of [null, [], 9, {}, { theme: 'light' }, { palette: 'constructor', background: '__proto__', style: 'glass', reducedEffects: 'false' }]) {
     const expected = normalizeAppearance(value);
     assert.deepEqual(boot(JSON.stringify(value)), { ...expected, reducedEffects: String(expected.reducedEffects) });
   }
-  assert.deepEqual(normalizeAppearance(null), { theme: 'dark', palette: 'classic', background: 'aurora', reducedEffects: false });
-  assert.deepEqual(boot(null, true), { theme: 'dark', palette: 'classic', background: 'aurora', reducedEffects: 'false' });
+  assert.deepEqual(normalizeAppearance(null), { theme: 'dark', palette: 'classic', background: 'aurora', style: 'modern', reducedEffects: false });
+  assert.deepEqual(boot(null, true), { theme: 'dark', palette: 'classic', background: 'aurora', style: 'modern', reducedEffects: 'false' });
 });
 
 test('外觀偏好隨原有備份往返且不吃掉學習偏好', () => {
-  const prefs = { theme: 'light', palette: 'forest', background: 'dust', reducedEffects: true, kanjiMode: 'kana', grammarLines: false };
+  const prefs = { theme: 'light', palette: 'forest', background: 'dust', style: 'editorial', reducedEffects: true, kanjiMode: 'kana', grammarLines: false };
   const parsed = parseBackup(JSON.stringify(exportPayload({ prefs }, 123)));
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.data.prefs, prefs);

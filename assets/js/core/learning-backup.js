@@ -13,7 +13,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const group = ['stats', 'progress', 'learning'];
 const fields = new Set(['format', 'version', 'exportedAt', ...group, 'prefs']);
 const boolPrefs = new Set(['reducedEffects', 'grammarLines', 'keyboardSeen', 'hideKanji', 'quietMode', 'voiceEnabled', 'effectsEnabled', 'hapticsEnabled']);
-const textPrefs = new Set(['theme', 'palette', 'background', 'kanaMode', 'readingAskIn', 'kanjiMode']);
+const textPrefs = new Set(['theme', 'palette', 'background', 'style', 'kanaMode', 'readingAskIn', 'kanjiMode']);
 const validTime = (v) => Number.isSafeInteger(v) && v >= 0 && v <= 8640000000000000;
 const failed = (message, code = 'INVALID_BACKUP') => ({
   ok: false, data: {}, counts: {}, exportedAt: null, errors: [message], warnings: [], legacyReplacement: false, code,

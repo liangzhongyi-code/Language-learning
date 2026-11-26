@@ -1,4 +1,4 @@
-import { PALETTES, BACKGROUNDS, normalizeAppearance } from '../core/appearance.js';
+import { PALETTES, BACKGROUNDS, STYLES, normalizeAppearance } from '../core/appearance.js';
 import { loadPrefs, savePrefs, PREFS_KEY, PREFS_IMPORTED_EVENT } from './prefs.js';
 
 export const APPEARANCE_EVENT = 'lang-learn:appearance-changed';
@@ -19,6 +19,7 @@ function apply() {
   root.dataset.theme = state.theme;
   root.dataset.palette = state.palette;
   root.dataset.background = state.background;
+  root.dataset.style = state.style;
   root.dataset.reducedEffects = String(state.reducedEffects);
   panel?.querySelectorAll('[data-appearance]').forEach((input) => {
     const key = input.dataset.appearance;
@@ -62,6 +63,9 @@ export function appearanceHtml() {
       </div></fieldset>
       <fieldset><legend>主題風格（8 款）</legend><div class="appearance-grid">
         ${PALETTES.map((p) => `<label class="appearance-choice"><input type="radio" name="appearance-palette" data-appearance="palette" value="${p.value}"><span class="appearance-preview palette-${p.value}" aria-hidden="true"></span><span class="appearance-title">${p.label}</span><small>${p.note}</small></label>`).join('')}
+      </div></fieldset>
+      <fieldset><legend>介面質感（3 款）</legend><div class="appearance-grid backgrounds">
+        ${STYLES.map((s) => `<label class="appearance-choice"><input type="radio" name="appearance-style" data-appearance="style" value="${s.value}"><span class="appearance-preview preview-style-${s.value}" aria-hidden="true"></span><span class="appearance-title">${s.label}</span><small>${s.note}</small></label>`).join('')}
       </div></fieldset>
       <fieldset><legend>背景氛圍</legend><div class="appearance-grid backgrounds">
         ${BACKGROUNDS.map((b) => `<label class="appearance-choice"><input type="radio" name="appearance-background" data-appearance="background" value="${b.value}"><span class="appearance-preview preview-${b.value}" aria-hidden="true"></span><span class="appearance-title">${b.label}</span><small>${b.note}</small></label>`).join('')}

@@ -16,12 +16,18 @@ export const BACKGROUNDS = [
   { value: 'aurora', label: '柔光', note: '漸層光暈' },
   { value: 'dust', label: '微塵', note: '光點與柔光' },
 ];
+export const STYLES = [
+  { value: 'modern', label: '現代俐落', note: '細線微影' },
+  { value: 'soft', label: '溫潤圓角', note: '柔和立體' },
+  { value: 'editorial', label: '極簡紙本', note: '襯線閱讀' },
+];
 
 export function normalizeAppearance(value) {
   return {
     theme: value?.theme === 'light' ? 'light' : 'dark',
     palette: PALETTES.some((p) => p.value === value?.palette) ? value.palette : 'classic',
     background: BACKGROUNDS.some((b) => b.value === value?.background) ? value.background : 'aurora',
+    style: STYLES.some((s) => s.value === value?.style) ? value.style : 'modern',
     reducedEffects: value?.reducedEffects === true,
   };
 }

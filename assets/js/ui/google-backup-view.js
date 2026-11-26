@@ -139,7 +139,7 @@ export function initGoogleBackupPanel(mount, backupPanel, { config = GOOGLE_CONF
       const store = backupPanel?.store;
       if (!store) throw new Error('學習紀錄尚未就緒。');
       const allowed = new Set(['reducedEffects', 'grammarLines', 'keyboardSeen', 'hideKanji', 'quietMode',
-        'voiceEnabled', 'effectsEnabled', 'hapticsEnabled', 'theme', 'palette', 'background', 'kanaMode', 'readingAskIn', 'kanjiMode']);
+        'voiceEnabled', 'effectsEnabled', 'hapticsEnabled', 'theme', 'palette', 'background', 'style', 'kanaMode', 'readingAskIn', 'kanjiMode']);
       const prefs = Object.fromEntries(Object.entries(loadPrefs()).filter(([key]) => allowed.has(key)));
       const payload = pending?.payload ?? await store.exportBackup({ prefs });
       const exportId = pending?.exportId ?? newExportId();

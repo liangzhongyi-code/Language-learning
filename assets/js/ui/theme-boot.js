@@ -12,5 +12,6 @@
   data.theme = stored?.theme === 'light' ? 'light' : 'dark';
   data.palette = ['classic', 'midnight', 'forest', 'warm', 'sakura', 'violet', 'sunset', 'mono'].includes(stored?.palette) ? stored.palette : 'classic';
   data.background = ['plain', 'aurora', 'dust'].includes(stored?.background) ? stored.background : 'aurora';
+  data.style = ['modern', 'soft', 'editorial'].includes(stored?.style) ? stored.style : 'modern';
   data.reducedEffects = String(stored?.reducedEffects === true);
 })();

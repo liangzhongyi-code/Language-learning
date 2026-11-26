@@ -7,7 +7,7 @@
  * 例詞的朗讀用假名讀音，單獨把漢字丟給語音引擎常會唸成別的讀法。
  */
 
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { bindShadow, shadowButtonHtml } from './shadow.js';
 import { KANJI_SCOPES, kanjiFilter, kanjiReadingSet } from '../core/kanji-quiz.js';
 
@@ -26,7 +26,7 @@ function introHtml(items) {
       <ul>
         <li>日文的漢字大多跟繁體一樣，意思也接近；有 ${diff} 個字的日本寫法比較簡化（例如 学＝學），格子右上角會標出繁體。</li>
         <li>真正要背的是<b>讀音</b>。<b>音讀</b>（片假名）是當初跟著中文借來的唸法，多半用在兩個字以上的詞；<b>訓讀</b>（平假名）是日本原有的說法，多半是單獨一個字或後面接假名。</li>
-        <li>同一個字在不同詞裡唸法會變，所以每個字都附上單字題庫裡的例詞，點 🔊 聽整個詞怎麼唸。</li>
+        <li>同一個字在不同詞裡唸法會變，所以每個字都附上單字題庫裡的例詞，點朗讀鍵即可聽整個詞怎麼唸。</li>
       </ul>
       <div class="actions">
         <a class="btn" href="./quiz.html?source=kanji">練漢字讀音</a>
@@ -51,7 +51,7 @@ function detailHtml(item) {
         <span lang="ja" class="kanji-word">${esc(e.word)}</span>
         <span lang="ja" class="kanji-word-reading">${esc(e.reading)}</span>
         <span class="kanji-word-zh">${esc(e.zh)}</span>
-        <button class="speak" type="button" data-speak="${esc(e.reading)}" data-speak-lang="ja" title="朗讀" aria-label="朗讀 ${esc(e.word)}">🔊</button>
+        <button class="speak" type="button" data-speak="${esc(e.reading)}" data-speak-lang="ja" title="朗讀" aria-label="朗讀 ${esc(e.word)}">${SPEAK_ICON}</button>
         ${shadowButtonHtml({ target: e.word, reading: e.reading })}
       </li>`).join('');
   return `
@@ -87,20 +87,28 @@ export function initKanjiPage({ kanji, mount, noticeHost } = {}) {
     mount.querySelectorAll('[data-scope]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.scope === scope)));
   };
 
+  const emptyDetailHtml = () => `
+    <div class="card kanji-empty">
+      <p class="kanji-empty-title">點選左側漢字</p>
+      <p class="setting-note">這裡會常駐顯示繁簡寫法對照、音讀與訓讀，以及例詞朗讀與跟讀工具，瀏覽時不必反覆捲動。</p>
+    </div>`;
+
   const show = (id) => {
     selected = items.find((k) => k.id === id) || null;
     const host = mount.querySelector('[data-kanji-host]');
-    host.innerHTML = selected ? detailHtml(selected) : '';
+    host.innerHTML = selected ? detailHtml(selected) : emptyDetailHtml();
     mount.querySelectorAll('[data-kanji]').forEach((cell) => cell.setAttribute('aria-pressed', String(cell.dataset.kanji === id)));
-    if (selected) host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (selected && window.innerWidth < 960) host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
 
   mount.innerHTML = `${introHtml(items)}
     <div class="chips" role="group" aria-label="漢字範圍">${KANJI_SCOPES.map((s) =>
       `<button class="chip" type="button" data-scope="${s.key}" aria-pressed="${s.key === scope}">${esc(s.label)}</button>`).join('')}
       <span class="setting-note kanji-count" data-kanji-count></span></div>
-    <div data-kanji-host></div>
-    <div class="kana-grid kanji-grid" data-kanji-grid></div>`;
+    <div class="split-workspace kanji-workspace">
+      <div class="kana-grid kanji-grid" data-kanji-grid></div>
+      <aside class="split-aside" data-kanji-host aria-label="漢字詳情">${emptyDetailHtml()}</aside>
+    </div>`;
   paint();
 
   mount.addEventListener('click', (event) => {

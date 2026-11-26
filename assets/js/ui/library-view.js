@@ -9,7 +9,7 @@ import { createLibraryService } from './platform/library-service.js';
 import { storageMessage } from './platform/learning-store.js';
 import { FAVORITES_BOOK_ID, MAX_NOTE_LENGTH } from '../core/library.js';
 import { describeIntent } from '../core/learning-intents.js';
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -81,7 +81,7 @@ export function initLibraryPage({ lang, words, mount, noticeHost }) {
         ${intent.selfAssessedKnown ? '<span class="hint">　自評已會（未驗證）</span>' : ''}
         ${note && !isEditing ? `<span class="note-text" data-note-text="${esc(id)}"></span>` : ''}
       </span>
-      ${word ? `<button class="speak" type="button" data-speak="${esc(word.reading || word.target)}" data-speak-lang="${lang}" aria-label="朗讀">🔊</button>` : ''}
+      ${word ? `<button class="speak" type="button" data-speak="${esc(word.reading || word.target)}" data-speak-lang="${lang}" aria-label="朗讀">${SPEAK_ICON}</button>` : ''}
       <button class="btn ghost sm" type="button" data-note="${esc(id)}">${note ? '改筆記' : '寫筆記'}</button>
       <button class="btn ghost sm" type="button" data-want="${esc(id)}" aria-pressed="${intent.wantToLearn}">想學</button>
       ${intent.selfAssessedKnown ? `<button class="btn ghost sm" type="button" data-unknown="${esc(id)}">撤回自評</button>` : ''}

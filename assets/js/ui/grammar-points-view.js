@@ -8,7 +8,7 @@
  * 例句朗讀用假名讀音，不把漢字原文丟給語音引擎。
  */
 
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { bindShadow, shadowButtonHtml } from './shadow.js';
 
 const esc = (s) =>
@@ -24,7 +24,7 @@ function pointHtml(point) {
         <p lang="ja" class="gp-target">${esc(e.target)}</p>
         <p class="setting-note"><span lang="ja">${esc(e.reading)}</span>　${esc(e.zh)}</p>
         <div class="gp-tools">
-          <button class="speak" type="button" data-speak="${esc(e.reading)}" data-speak-lang="ja" title="朗讀例句" aria-label="朗讀例句">🔊</button>
+          <button class="speak" type="button" data-speak="${esc(e.reading)}" data-speak-lang="ja" title="朗讀例句" aria-label="朗讀例句">${SPEAK_ICON}</button>
           ${shadowButtonHtml({ target: e.target, reading: e.reading })}
         </div>
       </li>`).join('');

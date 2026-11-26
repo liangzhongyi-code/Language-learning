@@ -6,7 +6,7 @@
  * 題目仍在測驗頁的「閱讀」題型；這一頁只負責讀懂與聽、唸。
  */
 
-import { applySpeechFallback, bindSpeakButtons } from './speech.js';
+import { applySpeechFallback, bindSpeakButtons, SPEAK_ICON } from './speech.js';
 import { bindShadow, shadowButtonHtml } from './shadow.js';
 import { sentenceSegments, buildWordIndex, lookupWord, lookupKanji } from '../core/reading-lookup.js';
 import { kanjiReadingSet } from '../core/kanji-quiz.js';
@@ -27,7 +27,7 @@ function sentenceHtml(sentence, index) {
     <li class="rd-sentence" data-sentence="${index}">
       <p class="rd-text" lang="ja">${body}</p>
       <div class="rd-tools">
-        <button class="speak" type="button" data-speak="${esc(sentence.reading)}" data-speak-lang="ja" title="朗讀這一句" aria-label="朗讀這一句">🔊</button>
+        <button class="speak" type="button" data-speak="${esc(sentence.reading)}" data-speak-lang="ja" title="朗讀這一句" aria-label="朗讀這一句">${SPEAK_ICON}</button>
         ${shadowButtonHtml({ target: sentence.text, reading: sentence.reading })}
       </div>
     </li>`;
@@ -39,7 +39,7 @@ function lookupHtml({ chunk, reading, word, kanjiItems }) {
   return `
     <div class="rd-lookup" role="dialog" aria-label="查詞">
       <p class="rd-lookup-head"><b lang="ja">${esc(chunk)}</b>　在這句唸 <span lang="ja">${esc(reading)}</span>
-        <button class="speak" type="button" data-speak="${esc(reading)}" data-speak-lang="ja" aria-label="朗讀">🔊</button>
+        <button class="speak" type="button" data-speak="${esc(reading)}" data-speak-lang="ja" aria-label="朗讀">${SPEAK_ICON}</button>
         <button class="link-btn" type="button" data-lookup-close>關閉</button></p>
       ${word
         ? `<p>單字題庫：<b lang="ja">${esc(word.target)}</b>（<span lang="ja">${esc(word.reading)}</span>）${esc(word.zh)}${
@@ -64,7 +64,7 @@ export function initReadingPage({ readings, readingKana, words = [], kanji = [],
     <div class="card kana-intro">
       <h2>怎麼用這一頁</h2>
       <ul>
-        <li>每一句都能按 🔊 聽，按 🎤 跟讀；朗讀唸的是手寫的假名讀音，不會把漢字唸錯。</li>
+        <li>每一句都能點朗讀鍵聽原句、點跟讀鍵練習發音；朗讀唸的是手寫的假名讀音，不會把漢字唸錯。</li>
         <li>點有底線的漢字詞，看它在這句怎麼唸、什麼意思。</li>
         <li>讀完可以到<a href="./quiz.html?source=reading">測驗頁的「閱讀」題型</a>回答這幾篇的題目。</li>
       </ul>
@@ -75,22 +75,35 @@ export function initReadingPage({ readings, readingKana, words = [], kanji = [],
         <span class="setting-note">${esc(levelLabel('ja', p.level))} · ${readingKana[p.id].length} 句</span>
       </button></li>`).join('')}</ul>`;
 
+  const lookupEmptyHtml = () => `
+    <div class="card rd-lookup-empty">
+      <p class="kanji-empty-title">點詞即查</p>
+      <p class="setting-note">點選左側短文中有虛線底線的漢字詞，會在此即時顯示本句讀音、單字意思與漢字資訊。</p>
+    </div>`;
+
   const passageHtml = (p) => `
     <div class="rd-bar">
       <button class="btn ghost" type="button" data-back>← 所有短文</button>
       <button class="chip" type="button" data-ruby aria-pressed="${showRuby}">標假名</button>
     </div>
-    <div class="card rd-passage${showRuby ? '' : ' hide-ruby'}">
-      <h2 lang="ja">${esc(p.title)}</h2>
-      <ol class="rd-sentences">${readingKana[p.id].map(sentenceHtml).join('')}</ol>
-      <details class="rd-translation"><summary>看中文翻譯</summary><p>${esc(p.translation)}</p></details>
+    <div class="split-workspace rd-workspace">
+      <div class="card rd-passage${showRuby ? '' : ' hide-ruby'}">
+        <h2 lang="ja">${esc(p.title)}</h2>
+        <ol class="rd-sentences">${readingKana[p.id].map(sentenceHtml).join('')}</ol>
+        <details class="rd-translation"><summary>看中文翻譯</summary><p>${esc(p.translation)}</p></details>
+      </div>
+      <aside class="split-aside rd-aside" data-lookup-aside aria-label="查詞面板">${lookupEmptyHtml()}</aside>
     </div>`;
 
   const render = () => {
     mount.innerHTML = current ? passageHtml(current) : listHtml();
   };
 
-  const closeLookup = () => mount.querySelector('.rd-lookup')?.remove();
+  const closeLookup = () => {
+    mount.querySelector('.rd-lookup')?.remove();
+    const aside = mount.querySelector('[data-lookup-aside]');
+    if (aside && !aside.querySelector('.rd-lookup')) aside.innerHTML = lookupEmptyHtml();
+  };
 
   mount.addEventListener('click', (event) => {
     const pick = event.target.closest('[data-passage]');
@@ -118,7 +131,7 @@ export function initReadingPage({ readings, readingKana, words = [], kanji = [],
     }
     const word = event.target.closest('[data-lookup]');
     if (word) {
-      const wasOpen = word.closest('.rd-sentence').querySelector('.rd-lookup')?.dataset.for === word.dataset.lookup;
+      const wasOpen = mount.querySelector('.rd-lookup')?.dataset.for === word.dataset.lookup;
       closeLookup();
       if (wasOpen) return;
       const [sentenceIndex, at] = word.dataset.lookup.split(':').map(Number);
@@ -129,7 +142,12 @@ export function initReadingPage({ readings, readingKana, words = [], kanji = [],
       holder.innerHTML = lookupHtml({ chunk, reading, word: lookupWord(index, sentence.text, at, chunk, reading), kanjiItems: lookupKanji(kanji, chunk) });
       const panel = holder.firstElementChild;
       panel.dataset.for = word.dataset.lookup;
-      word.closest('.rd-sentence').querySelector('.rd-tools').insertAdjacentElement('afterend', panel);
+      const aside = mount.querySelector('[data-lookup-aside]');
+      if (aside && window.innerWidth >= 1024) {
+        aside.replaceChildren(panel);
+      } else {
+        word.closest('.rd-sentence').querySelector('.rd-tools').insertAdjacentElement('afterend', panel);
+      }
     }
   });
 

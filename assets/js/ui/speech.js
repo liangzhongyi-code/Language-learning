@@ -16,6 +16,11 @@
  */
 const LANG_TAGS = { en: 'en-US', ja: 'ja-JP' };
 
+/**
+ * 統一線條風格的離線朗讀 SVG 圖示，取代各平台風格不一致的系統 Emoji。
+ */
+export const SPEAK_ICON = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+
 let voices = [];
 const readyCallbacks = [];
 
