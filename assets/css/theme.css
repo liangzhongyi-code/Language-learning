@@ -1008,10 +1008,19 @@ html.no-speech .speak { display: none !important; }
 .kana-intro ul { margin: 0 0 var(--size-3); padding-left: 1.2em; line-height: 1.8; }
 .kana-intro h2 { font-size: 18px; margin: 0 0 var(--size-2); }
 .kana-intro { margin-bottom: var(--size-4); }
+.kana-combo-intro { margin-top: var(--size-5); }
+.kana-intro h2:not(:first-child) { margin-top: var(--size-4); }
 
 /* 測驗頁的五十音題：假名是題目本身，要大；選項也放大一級 */
 .prompt.kana-prompt { font-size: 72px; line-height: 1.25; justify-content: center; margin: var(--size-3) 0 var(--size-2); }
 .kana-opts .opt { font-size: 22px; }
+/* 組合讀法的題面是整個詞（エレベーター 六個字），單字的 72px 在手機會撐破 */
+.prompt.kana-prompt.is-word { font-size: 52px; overflow-wrap: anywhere; text-align: center; }
+.combo-rules { margin: 0 0 var(--size-3); padding-left: 1.2em; line-height: 1.8; font-size: 14px; }
+.combo-rules li + li { margin-top: 4px; }
+.combo-examples { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--size-2); margin: var(--size-2) 0 var(--size-3); }
+.combo-examples .kana { padding: 10px 6px; }
+.combo-examples .glyph { font-size: 24px; }
 .kana-peek { margin-top: var(--size-4); }
 .kana-peek > summary { cursor: pointer; color: var(--accent); font-size: 14px; padding: 12px 0; }
 .kana .romaji { font-size: 11px; color: var(--accent); letter-spacing: 0.06em; margin-top: 4px; }
@@ -1713,6 +1722,7 @@ html.no-lines .gap-mid svg { display: none; }
 
 /* 標籤的上限只在真的擠的時候才給 */
 @media (max-width: 480px) {
+  .prompt.kana-prompt.is-word { font-size: 36px; }
   .word-tags { max-width: 84px; }
 }
 

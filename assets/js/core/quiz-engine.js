@@ -16,6 +16,7 @@ import { shuffle, sample } from './shuffle.js';
 import { speakTextOf } from './speech-text.js';
 import { kanaPool } from './kana.js';
 import { KANA_SCRIPT_KEYS, kanaEntries, kanaFilter, buildKanaQuestion } from './kana-quiz.js';
+import { COMBO_RULE_KEYS, comboEntries, comboFilter, buildComboQuestion } from './kana-combo.js';
 import { jlptMondaiOf, jlptReadingTypeOf, jlptKindKeyOf, JLPT_READING_FOCUS } from './jlpt-mondai.js';
 
 /**
@@ -741,6 +742,14 @@ export function buildSession({
    */
   kanaScript = 'hiragana',
   kanaGroups = [],
+  /**
+   * 五十音的題型：single 是單一假名；combo 是組合讀法（拗音、促音、長音），題目取自 kanaWords 的 N5 單字。
+   * kanaRules 是 combo 要練哪幾種組合；kanaKanji 為真時改成看漢字選讀音。
+   */
+  kanaKind = 'single',
+  kanaRules = [],
+  kanaKanji = false,
+  kanaWords = [],
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
   /**
@@ -775,13 +784,20 @@ export function buildSession({
   }
   if (source === 'kana') {
     if (!KANA_SCRIPT_KEYS.includes(kanaScript)) throw new Error('不認得的五十音模式，請選平假名、片假名或混合。');
-    if (!Array.isArray(kanaGroups) || !kanaGroups.length) throw new Error('至少要選一個範圍才能出題。');
+    if (!['single', 'combo'].includes(kanaKind)) throw new Error('不認得的五十音題型。');
+    if (kanaKind === 'single' && (!Array.isArray(kanaGroups) || !kanaGroups.length)) throw new Error('至少要選一個範圍才能出題。');
+    if (kanaKind === 'combo' && (!Array.isArray(kanaRules) || !kanaRules.some((r) => COMBO_RULE_KEYS.includes(r)))) {
+      throw new Error('至少要選一種組合才能出題。');
+    }
   }
+  const combo = source === 'kana' && kanaKind === 'combo';
   const base = source === 'jlpt' && mondai !== null
     ? all.filter((item) => mondai.includes(jlptKindKeyOf(item)))
-    : source === 'kana'
-      ? kanaFilter(all, { script: kanaScript, groups: kanaGroups })
-      : all;
+    : combo
+      ? comboFilter(comboEntries(kanaWords), { script: kanaScript, rules: kanaRules, kanji: kanaKanji })
+      : source === 'kana'
+        ? kanaFilter(all, { script: kanaScript, groups: kanaGroups })
+        : all;
 
   /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
   const leveled = level === null ? base : base.filter((item) => item.level === level);
@@ -851,6 +867,7 @@ export function buildSession({
     if (source === 'jlpt') return buildJlptQuestion(item, { rng });
     if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
+    if (combo) return buildComboQuestion(item, { direction: dir, rng });
     if (source === 'kana') return buildKanaQuestion(item, pool, { direction: dir, rng });
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });
   });

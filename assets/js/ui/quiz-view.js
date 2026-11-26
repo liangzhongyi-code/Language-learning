@@ -25,6 +25,7 @@ import { issueReportOf, encodeIssueCode } from '../core/issue-code.js';
 import { levelLabel, levelsOf } from '../data/shared/levels.js';
 import { JLPT_KIND_KEYS, jlptKindKeyOf, jlptKindsAt } from '../core/jlpt-mondai.js';
 import { KANA_SCRIPTS, KANA_SCRIPT_KEYS, KANA_SCRIPT_LABEL, KANA_GROUPS, KANA_GROUP_KEYS, kanaEntries, kanaFilter } from '../core/kana-quiz.js';
+import { COMBO_RULES, COMBO_RULE_KEYS, comboEntries, comboFilter } from '../core/kana-combo.js';
 import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
 import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
@@ -58,6 +59,13 @@ const DIRECTIONAL_SOURCES = ['words', 'sentences', 'mixed'];
  * 畫面上說的是「看假名」「看羅馬音」，沒有中文的事。
  */
 const KANA_DIRECTION_LABEL = { target2zh: '看假名選羅馬音', zh2target: '看羅馬音選假名', mixed: '兩種都出' };
+
+/**
+ * 五十音的兩種題型。組合讀法是進階：單一假名認得之後，練兩個以上的假名放在一起怎麼唸。
+ * 組合讀法多一個「看漢字選讀音」，內部仍是 target2zh，靠 ja-kj- 的 id 分開記。
+ */
+const KANA_KINDS = [['single', '單一假名'], ['combo', '組合讀法（進階）']];
+const COMBO_DIRECTION_LABEL = { ...KANA_DIRECTION_LABEL, kanji: '看漢字選讀音' };
 
 /**
  * 換不成假名的題源，各自的原因。
@@ -165,10 +173,10 @@ function underlinedHtml(text, underline) {
   return `<span>${esc(text.slice(0, at))}<u>${esc(underline)}</u>${esc(text.slice(at + underline.length))}</span>`;
 }
 
-export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], jlptReading = [], kana = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
-  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana'] };
+export function initQuizPage({ lang, words = [], sentences = [], scenes = [], readings = [], jlpt = [], jlptReading = [], kana = [], kanaWords = [], dataProvider, dataMeta = {}, onDataRetry, mount, noticeHost }) {
+  const sourceKeys = { words: ['words'], sentences: ['sentences'], mixed: ['words', 'sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana', 'kanaWords'] };
   const lazy = typeof dataProvider === 'function';
-  const loadedKeys = new Set(lazy ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt', 'jlptReading', 'kana']);
+  const loadedKeys = new Set(lazy ? [] : ['words', 'sentences', 'scenes', 'readings', 'jlpt', 'jlptReading', 'kana', 'kanaWords']);
   /**
    * JLPT 題庫按級別分檔載入：只練 N5 的人不下載 N1 讀解。
    * 這裡記已載入的級別與各級資料，jlpt／jlptReading 永遠是已載入各級的合集。
@@ -243,7 +251,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     kanaScript: KANA_SCRIPT_KEYS.includes(params.get('script')) ? params.get('script') : 'hiragana',
     kanaGroups: [KANA_GROUP_KEYS[0]],
     kanaDirection: 'target2zh',
+    /* 題型與組合規則：對照表頁的「練組合讀法」按鈕以 kind=combo 帶入；規則預設三種全選 */
+    kanaKind: params.get('kind') === 'combo' ? 'combo' : 'single',
+    kanaRules: [...COMBO_RULE_KEYS],
   };
+  const isComboKanji = () => config.kanaKind === 'combo' && config.kanaDirection === 'kanji';
 
   /**
    * 題源的完整題池。JLPT 模擬題另外依勾選的題型篩一次，
@@ -251,6 +263,9 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
    */
   const sourcePool = (source) => {
     const pool = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana);
+    if (source === 'kana' && config.kanaKind === 'combo') {
+      return comboFilter(comboEntries(kanaWords), { script: config.kanaScript, rules: config.kanaRules, kanji: isComboKanji() });
+    }
     if (source === 'kana') return kanaFilter(pool, { script: config.kanaScript, groups: config.kanaGroups });
     return source === 'jlpt' ? pool.filter((item) => config.mondai.includes(jlptKindKeyOf(item))) : pool;
   };
@@ -397,6 +412,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         if (sourceKeys[source].includes('scenes')) scenes = dataset.scenes;
         if (sourceKeys[source].includes('readings')) readings = dataset.readings;
         if (sourceKeys[source].includes('kana')) kana = dataset.kana;
+        if (sourceKeys[source].includes('kanaWords')) kanaWords = dataset.kanaWords;
         sourceKeys[source].forEach((key) => loadedKeys.add(key));
       }
       poolSizeCache.clear();
@@ -533,7 +549,39 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       .filter((k) => k.count > 0);
     const jlptPicked = jlptKinds.some((k) => config.mondai.includes(k.key));
     const isKana = config.source === 'kana';
-    const kanaPicked = config.kanaGroups.length > 0;
+    const isCombo = isKana && config.kanaKind === 'combo';
+    const kanaPicked = isCombo ? config.kanaRules.length > 0 : config.kanaGroups.length > 0;
+    /* 組合讀法各規則在目前模式／方向下有幾個詞 */
+    const comboAll = isCombo ? comboEntries(kanaWords) : [];
+    const comboCountOf = (key) => comboFilter(comboAll, { script: config.kanaScript, rules: [key], kanji: isComboKanji() }).length;
+
+    /**
+     * 組合讀法的設定：模式（看漢字時收起來，讀音一律平假名）、組合規則、怎麼考。
+     * 規則的說明直接寫在這裡——這就是「兩個假名放一起為什麼唸法不同」的答案。
+     */
+    const comboSettingsHtml = () => `${isComboKanji() ? '' : `<div class="setting">
+          <label>模式</label>
+          <div class="chips">${chips('kanaScript', KANA_SCRIPTS.map((s) => [s.key, s.label]), config.kanaScript)}</div>
+          <p class="setting-note">${config.kanaScript === 'hiragana' ? '一般的詞用平假名寫出讀音。'
+            : config.kanaScript === 'katakana' ? '片假名的組合題都是外來語，例如 コーヒー（咖啡）。' : '平假名的詞和片假名的外來語混著出。'}</p>
+        </div>`}
+        <div class="setting">
+          <label>組合（可複選）</label>
+          <div class="chips">${COMBO_RULES.map(({ key, label }) =>
+            `<button class="chip" type="button" data-kana-rule="${key}" aria-pressed="${config.kanaRules.includes(key)}">${esc(label)}${
+              sourceReady('kana') ? `（${comboCountOf(key)}）` : ''}</button>`
+          ).join('')}</div>
+          <p class="setting-note">${kanaPicked
+            ? COMBO_RULES.filter((r) => config.kanaRules.includes(r.key)).map((r) => `<b>${esc(r.label.split(' ')[0])}</b>：${esc(r.note)}`).join('<br>')
+            : '至少要選一種組合才能開始。'}</p>
+        </div>
+        <div class="setting">
+          <label>怎麼考</label>
+          <div class="chips">${chips('kanaDirection', Object.entries(COMBO_DIRECTION_LABEL), config.kanaDirection)}</div>
+          <p class="setting-note">${isComboKanji()
+            ? '漢字沒辦法從字形猜出唸法，同一個字在不同詞裡也常唸得不一樣（日 在 日本 唸 に、在 今日 整個詞唸 きょう），只能一個詞一個詞記。選項是把正確讀音照常見錯誤改一處，順便複習上面的組合規則。'
+            : '選錯的選項都是常見的錯法：漏掉小っ、把小ょ看成大よ、少拉一拍。答錯時看看自己是哪一條沒掌握。'}</p>
+        </div>`;
     /* 各範圍在目前模式下有幾題；混合模式一個音算兩題 */
     const kanaAll = isKana ? kanaEntries(kana) : [];
     const kanaCountOf = (key) => kanaFilter(kanaAll, { script: config.kanaScript, groups: [key] }).length;
@@ -641,6 +689,13 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
            */
           isKana
             ? `<div class="setting">
+          <label>練什麼</label>
+          <div class="chips">${chips('kanaKind', KANA_KINDS, config.kanaKind)}</div>
+          <p class="setting-note">${isCombo
+            ? '兩個以上的假名放在一起，唸法會跟一個一個唸不一樣。題目都是 N5 的常用詞，答完會說明每一處怎麼唸。'
+            : '一個一個認假名。都認得之後，再來挑戰「組合讀法」。'}</p>
+        </div>
+        ${isCombo ? comboSettingsHtml() : `<div class="setting">
           <label>模式</label>
           <div class="chips">${chips('kanaScript', KANA_SCRIPTS.map((s) => [s.key, s.label]), config.kanaScript)}</div>
           <p class="setting-note">${esc(KANA_SCRIPTS.find((s) => s.key === config.kanaScript).note)}</p>
@@ -660,7 +715,7 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           <label>怎麼考</label>
           <div class="chips">${chips('kanaDirection', Object.entries(KANA_DIRECTION_LABEL), config.kanaDirection)}</div>
           <p class="setting-note">羅馬音是用英文字母標出來的唸法，例如 あ 唸 a、か 唸 ka。</p>
-        </div>`
+        </div>`}`
             : ''
         }
 
@@ -822,6 +877,8 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           setPref('kanjiMode', value);
         } else {
           config[set] = value;
+          /* 單一假名沒有「看漢字選讀音」，切回去時方向退回預設 */
+          if (set === 'kanaKind' && value === 'single' && config.kanaDirection === 'kanji') config.kanaDirection = 'target2zh';
           /* 這一項是長期偏好，切了就記住 */
           if (set === 'readingAskIn') setPref('readingAskIn', value);
         }
@@ -861,6 +918,16 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
       chip.addEventListener('click', () => {
         const key = chip.dataset.kanaGroup;
         config.kanaGroups = KANA_GROUP_KEYS.filter((k) => (k === key) !== config.kanaGroups.includes(k));
+        lastSetup = null;
+        renderSetup();
+      });
+    });
+
+    /* 組合規則複選，規則與五十音範圍相同 */
+    mount.querySelectorAll('[data-kana-rule]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const key = chip.dataset.kanaRule;
+        config.kanaRules = COMBO_RULE_KEYS.filter((k) => (k === key) !== config.kanaRules.includes(k));
         lastSetup = null;
         renderSetup();
       });
@@ -910,7 +977,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         mondai: config.source === 'jlpt' ? config.mondai : null,
         kanaScript: config.kanaScript,
         kanaGroups: config.kanaGroups,
-        direction: config.source === 'kana' ? config.kanaDirection : config.direction,
+        kanaKind: config.kanaKind,
+        kanaRules: config.kanaRules,
+        kanaKanji: isComboKanji(),
+        kanaWords,
+        direction: config.source !== 'kana' ? config.direction : isComboKanji() ? 'target2zh' : config.kanaDirection,
         readingAskIn: config.readingAskIn,
         kanjiMode: config.kanjiMode,
         level: null,
@@ -955,11 +1026,20 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         const scripts = new Set(session.questions.map((q) => q.kanaScript));
         config.kanaScript = scripts.size === 1 && KANA_SCRIPT_KEYS.includes([...scripts][0]) ? [...scripts][0] : 'mixed';
         config.kanaDirection = session.direction;
+        /* 組合讀法的題面帶著 kanaKind；規則取這一局出現過的，看漢字的局方向還原成 kanji */
+        const comboQs = session.questions.filter((q) => q.kanaKind === 'combo');
+        config.kanaKind = comboQs.length ? 'combo' : 'single';
+        if (comboQs.length) {
+          const rules = new Set(comboQs.flatMap((q) => q.kanaRules || []));
+          if (rules.size) config.kanaRules = COMBO_RULE_KEYS.filter((k) => rules.has(k));
+          if (comboQs.every((q) => q.kanaKanji)) config.kanaDirection = 'kanji';
+        }
         /* 續答不經過選題源，對照表小抄要的假名表在這裡補載；載不到就只給連結，不擋續答 */
         if (lazy && !loadedKeys.has('kana')) {
           try {
-            kana = (await dataProvider('kana')).kana;
+            ({ kana, kanaWords } = await dataProvider('kana'));
             loadedKeys.add('kana');
+            loadedKeys.add('kanaWords');
             poolSizeCache.clear();
             levelIdCache.clear();
           } catch {
@@ -1149,7 +1229,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
     const key = `${index}:${q.sourceId}`;
     if (kanaPeek.key !== key) kanaPeek = { key, open: false, used: false };
     if (!kana.length) return '<p class="setting-note"><a href="./kana.html">打開五十音對照表</a></p>';
-    const grids = KANA_SECTIONS.map((section) =>
+    const rules = q.kanaKind === 'combo'
+      ? `<p class="setting-label">組合讀法</p><ul class="combo-rules">${COMBO_RULES.map((r) =>
+        `<li><b>${esc(r.label)}</b>　${esc(r.note)}</li>`).join('')}</ul>`
+      : '';
+    const grids = rules + KANA_SECTIONS.map((section) =>
       `<p class="setting-label">${esc(section.label)}</p>${kanaGridHtml(section, kana, q.kanaScript, { compact: true })}`).join('');
     return `
       <details class="kana-peek" data-kana-peek ${kanaPeek.open ? 'open' : ''}>
@@ -1318,8 +1402,11 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
         : '';
 
     /* 題型標籤：閱讀、JLPT 與情境有自己的名字，其餘顯示出題方向 */
+    const isCombo = q.kanaKind === 'combo';
     const topLabel = isKana
-      ? `${SOURCE_LABEL.kana} · ${KANA_SCRIPT_LABEL[q.kanaScript]}`
+      ? isCombo
+        ? `${SOURCE_LABEL.kana} · ${q.kanaKanji ? '漢字讀音' : `組合讀法 · ${KANA_SCRIPT_LABEL[q.kanaScript]}`}`
+        : `${SOURCE_LABEL.kana} · ${KANA_SCRIPT_LABEL[q.kanaScript]}`
       : isReading
       ? SOURCE_LABEL.reading
       : isJlpt
@@ -1338,12 +1425,14 @@ export function initQuizPage({ lang, words = [], sentences = [], scenes = [], re
           : isJlpt
             ? `<div class="prompt jlpt-stem" lang="ja">${underlinedHtml(q.prompt, q.underline)}</div>`
             : isKana
-              ? `<div class="prompt kana-prompt" lang="${q.direction === 'target2zh' ? 'ja' : 'en'}">${esc(q.prompt)}</div>`
+              ? `<div class="prompt kana-prompt${isCombo ? ' is-word' : ''}" lang="${q.promptLang === 'ja' ? 'ja' : 'en'}">${esc(q.prompt)}</div>`
               : `<div class="prompt">${rubyHtml(q.promptRuby, q.prompt)}${promptSpeak}</div>`}
         <div class="prompt-sub">${
           isReading ? '依短文內容作答'
             : isJlptReading ? `依文章內容作答${q.focusLabel ? `　·　考點：${esc(q.focusLabel)}` : ''}`
               : isJlpt ? '選出最適合的答案'
+                : isCombo ? (q.kanaKanji ? '這個詞怎麼唸？選出它的假名讀音'
+                  : q.direction === 'target2zh' ? '這個詞怎麼唸？選出它的羅馬音' : `哪一個寫法唸作「${esc(q.prompt)}」？`)
                 : isKana ? (q.direction === 'target2zh' ? `這個${KANA_SCRIPT_LABEL[q.kanaScript]}怎麼唸？選出它的羅馬音` : `哪一個${KANA_SCRIPT_LABEL[q.kanaScript]}唸作「${esc(q.prompt)}」？`)
                   : `選出正確的${q.optionLang === 'zh' ? '中文意思' : '說法'}`
         }<span class="kbd-hint">　·　可按鍵盤 1-4</span></div>

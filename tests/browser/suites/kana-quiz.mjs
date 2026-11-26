@@ -123,6 +123,82 @@ export async function run({ page, origin }) {
   await page.locator('[data-start]:enabled').waitFor();
   assert.equal(await pressed('kanaScript'), 'mixed');
 
+  /* 組合讀法（進階）：從對照表頁的按鈕進來，三種組合預設全選 */
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(origin + '/ja/kana.html');
+  assert.equal(await page.locator('.kana-combo-intro .combo-examples .kana').count(), 7);
+  assert.match(await page.locator('.kana-combo-intro').innerText(), /gakkou[\s\S]*漢字又怎麼唸/);
+  await page.locator('a.btn[href*="kind=combo"]').click();
+  await page.locator('[data-start]:enabled').waitFor();
+  assert.equal(await pressed('kanaKind'), 'combo');
+  assert.equal(await page.locator('[data-kana-rule][aria-pressed="true"]').count(), 3);
+  assert.equal(await page.locator('[data-kana-group]').count(), 0, '組合讀法沒有單一假名的範圍');
+  await noOverflow(page, '組合設定');
+
+  /* 正解從頁面上同一份 N5 單字算出來，不在測試裡另抄一份 */
+  const comboAnswer = (prompt, kanji) => page.evaluate(async ([text, isKanji]) => {
+    const { comboEntries } = await import('/assets/js/core/kana-combo.js');
+    const { words } = await import('/assets/js/data/catalog/ja-words-1.js');
+    const all = comboEntries(words);
+    if (isKanji) return all.find((e) => e.kanji && e.target === text).reading;
+    const byKana = all.find((e) => !e.kanji && e.kana === text);
+    return byKana ? byKana.romaji : all.find((e) => !e.kanji && e.romaji === text).kana;
+  }, [prompt, kanji]);
+  const optionTexts = () => page.locator('[data-opt]').evaluateAll((nodes) => nodes.map((n) => n.lastChild.textContent.trim() || n.textContent.replace(/^\s*\d\s*/, '').trim()));
+
+  await page.locator('[data-set="kanaDirection"][data-value="mixed"]').click();
+  await page.locator('[data-start]').click();
+  for (let i = 0; i < 10; i++) {
+    await page.locator(`.progress-text:has-text("第 ${i + 1} /")`).waitFor();
+    assert.match(await page.locator('.progress-text').innerText(), /五十音 · 組合讀法 · (平假名|片假名)/);
+    const prompt = (await page.locator('.kana-prompt.is-word').innerText()).trim();
+    const texts = await optionTexts();
+    assert.equal(texts.length, 4);
+    const right = texts.indexOf(await comboAnswer(prompt, false));
+    assert.ok(right >= 0, `${prompt} 的選項沒有正解：${texts}`);
+    if (i === 0) await noOverflow(page, '組合題');
+    await page.locator('[data-opt]').nth(i === 0 ? (right + 1) % 4 : right).click();
+    assert.match(await page.locator('.feedback').innerText(), /意思是「/);
+    await page.locator('[data-next]:enabled').waitFor();
+    await page.locator('[data-next]').click();
+  }
+  await page.locator('.score').waitFor();
+  assert.match(await page.locator('.score').innerText(), /9 \/ 10/);
+
+  /* 看漢字選讀音：模式那排收起來，題面是漢字，作答前翻小抄有組合規則 */
+  await page.locator('[data-again]').click();
+  await page.locator('[data-set="kanaDirection"][data-value="kanji"]').click();
+  assert.equal(await page.locator('[data-set="kanaScript"]').count(), 0, '看漢字時讀音一律平假名，不必選模式');
+  await page.locator('[data-start]').click();
+  await page.locator('.kana-prompt.is-word').waitFor();
+  const kanjiPrompt = (await page.locator('.kana-prompt').innerText()).trim();
+  assert.match(kanjiPrompt, /[一-龯]/);
+  assert.match(await page.locator('.progress-text').innerText(), /五十音 · 漢字讀音/);
+  await page.locator('[data-kana-peek] > summary').click();
+  assert.equal(await page.locator('[data-kana-peek] .combo-rules li').count(), 3);
+  const reading = await comboAnswer(kanjiPrompt, true);
+  await page.locator('[data-opt]').nth((await optionTexts()).indexOf(reading)).click();
+  assert.match(await page.locator('.feedback').innerText(), /讀作/);
+  assert.equal(await page.locator('.opt-row .speak').getAttribute('data-speak'), reading, '朗讀用假名讀音');
+  await page.locator('[data-next]:enabled').waitFor();
+
+  const saved = (await events(page)).events.map((e) => e.sourceId);
+  assert.equal(saved.filter((id) => /^ja-kc-\d+$/.test(id)).length, 10);
+  assert.equal(saved.filter((id) => /^ja-kj-\d+$/.test(id)).length, 1);
+
+  /* 重新開頁續答漢字局，設定還原成組合讀法＋看漢字 */
+  await page.goto(origin + '/ja/quiz.html');
+  await page.locator('[data-resume-quiz]').first().click();
+  await page.locator('.progress-text:has-text("第 2 /")').waitFor();
+  await page.locator('[data-quit]').click();
+  await page.locator('[data-start]').waitFor();
+  assert.equal(await pressed('kanaKind'), 'combo');
+  assert.equal(await pressed('kanaDirection'), 'kanji');
+  /* 切回單一假名，看漢字的方向退回預設 */
+  await page.locator('[data-set="kanaKind"][data-value="single"]').click();
+  assert.equal(await pressed('kanaDirection'), 'target2zh');
+  assert.equal(await page.locator('[data-set="kanaDirection"][data-value="kanji"]').count(), 0);
+
   /* 英文沒有五十音，指定了也退回單字 */
   await page.goto(origin + '/en/quiz.html?source=kana');
   await page.locator('[data-start]:enabled').waitFor();

@@ -15,6 +15,7 @@ import { applySpeechFallback, bindSpeakButtons } from './speech.js';
 import { loadPrefs, setPref } from './prefs.js';
 import { KANA_SECTIONS, kanaGridHtml } from './kana-chart.js';
 import { KANA_SCRIPTS } from '../core/kana-quiz.js';
+import { COMBO_RULES, kanaToRomaji } from '../core/kana-combo.js';
 
 /**
  * HTML 逸出，避免資料裡的角括號或引號破壞結構
@@ -111,6 +112,48 @@ function introHtml() {
 }
 
 /**
+ * 組合讀法的例詞。羅馬音由 core 轉出，與題庫同一套規則，不在這裡手打。
+ */
+const COMBO_EXAMPLES = [
+  { kana: 'きょう', kanji: '今日', zh: '今天', rule: 'youon' },
+  { kana: 'でんしゃ', kanji: '電車', zh: '電車', rule: 'youon' },
+  { kana: 'きって', kanji: '切手', zh: '郵票', rule: 'sokuon' },
+  { kana: 'がっこう', kanji: '学校', zh: '學校', rule: 'sokuon' },
+  { kana: 'せんせい', kanji: '先生', zh: '老師', rule: 'chouon' },
+  { kana: 'おかあさん', kanji: 'お母さん', zh: '媽媽', rule: 'chouon' },
+  { kana: 'コーヒー', kanji: '', zh: '咖啡', rule: 'chouon' },
+];
+
+/**
+ * 「兩個假名放一起」與「漢字怎麼唸」的說明，放在對照表最後：
+ * 表上一格一格的唸法背熟了，接下來會遇到的就是這兩件事。
+ */
+function comboHtml() {
+  const cards = COMBO_EXAMPLES.map((e) =>
+    `<button class="kana" type="button" data-speak="${esc(e.kana)}" data-speak-lang="ja">` +
+    `<span class="glyph" lang="ja">${esc(e.kana)}</span>` +
+    `<span class="romaji">${esc(kanaToRomaji(e.kana))}</span>` +
+    `<span class="example">${e.kanji ? `${esc(e.kanji)}・` : ''}${esc(e.zh)}</span>` +
+    '</button>').join('');
+  return `
+    <div class="card kana-intro kana-combo-intro">
+      <h2>兩個假名放一起：組合讀法</h2>
+      <p class="setting-note">一個一個唸的規則背熟之後，最容易卡住的是假名連在一起時，唸法會變。只有三條：</p>
+      <ul class="combo-rules">${COMBO_RULES.map((r) => `<li><b>${esc(r.label)}</b>　${esc(r.note)}</li>`).join('')}</ul>
+      <div class="combo-examples">${cards}</div>
+      <h2>漢字又怎麼唸？</h2>
+      <ul>
+        <li>漢字沒有一張表可以查唸法。同一個字常有兩種以上的讀法：跟著中文借來的<b>音讀</b>，和日本原有的<b>訓讀</b>。例如 <span lang="ja">山</span> 單獨用唸 <span lang="ja">やま</span>，在 <span lang="ja">富士山</span> 裡唸 <span lang="ja">さん</span>。</li>
+        <li>也有整個詞一起唸、拆不開的，例如 <span lang="ja">今日</span> 唸 <span lang="ja">きょう</span>。</li>
+        <li>所以漢字的讀音要連同整個詞一起記。測驗頁「組合讀法」的「看漢字選讀音」就是在練這個；單字題也可以把漢字切成標假名。</li>
+      </ul>
+      <div class="actions">
+        <a class="btn" href="./quiz.html?source=kana&amp;kind=combo">練組合讀法（進階）</a>
+      </div>
+    </div>`;
+}
+
+/**
  * 掛載五十音對照表頁。
  *
  * 四個區塊只建立一次，切換模式時僅重填格子內容，
@@ -134,7 +177,7 @@ export function initKanaPage({ kana, mount, noticeHost } = {}) {
     );
   }).join('');
 
-  mount.innerHTML = introHtml() + chipsHtml(mode) + sectionsHtml;
+  mount.innerHTML = introHtml() + chipsHtml(mode) + sectionsHtml + comboHtml();
 
   /**
    * 依目前模式重填四個區塊的格子

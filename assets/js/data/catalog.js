@@ -54,14 +54,16 @@ async function loadJlpt(lang, data, level) {
 
 export async function loadDataset(lang, source, { level = 'all' } = {}) {
   const data = language(lang);
-  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana'] };
+  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana', 'kanaWords'] };
   if (!Object.prototype.hasOwnProperty.call(fields, source)) throw new Error('不支援的題型。');
   /* JLPT 模擬題只有日文；英文不提供這個題源，而不是給一份空題庫假裝有 */
   if (source === 'jlpt') {
     if (!data.jlpt) throw new Error('這個語言沒有此題型。');
     return loadJlpt(lang, data, level);
   }
-  if (fields[source].some(field => field !== 'words' && !data[field])) throw new Error('這個語言沒有此題型。');
+  if (fields[source].some(field => !['words', 'kanaWords'].includes(field) && !data[field])) throw new Error('這個語言沒有此題型。');
+  /* 五十音的組合讀法題取材自 N5 單字，只載第一級那一包，不必為了它下載全部單字 */
   return Object.fromEntries(await Promise.all(fields[source].map(async field => [field, field === 'words'
-    ? await loadWords(lang) : [...await cached(`${lang}:${field}`, async () => (await data[field]())[field])]])));
+    ? await loadWords(lang) : field === 'kanaWords' ? await loadWords(lang, { level: 1 })
+      : [...await cached(`${lang}:${field}`, async () => (await data[field]())[field])]])));
 }

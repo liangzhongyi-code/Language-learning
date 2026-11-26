@@ -128,3 +128,40 @@ test('題庫只有日文有五十音，與對照表同一份資料', async () =>
   assert.equal(CATALOG_META.en.kana, 0);
   await assert.rejects(loadDataset('en', 'kana'), /沒有此題型/);
 });
+
+test('組合讀法與漢字讀音寫入既有紀錄：ja-kc-／ja-kj- 各記各的，可續答、備份照常通過', async () => {
+  const { store, make, service } = setup();
+  const { words } = await import('../assets/js/data/catalog/ja-words-1.js');
+  const base = { kanaKind: 'combo', kanaWords: words, kanaScript: 'mixed', kanaRules: ['youon', 'sokuon', 'chouon'], count: 3 };
+  const quizzes = [quizOf({ ...base, direction: 'mixed' }), quizOf({ ...base, kanaKanji: true, direction: 'target2zh' })];
+  const rounds = [];
+  for (const quiz of quizzes) {
+    const round = await service.start(quiz, { kanjiMode: 'show' });
+    rounds.push(round);
+    for (let i = 0; i < 2; i += 1) {
+      await service.submit({ sessionId: round.sessionId, index: i, response: quiz.questions[i].correctIndex,
+        reviewId: `${round.sessionId}-rv-${i}`, answeredAt: T0 + i, hintUsed: i === 1 });
+    }
+  }
+  const { rows } = await store.read(['reviewEvents', 'stats']);
+  const ids = Object.values(rows.reviewEvents).map((e) => e.sourceId);
+  assert.equal(ids.filter((id) => /^ja-kc-\d+$/.test(id)).length, 2);
+  assert.equal(ids.filter((id) => /^ja-kj-\d+$/.test(id)).length, 2);
+  assert.ok(Object.values(rows.reviewEvents).every((e) => /:recognition:(target2zh|zh2target)$/.test(e.skillKey)));
+  assert.deepEqual(rows.stats['ja:kana'], { answered: 4, correct: 4, sessions: 0 });
+
+  const resumed = await make().resume(rounds[1].sessionId);
+  assert.equal(resumed.quiz.cursor, 2);
+  assert.deepEqual(resumed.quiz.questions, quizzes[1].questions.map((q, i) => (i < 2 ? { ...q, answeredIndex: q.correctIndex } : q)));
+
+  const { learning } = await store.exportBackup();
+  assert.equal(learning.schemaVersion, 2);
+  assert.deepEqual(validateLearning(learning), { ok: true, errors: [] });
+});
+
+test('五十音題源一併載入 N5 單字（組合讀法題用），只載第一級', async () => {
+  const { loadWords } = await import('../assets/js/data/catalog.js');
+  const dataset = await loadDataset('ja', 'kana');
+  assert.deepEqual(dataset.kanaWords, await loadWords('ja', { level: 1 }));
+  assert.ok(dataset.kanaWords.every((w) => w.level === 1));
+});

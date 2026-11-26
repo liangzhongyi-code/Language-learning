@@ -46,3 +46,10 @@ test('入口：首頁有對照表與選擇題，對照表頁能直接開三種�
   assert.match(read('assets/js/ui/quiz-view.js'), /href="\.\/kana\.html"/);
   assert.match(read('ja/kana.html'), /<h1>五十音對照表<\/h1>/);
 });
+
+test('對照表頁講組合讀法與漢字讀音，並連到組合讀法題；測驗頁認得 kind=combo', () => {
+  const view = read('assets/js/ui/kana-view.js');
+  assert.match(view, /quiz\.html\?source=kana&amp;kind=combo/);
+  assert.match(view, /漢字又怎麼唸/);
+  assert.match(read('assets/js/ui/quiz-view.js'), /params\.get\('kind'\) === 'combo'/);
+});
