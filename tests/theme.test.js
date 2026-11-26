@@ -38,7 +38,8 @@ test('主題啟動腳本對深色、壞資料與停用儲存都安全退回深�
   assert.equal(boot(null, true).theme, 'dark');
 });
 
-test('外觀啟動腳本與模組正規化在全部 48 種組合一致', () => {
+test('外觀啟動腳本與模組正規化在全部 96 種組合一致', () => {
+  assert.equal(PALETTES.length, 8);
   for (const theme of ['dark', 'light']) for (const { value: palette } of PALETTES) {
     for (const { value: background } of BACKGROUNDS) for (const reducedEffects of [false, true]) {
       const value = { theme, palette, background, reducedEffects };

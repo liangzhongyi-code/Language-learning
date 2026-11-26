@@ -10,7 +10,7 @@
   }
   const data = document.documentElement.dataset;
   data.theme = stored?.theme === 'light' ? 'light' : 'dark';
-  data.palette = ['classic', 'midnight', 'forest', 'warm'].includes(stored?.palette) ? stored.palette : 'classic';
+  data.palette = ['classic', 'midnight', 'forest', 'warm', 'sakura', 'violet', 'sunset', 'mono'].includes(stored?.palette) ? stored.palette : 'classic';
   data.background = ['plain', 'aurora', 'dust'].includes(stored?.background) ? stored.background : 'aurora';
   data.reducedEffects = String(stored?.reducedEffects === true);
 })();

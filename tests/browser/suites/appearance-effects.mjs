@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { PALETTES } from '../../../assets/js/core/appearance.js';
+
+const ALL_PALETTES = PALETTES.map((p) => p.value);
 
 /**
  * 解碼 Chromium PNG，直接比較截圖 RGB；不以 computed background 當作可見證據。
@@ -135,7 +138,7 @@ export async function run({ page, origin }) {
   const directory = process.env.APPEARANCE_EVIDENCE_DIR;
   if (directory) await mkdir(directory, { recursive: true });
   for (const path of ['/index.html', '/ja/quiz.html']) for (const width of [320, 375, 1280]) {
-    if (caseFilter && !['dark', 'light'].some((theme) => ['classic', 'midnight', 'forest', 'warm']
+    if (caseFilter && !['dark', 'light'].some((theme) => ALL_PALETTES
       .some((palette) => caseFilter.test(`${path} ${width} ${theme} ${palette}`)))) continue;
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -145,7 +148,7 @@ export async function run({ page, origin }) {
     else await page.locator('#backup [data-code]').waitFor();
     const excluded = await backgroundExclusions(page);
     const domCount = await page.locator('body *').count();
-    for (const theme of ['dark', 'light']) for (const palette of ['classic', 'midnight', 'forest', 'warm']) {
+    for (const theme of ['dark', 'light']) for (const palette of ALL_PALETTES) {
       const label = `${path} ${width} ${theme} ${palette}`;
       if (caseFilter && !caseFilter.test(label)) continue;
       if (width !== 1280 && palette !== 'classic') {

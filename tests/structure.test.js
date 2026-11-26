@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PALETTES } from '../assets/js/core/appearance.js';
 
 /**
  * 這一支測的不是行為，而是「架構約定有沒有被違反」。
@@ -381,7 +382,7 @@ test('共用導覽列統一由外觀面板提供持久化的黑白模式切換',
 
 test('每套外觀配色的深淺內文、主按鈕與控制項邊界都有足夠對比', () => {
   for (const theme of ['dark', 'light']) {
-    for (const palette of ['classic', 'midnight', 'forest', 'warm']) {
+    for (const { value: palette } of PALETTES) {
       const c = {
         ...themeColors(),
         ...(theme === 'light' ? themeColors(":root[data-theme='light'] {") : {}),

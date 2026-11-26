@@ -52,19 +52,19 @@ window.addEventListener('storage', (event) => {
 
 export function appearanceHtml() {
   return `<details class="appearance" data-appearance-panel>
-    <summary class="appearance-toggle">外觀</summary>
+    <summary class="appearance-toggle">主題外觀</summary>
     <section class="appearance-panel" aria-label="外觀設定">
-      <div class="appearance-head"><div><h2>你的學習空間</h2><p>換個色調，保持專注。</p></div>
+      <div class="appearance-head"><div><h2>你的學習空間</h2><p>自選主題配色與背景氛圍，所有頁面即時套用。</p></div>
         <button type="button" class="appearance-close" data-appearance-close aria-label="關閉外觀設定">×</button></div>
       <fieldset><legend>顯示模式</legend><div class="appearance-modes">
         <label><input type="radio" name="appearance-theme" data-appearance="theme" value="dark">深色</label>
         <label><input type="radio" name="appearance-theme" data-appearance="theme" value="light">淺色</label>
       </div></fieldset>
-      <fieldset><legend>配色</legend><div class="appearance-grid">
-        ${PALETTES.map((p) => `<label class="appearance-choice"><input type="radio" name="appearance-palette" data-appearance="palette" value="${p.value}"><span class="appearance-preview palette-${p.value}" aria-hidden="true"></span><span>${p.label}</span></label>`).join('')}
+      <fieldset><legend>主題風格（8 款）</legend><div class="appearance-grid">
+        ${PALETTES.map((p) => `<label class="appearance-choice"><input type="radio" name="appearance-palette" data-appearance="palette" value="${p.value}"><span class="appearance-preview palette-${p.value}" aria-hidden="true"></span><span class="appearance-title">${p.label}</span><small>${p.note}</small></label>`).join('')}
       </div></fieldset>
-      <fieldset><legend>背景</legend><div class="appearance-grid backgrounds">
-        ${BACKGROUNDS.map((b) => `<label class="appearance-choice"><input type="radio" name="appearance-background" data-appearance="background" value="${b.value}"><span class="appearance-preview preview-${b.value}" aria-hidden="true"></span><span>${b.label}</span><small>${b.note}</small></label>`).join('')}
+      <fieldset><legend>背景氛圍</legend><div class="appearance-grid backgrounds">
+        ${BACKGROUNDS.map((b) => `<label class="appearance-choice"><input type="radio" name="appearance-background" data-appearance="background" value="${b.value}"><span class="appearance-preview preview-${b.value}" aria-hidden="true"></span><span class="appearance-title">${b.label}</span><small>${b.note}</small></label>`).join('')}
       </div></fieldset>
       <label class="appearance-effects"><input type="checkbox" data-appearance="reducedEffects">降低特效</label>
       <p class="appearance-note">勾選後關閉動態、微塵與磨砂模糊，並降低柔光強度；測驗卡片一律使用實心底色。</p>
