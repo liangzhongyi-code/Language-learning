@@ -22,11 +22,13 @@
      */
     const source = new URLSearchParams(window.location.search).get('source');
     const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
-      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'], kana: lang === 'ja' ? ['kana', 'kanaWords'] : ['words'] };
+      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'], kana: lang === 'ja' ? ['kana', 'kanaWords'] : ['words'],
+      kanji: lang === 'ja' ? ['kanji'] : ['words'], grammar: lang === 'ja' ? ['grammar-points'] : ['words'] };
     const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
     /* 五十音沿用對照表頁的資料檔，不在 catalog 目錄底下；組合讀法題另外要 N5 單字那一包 */
     files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`)
-      : field === 'kana' ? [`../${lang}/kana`] : field === 'kanaWords' ? [`${lang}-words-1`] : [`${lang}-${field}`]);
+      : ['kana', 'kanji', 'grammar-points'].includes(field) ? [`../${lang}/${field}`]
+        : field === 'kanaWords' ? [`${lang}-words-1`] : [`${lang}-${field}`]);
   }
   for (const name of files) {
     const link = document.createElement('link');

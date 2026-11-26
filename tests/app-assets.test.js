@@ -61,11 +61,11 @@ test('S02：資源目錄內出現金鑰檔或包外引用時建置失敗', async
   await assert.rejects(stageWeb({ root: missing, out: await mkdtemp(join(tmpdir(), 'stage-out-')), manifest: mini }), /不存在/);
 });
 
-test('S01/S02：真實專案可整理出全部 21 頁且所有相對引用都在包內', async () => {
+test('S01/S02：真實專案可整理出全部 23 頁且所有相對引用都在包內', async () => {
   const out = await mkdtemp(join(tmpdir(), 'stage-real-'));
   const { files } = await stageWeb({ root: ROOT, out, manifest });
   for (const page of manifest.pages) assert.ok(files.includes(page), `缺 ${page}`);
-  assert.equal(manifest.pages.length, 21);
+  assert.equal(manifest.pages.length, 23);
   assert.ok(!files.some((file) => /^(tests|docs|openspec|node_modules|app)\//.test(file) || file.startsWith('.')));
   await rm(out, { recursive: true, force: true });
 });
@@ -280,7 +280,7 @@ test('P00b：rollback false、假儲存能力、空版本及未等待的結果�
   assert.deepEqual(await pending, valid);
 });
 
-test('P00b：prototype staging 保留網站 21 頁，兩頁與外部模組可載入且機密不進包', async (t) => {
+test('P00b：prototype staging 保留網站 23 頁，兩頁與外部模組可載入且機密不進包', async (t) => {
   const out = await mkdtemp(join(tmpdir(), 'stage-real-'));
   t.after(() => rm(out, { recursive: true, force: true }));
   const prototype = JSON.parse(await readFile(join(ROOT, 'app/prototype-manifest.json'), 'utf8'));

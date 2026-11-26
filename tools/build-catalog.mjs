@@ -40,6 +40,8 @@ for (const lang of ['en', 'ja']) {
     jlptByMondai: Object.fromEntries([1, 2, 3, 4, 5].map(level => [level, Object.fromEntries(JLPT_KIND_KEYS.map(key =>
       [key, jlptQuestions.filter(row => row.level === level && jlptKindKeyOf(row) === key).length]))])),
     kana: lang === 'ja' ? (await read('kana')).length : 0,
+    kanji: lang === 'ja' ? (await read('kanji')).length : 0,
+    grammarPoints: lang === 'ja' ? (await import(new URL('../assets/js/data/ja/grammar-points.js', import.meta.url))).grammarPoints.length : 0,
     sourceHash: digest({ words, sentences, scenes, readings, ...(lang === 'ja' ? { jlpt, jlptReading } : {}) }) };
   for (const level of [1, 2, 3, 4, 5]) files.set(`${lang}-words-${level}.js`, ['words', words.filter(w => w.level === level)]);
   for (const [kind, rows] of Object.entries({ sentences, scenes, readings })) files.set(`${lang}-${kind}.js`, [kind, rows]);

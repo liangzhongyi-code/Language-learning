@@ -1009,6 +1009,72 @@ html.no-speech .speak { display: none !important; }
 .kana-intro h2 { font-size: 18px; margin: 0 0 var(--size-2); }
 .kana-intro { margin-bottom: var(--size-4); }
 .kana-combo-intro { margin-top: var(--size-5); }
+
+/* ── 漢字表 ── */
+.kanji-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); margin-top: var(--size-3); }
+.kanji-cell { position: relative; }
+.kanji-cell .glyph { font-size: 32px; }
+.kanji-cell.is-diff { border-color: var(--warn); }
+.kanji-cell[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.kanji-trad { position: absolute; top: 4px; right: 6px; font-size: 12px; color: var(--warn); }
+.kanji-count { margin-left: auto; align-self: center; }
+.kanji-detail { margin-top: var(--size-3); }
+.kanji-detail-head { display: flex; gap: var(--size-3); align-items: flex-start; }
+.kanji-detail-head > div { flex: 1; min-width: 0; }
+.kanji-big { font-size: 64px; line-height: 1; font-family: var(--font-display); }
+.kanji-meaning { font-size: 18px; margin: 4px 0; }
+.kanji-readings { font-size: 18px; color: var(--accent); margin: var(--size-2) 0; }
+.kanji-examples { list-style: none; padding: 0; margin: 0; }
+.kanji-example { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.kanji-word { font-size: 20px; }
+.kanji-word-reading { color: var(--accent); }
+.kanji-word-zh { color: var(--dim); }
+.prompt.kanji-reading-prompt { font-size: 26px; justify-content: center; margin: var(--size-3) 0 var(--size-2); }
+
+/* ── 跟讀 ── */
+.shadow-btn { font-size: 13px; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+.shadow-btn:hover, .shadow-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.shadow-panel { flex-basis: 100%; width: 100%; margin: var(--size-2) 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.shadow-panel .actions { margin: 8px 0; }
+.shadow-line { font-size: 18px; }
+.shadow-reading { display: block; font-size: 13px; color: var(--accent); }
+.shadow-verdict { font-weight: 600; margin: 8px 0 4px; }
+.shadow-verdict.is-good { color: var(--ok); }
+.shadow-verdict.is-close { color: var(--warn); }
+.shadow-verdict.is-retry { color: var(--bad); }
+.shadow-miss { background: var(--bad-soft); color: var(--bad); border-radius: 3px; }
+.shadow-compare { font-size: 16px; }
+
+/* ── 文法題與文法點 ── */
+.prompt.grammar-prompt { font-size: 24px; line-height: 1.6; }
+.grammar-blank { display: inline-block; min-width: 3em; border-bottom: 2px solid var(--accent); color: var(--accent); text-align: center; }
+.grammar-zh { color: var(--dim); margin: 0 0 var(--size-2); }
+.section-title { font-size: 20px; margin: var(--size-5) 0 var(--size-3); }
+.gp-point > summary .n { font-family: var(--font-body); }
+.gp-form { margin: var(--size-2) 0; }
+.gp-examples { list-style: none; padding: 0; margin: var(--size-2) 0 0; }
+.gp-example { padding: 8px 0; border-top: 1px solid var(--border); }
+.gp-target { font-size: 18px; margin: 0; }
+.gp-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ── 閱讀頁 ── */
+.rd-list { list-style: none; padding: 0; display: grid; gap: var(--size-2); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.rd-pick { width: 100%; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; color: var(--text); }
+.rd-pick:hover { border-color: var(--accent); }
+.rd-title { font-size: 18px; }
+.rd-bar { display: flex; gap: var(--size-2); align-items: center; margin-bottom: var(--size-3); }
+.rd-sentences { padding-left: 1.6em; margin: 0; }
+.rd-sentence { padding: 10px 0; border-top: 1px solid var(--border); }
+.rd-text { font-size: 20px; line-height: 2.2; margin: 0; overflow-wrap: anywhere; }
+.rd-word { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; border-bottom: 1px dashed var(--border-strong); }
+.rd-word:hover, .rd-word:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+.rd-text rt { font-size: 11px; color: var(--accent); }
+.hide-ruby .rd-text rt { display: none; }
+.rd-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rd-lookup { margin-top: var(--size-2); padding: 10px 14px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface-2); }
+.rd-lookup p { margin: 4px 0; }
+.rd-kanji { margin: 0; padding-left: 1.2em; }
+.rd-translation { margin-top: var(--size-3); }
 .kana-intro h2:not(:first-child) { margin-top: var(--size-4); }
 
 /* 測驗頁的五十音題：假名是題目本身，要大；選項也放大一級 */

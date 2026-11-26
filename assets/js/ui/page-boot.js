@@ -34,9 +34,10 @@ async function boot() {
     import('./stats-view.js').then(({ renderLangStats }) => renderLangStats(document.getElementById('stats'), lang))
       .catch(() => { document.getElementById('stats').textContent = '統計暫時無法載入，重新整理後重試；紀錄沒有刪除。'; });
   }
-  const catalog = ['home', 'quiz', 'daily', 'vocab', 'grammar', 'library'].includes(page)
+  const catalog = ['home', 'quiz', 'daily', 'vocab', 'grammar', 'library', 'reading'].includes(page)
     ? await import('../data/catalog.js') : {};
   const { CATALOG_META, loadWords, loadDataset } = catalog;
+  const loadWordsFor = (code) => loadWords(code);
   if (page === 'home') {
     const meta = CATALOG_META[lang];
     document.querySelector('[data-count="words"]').textContent = meta.words;
@@ -67,6 +68,13 @@ async function boot() {
   } else if (page === 'grammar') {
     const [{ initGrammarPage }, { sentences }] = await Promise.all([import('./grammar-view.js'), loadDataset(lang, 'sentences')]);
     initGrammarPage({ ...args, sentences });
+    /* 日文另有 N5 文法點，畫在語序對照的上方；載入失敗只影響這一區 */
+    const pointsMount = document.getElementById('grammar-points');
+    if (lang === 'ja' && pointsMount) {
+      Promise.all([import('./grammar-points-view.js'), import('../data/ja/grammar-points.js')])
+        .then(([{ initGrammarPoints }, { grammarPoints }]) => initGrammarPoints({ grammarPoints, mount: pointsMount }))
+        .catch(() => { pointsMount.textContent = '文法點暫時無法載入，重新整理後重試。'; });
+    }
   } else if (page === 'library') {
     const [{ initLibraryPage }, words] = await Promise.all([import('./library-view.js'), loadWords(lang)]);
     initLibraryPage({ ...args, words });
@@ -78,6 +86,15 @@ async function boot() {
       import('./practice-view.js'),
       lang === 'ja' ? import('../data/ja/practice.js') : import('../data/en/practice.js')]);
     initPracticePage({ ...args, practice: data.practice });
+  } else if (page === 'kanji' && lang === 'ja') {
+    const [{ initKanjiPage }, { kanji }] = await Promise.all([import('./kanji-view.js'), import('../data/ja/kanji.js')]);
+    initKanjiPage({ ...args, kanji });
+  } else if (page === 'reading' && lang === 'ja') {
+    /* 點詞查詢要整份單字題庫（短文橫跨 N5～N1），漢字表用來補查不到的字 */
+    const [{ initReadingPage }, { readings }, { readingKana }, { kanji }, words] = await Promise.all([
+      import('./reading-view.js'), import('../data/ja/readings.js'), import('../data/ja/reading-kana.js'),
+      import('../data/ja/kanji.js'), loadWordsFor(lang)]);
+    initReadingPage({ ...args, readings, readingKana, kanji, words });
   } else if (page === 'pron') {
     const view = await import('./kana-view.js');
     if (lang === 'ja') view.initKanaPage({ ...args, ...(await import('../data/ja/kana.js')) });

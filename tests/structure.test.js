@@ -60,7 +60,7 @@ test('所有網站頁面都存在', () => {
     'help.html', 'privacy.html', 'admin.html',
     'en/index.html', 'en/alphabet.html', 'en/vocabulary.html', 'en/grammar.html', 'en/quiz.html',
     /* guide 只有日文有——英文對中文使用者沒有「三套文字混著寫」這種要先解釋的門檻 */
-    'ja/index.html', 'ja/guide.html', 'ja/kana.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/quiz.html',
+    'ja/index.html', 'ja/guide.html', 'ja/kana.html', 'ja/kanji.html', 'ja/vocabulary.html', 'ja/grammar.html', 'ja/reading.html', 'ja/quiz.html',
     ...study.flatMap((page) => [`en/${page}.html`, `ja/${page}.html`]),
   ];
   for (const page of expected) {

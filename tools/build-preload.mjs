@@ -29,7 +29,9 @@ function bootModules(lang, page) {
     quiz: [...catalog, 'ui/quiz-view.js'],
     daily: [...catalog, 'ui/daily-view.js'],
     vocab: [...catalog, 'ui/vocab-view.js'],
-    grammar: [...catalog, 'ui/grammar-view.js'],
+    grammar: [...catalog, 'ui/grammar-view.js', ...(lang === 'ja' ? ['ui/grammar-points-view.js', 'data/ja/grammar-points.js'] : [])],
+    kanji: ['ui/kanji-view.js', 'data/ja/kanji.js'],
+    reading: [...catalog, 'ui/reading-view.js', 'data/ja/readings.js', 'data/ja/reading-kana.js', 'data/ja/kanji.js'],
     library: [...catalog, 'ui/library-view.js'],
     history: ['ui/history-view.js'],
     practice: ['ui/practice-view.js', `data/${lang}/practice.js`],
@@ -77,7 +79,7 @@ for (const name of manifest.pages) {
   const links = modules.map((path) => `<link rel="modulepreload" href="${href(path)}">`);
   if (booted) {
     const catalog = `${href(join(root, 'assets/js/data/catalog'))}/`;
-    const fixed = { vocab: WORDS, library: WORDS, grammar: ['sentences'] }[page];
+    const fixed = { vocab: WORDS, library: WORDS, grammar: ['sentences'], reading: WORDS }[page];
     if (fixed) links.push(...fixed.map((part) => `<link rel="modulepreload" href="${catalog}${lang}-${part}.js">`));
     if (['home', 'daily', 'quiz'].includes(page)) {
       links.unshift(`<script data-lang="${lang}" data-page="${page}" data-base="${catalog}">`, dataPreload, '</script>');

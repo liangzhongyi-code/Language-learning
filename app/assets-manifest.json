@@ -4,7 +4,7 @@
     "index.html", "help.html",
     "en/index.html", "en/daily.html", "en/alphabet.html", "en/vocabulary.html", "en/grammar.html",
     "en/quiz.html", "en/practice.html", "en/library.html", "en/history.html",
-    "ja/index.html", "ja/guide.html", "ja/daily.html", "ja/kana.html", "ja/vocabulary.html", "ja/grammar.html",
+    "ja/index.html", "ja/guide.html", "ja/daily.html", "ja/kana.html", "ja/kanji.html", "ja/vocabulary.html", "ja/grammar.html", "ja/reading.html",
     "ja/quiz.html", "ja/practice.html", "ja/library.html", "ja/history.html"
   ],
   "directories": ["assets/css", "assets/js"],

@@ -19,6 +19,9 @@ const modules = {
       () => import('./catalog/ja-jlpt-3.js'), () => import('./catalog/ja-jlpt-4.js'), () => import('./catalog/ja-jlpt-5.js')],
     /* 五十音只有 104 筆，直接用對照表頁的同一份資料，不另外生成 */
     kana: () => import('./ja/kana.js'),
+    /* 漢字表與文法點是手寫的小檔，跟五十音一樣直接讀原始資料，不另外生成 */
+    kanji: () => import('./ja/kanji.js'),
+    grammarPoints: () => import('./ja/grammar-points.js'),
   },
 };
 const pending = new Map();
@@ -54,7 +57,7 @@ async function loadJlpt(lang, data, level) {
 
 export async function loadDataset(lang, source, { level = 'all' } = {}) {
   const data = language(lang);
-  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana', 'kanaWords'] };
+  const fields = { words: ['words'], mixed: ['words', 'sentences'], sentences: ['sentences'], cloze: ['sentences'], scene: ['scenes'], reading: ['readings'], jlpt: ['jlpt', 'jlptReading'], kana: ['kana', 'kanaWords'], kanji: ['kanji'], grammar: ['grammarPoints'] };
   if (!Object.prototype.hasOwnProperty.call(fields, source)) throw new Error('不支援的題型。');
   /* JLPT 模擬題只有日文；英文不提供這個題源，而不是給一份空題庫假裝有 */
   if (source === 'jlpt') {

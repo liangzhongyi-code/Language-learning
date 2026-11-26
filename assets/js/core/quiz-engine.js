@@ -17,6 +17,8 @@ import { speakTextOf } from './speech-text.js';
 import { kanaPool } from './kana.js';
 import { KANA_SCRIPT_KEYS, kanaEntries, kanaFilter, buildKanaQuestion } from './kana-quiz.js';
 import { COMBO_RULE_KEYS, comboEntries, comboFilter, buildComboQuestion } from './kana-combo.js';
+import { KANJI_SCOPE_KEYS, kanjiFilter, buildKanjiQuestion } from './kanji-quiz.js';
+import { buildGrammarQuestion } from './grammar-quiz.js';
 import { jlptMondaiOf, jlptReadingTypeOf, jlptKindKeyOf, JLPT_READING_FOCUS } from './jlpt-mondai.js';
 
 /**
@@ -223,8 +225,11 @@ export function pickDistractors(
  * 設定畫面要顯示各題源的筆數，所以一併匯出——
  * 讓 UI 直接用這裡的定義，而不是自己再寫一份分支。
  */
-export function poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana) {
+export function poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana, kanji, grammarPoints) {
   if (source === 'words') return [...(words || [])];
+  /* 漢字與文法點：一個字、一個文法點各一筆學習紀錄 */
+  if (source === 'kanji') return [...(kanji || [])];
+  if (source === 'grammar') return [...(grammarPoints || [])];
   /* 五十音：一個音攤成平假名與片假名兩筆，各有自己的 id 與學習紀錄 */
   if (source === 'kana') return kanaEntries(kana);
   /**
@@ -750,6 +755,10 @@ export function buildSession({
   kanaRules = [],
   kanaKanji = false,
   kanaWords = [],
+  /* N5 漢字表與文法點，只有 kanji／grammar 題源會用到；kanjiScope 是 all 或 diff（寫法和繁體不同的） */
+  kanji = [],
+  grammarPoints = [],
+  kanjiScope = 'all',
   /* 閱讀題的問法與選項要用中文還是目標語言 */
   readingAskIn = 'zh',
   /**
@@ -775,7 +784,8 @@ export function buildSession({
   count = 10,
   rng = Math.random,
 }) {
-  const all = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana);
+  const all = poolOf(source, words, sentences, scenes, readings, jlpt, jlptReading, kana, kanji, grammarPoints);
+  if (source === 'kanji' && !KANJI_SCOPE_KEYS.includes(kanjiScope)) throw new Error('不認得的漢字範圍。');
   if (level !== null && (!Number.isInteger(level) || level < 1 || level > 5)) {
     throw new Error(`難度不合法：${level}。請選 N5 到 N1。`);
   }
@@ -797,7 +807,9 @@ export function buildSession({
       ? comboFilter(comboEntries(kanaWords), { script: kanaScript, rules: kanaRules, kanji: kanaKanji })
       : source === 'kana'
         ? kanaFilter(all, { script: kanaScript, groups: kanaGroups })
-        : all;
+        : source === 'kanji'
+          ? kanjiFilter(all, { scope: kanjiScope })
+          : all;
 
   /* 難度先切池，後面的抽題、干擾選項與填空候選詞才會全部留在同一級 */
   const leveled = level === null ? base : base.filter((item) => item.level === level);
@@ -857,7 +869,7 @@ export function buildSession({
    * 干擾選項的第一段是「同 category」，分桶一次就不必每題掃全表。
    * 一局 10 題感覺不出來，但題數選「全部」時是 7608 題 × 7608 筆的差別。
    */
-  const byCategory = kind === 'choice' && !['scene', 'reading', 'jlpt', 'kana'].includes(source)
+  const byCategory = kind === 'choice' && !['scene', 'reading', 'jlpt', 'kana', 'kanji', 'grammar'].includes(source)
     ? indexByCategory(pool)
     : null;
 
@@ -868,6 +880,9 @@ export function buildSession({
     if (source === 'reading') return buildReadingQuestion(item, { lang, rng, askIn: readingAskIn });
     const dir = direction === 'mixed' ? (rng() < 0.5 ? 'zh2target' : 'target2zh') : direction;
     if (combo) return buildComboQuestion(item, { direction: dir, rng });
+    /* 漢字的干擾選項取自整張漢字表，不受「只練寫法不同的」範圍限制 */
+    if (source === 'kanji') return buildKanjiQuestion(item, all, { direction: dir, rng });
+    if (source === 'grammar') return buildGrammarQuestion(item, { rng });
     if (source === 'kana') return buildKanaQuestion(item, pool, { direction: dir, rng });
     return buildChoiceQuestion(item, pool, { lang, direction: dir, rng, byCategory });
   });

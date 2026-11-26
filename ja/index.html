@@ -23,11 +23,13 @@
      */
     const source = new URLSearchParams(window.location.search).get('source');
     const fields = { sentences: ['sentences'], cloze: ['sentences'], mixed: ['words', 'sentences'], reading: ['readings'],
-      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'], kana: lang === 'ja' ? ['kana', 'kanaWords'] : ['words'] };
+      scene: lang === 'ja' ? ['scenes'] : ['words'], jlpt: lang === 'ja' ? [`jlpt-${level}`] : ['words'], kana: lang === 'ja' ? ['kana', 'kanaWords'] : ['words'],
+      kanji: lang === 'ja' ? ['kanji'] : ['words'], grammar: lang === 'ja' ? ['grammar-points'] : ['words'] };
     const chosen = Object.prototype.hasOwnProperty.call(fields, source ?? '') ? fields[source] : ['words'];
     /* 五十音沿用對照表頁的資料檔，不在 catalog 目錄底下；組合讀法題另外要 N5 單字那一包 */
     files = chosen.flatMap((field) => field === 'words' ? [1, 2, 3, 4, 5].map((n) => `${lang}-words-${n}`)
-      : field === 'kana' ? [`../${lang}/kana`] : field === 'kanaWords' ? [`${lang}-words-1`] : [`${lang}-${field}`]);
+      : ['kana', 'kanji', 'grammar-points'].includes(field) ? [`../${lang}/${field}`]
+        : field === 'kanaWords' ? [`${lang}-words-1`] : [`${lang}-${field}`]);
   }
   for (const name of files) {
     const link = document.createElement('link');
@@ -78,6 +80,8 @@
 <link rel="modulepreload" href="../assets/js/core/kana.js">
 <link rel="modulepreload" href="../assets/js/core/kana-quiz.js">
 <link rel="modulepreload" href="../assets/js/core/kana-combo.js">
+<link rel="modulepreload" href="../assets/js/core/kanji-quiz.js">
+<link rel="modulepreload" href="../assets/js/core/grammar-quiz.js">
 <link rel="modulepreload" href="../assets/js/core/jlpt-mondai.js">
 <link rel="modulepreload" href="../assets/js/core/learning-operations.js">
 <link rel="modulepreload" href="../assets/js/core/learning-migration.js">
@@ -126,20 +130,30 @@
       <h3>五十音選擇題</h3>
       <p>平假名、片假名、混合三種模式，完全不認得也能開始。認得之後還有拗音、促音、長音的組合讀法。</p>
     </a>
+    <a class="entry" href="./kanji.html">
+      <div class="icon">漢</div>
+      <h3>漢字表</h3>
+      <p>N5 常用漢字：日本寫法和繁體差在哪、音讀與訓讀、例詞朗讀與跟讀。</p>
+    </a>
     <a class="entry" href="./vocabulary.html">
       <div class="icon">📇</div>
       <h3>單字</h3>
       <p><span data-count="words">—</span> 個日常單字，附假名讀音與羅馬拼音。</p>
     </a>
-    <a class="entry" href="./grammar.html">
+    <a class="entry" href="./grammar.html#points">
       <div class="icon">🧩</div>
-      <h3>文法句型</h3>
-      <p><span data-count="sentences">—</span> 組例句，看助詞怎麼用、動詞為什麼永遠在句尾。</p>
+      <h3>文法</h3>
+      <p>N5 文法點的意思、接法與例句，加上 <span data-count="sentences">—</span> 組例句的語序拆解。</p>
+    </a>
+    <a class="entry" href="./reading.html">
+      <div class="icon">📖</div>
+      <h3>閱讀短文</h3>
+      <p>逐句朗讀、跟讀，漢字可以標假名、點來查意思。</p>
     </a>
     <a class="entry" href="./quiz.html">
       <div class="icon">🎯</div>
       <h3>選題測驗</h3>
-      <p>五十音、選擇題、填空、情境、閱讀與 JLPT 模擬八種題型，每局結束檢討錯題。</p>
+      <p>五十音、漢字讀音、文法、選擇題、填空、情境、閱讀與 JLPT 模擬十種題型，每局結束檢討錯題。</p>
     </a>
     <a class="entry" href="./practice.html">
       <div class="icon">⌨️</div>
