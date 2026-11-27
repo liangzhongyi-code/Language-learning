@@ -4,10 +4,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { buildSite, SITE_ENTRIES, SITE_EXTENSIONS, ROOT } from '../tools/build-site.mjs';
+import { buildSite, SITE_ENTRIES, SITE_EXTENSIONS, SITE_GENERATED, HEADERS_CONTENT, ROOT } from '../tools/build-site.mjs';
 
 /**
  * 遞迴列出目錄下全部檔案（相對路徑，斜線分隔）。
@@ -41,26 +41,28 @@ function buildInto(root = ROOT) {
   }
 }
 
-test('H02 建置結果的頂層只含白名單項目，必要項目都在', () => {
+test('H02 建置結果的頂層只含白名單項目與控制檔，必要項目都在', () => {
   const { outDir, copied, dispose } = buildInto();
   try {
-    const allowed = new Set(SITE_ENTRIES.map((entry) => entry.path));
+    const allowed = new Set([...SITE_ENTRIES.map((entry) => entry.path), ...SITE_GENERATED]);
     const top = readdirSync(outDir);
     assert.deepEqual(top.filter((name) => !allowed.has(name)), [], '出現白名單以外的頂層項目');
     for (const { path, required } of SITE_ENTRIES) {
       if (required) assert.ok(top.includes(path), `缺少必要項目：${path}`);
     }
+    assert.equal(readFileSync(join(outDir, '_headers'), 'utf8'), HEADERS_CONTENT);
     assert.deepEqual([...copied].sort(), [...top].sort());
   } finally { dispose(); }
 });
 
-test('H02 建置結果只含網站檔案類型，沒有開發文件或隱藏檔', () => {
+test('H02 建置結果只含網站檔案類型與 _headers，沒有開發文件或隱藏檔', () => {
   const { outDir, dispose } = buildInto();
   try {
     const files = listFiles(outDir);
     assert.ok(files.length > 0);
+    const generated = new Set(SITE_GENERATED);
     const offenders = files.filter((path) =>
-      !SITE_EXTENSIONS.includes(extensionOf(path)) || path.split('/').some((part) => part.startsWith('.')));
+      !generated.has(path) && (!SITE_EXTENSIONS.includes(extensionOf(path)) || path.split('/').some((part) => part.startsWith('.'))));
     assert.deepEqual(offenders, [], '靜態資源出現非網站檔案');
   } finally { dispose(); }
 });
@@ -80,7 +82,7 @@ test('H02 自我驗證：專案根目錄的非網站項目與白名單目錄內�
     const { outDir, dispose } = buildInto(root);
     try {
       assert.deepEqual(listFiles(outDir).sort(),
-        ['assets/css/theme.css', 'assets/js/a.js', 'en/index.html', 'help.html', 'index.html', 'ja/index.html']);
+        ['_headers', 'assets/css/theme.css', 'assets/js/a.js', 'en/index.html', 'help.html', 'index.html', 'ja/index.html']);
     } finally { dispose(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

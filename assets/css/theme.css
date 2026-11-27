@@ -1256,17 +1256,8 @@ a.entry:hover::after {
 }
 
 /**
- * 玻璃層只放在入口與導覽；題面、閱讀和填空保留原本的不透明表面。
- * 不支援 color-mix 的瀏覽器沿用上面的實心底色。
+ * 毛玻璃只保留在頂部導覽列，避免首頁與語言總覽的多張入口卡建立大量即時模糊圖層造成進頁與捲動掉幀。
  */
-@supports (background: color-mix(in srgb, red, transparent)) {
-  body[data-page='root'] .entry:not(.is-static),
-  body[data-page='home'] .entry {
-    background: color-mix(in srgb, var(--surface) 95%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-}
 .chip:disabled:hover { color: var(--dim); border-color: var(--border-strong); background: var(--surface-2); }
 .chip[aria-pressed='true'] {
   background: var(--accent-soft);

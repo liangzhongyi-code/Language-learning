@@ -23,6 +23,99 @@ function addCloudAccount(root) {
 }
 
 /**
+ * 將站內相對 .html 連結轉成 Cloudflare Workers（auto-trailing-slash）的正式路徑，
+ * 避免每次切頁多一次 307 網路往返。僅在 cloud 站啟用；GitHub Pages 與本機維持 .html。
+ */
+export function canonicalCloudHref(href) {
+  if (typeof href !== 'string' || !href) return href;
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(href)) return href;
+  const hashAt = href.indexOf('#');
+  const withoutHash = hashAt >= 0 ? href.slice(0, hashAt) : href;
+  const hash = hashAt >= 0 ? href.slice(hashAt) : '';
+  const queryAt = withoutHash.indexOf('?');
+  const path = queryAt >= 0 ? withoutHash.slice(0, queryAt) : withoutHash;
+  const query = queryAt >= 0 ? withoutHash.slice(queryAt) : '';
+  let clean = path;
+  if (clean === 'index.html') clean = './';
+  else if (clean.endsWith('/index.html')) clean = clean.slice(0, -'index.html'.length);
+  else if (clean.endsWith('.html')) clean = clean.slice(0, -'.html'.length);
+  return clean + query + hash;
+}
+
+const isCloudSite = () => cloudMode(window.location.origin, CLOUD_CONFIG) === 'cloud';
+
+function pageHref(prefix, file, cloud) {
+  const raw = `${prefix}${file}`;
+  return cloud ? canonicalCloudHref(raw) : raw;
+}
+
+function rewriteAnchor(anchor) {
+  const raw = anchor?.getAttribute?.('href');
+  if (!raw) return;
+  const next = canonicalCloudHref(raw);
+  if (next !== raw) anchor.setAttribute('href', next);
+}
+
+/**
+ * 在 cloud 站把頁內既有與動態產生的 .html 連結一併轉為無 307 路徑。
+ */
+function normalizeCloudLinks() {
+  if (!isCloudSite() || !document.querySelectorAll) return;
+  document.querySelectorAll('a[href]').forEach(rewriteAnchor);
+  if (document.documentElement?.dataset?.cloudLinksBound) return;
+  if (document.documentElement?.dataset) document.documentElement.dataset.cloudLinksBound = '1';
+  const handle = (event) => {
+    const anchor = event.target?.closest?.('a[href]');
+    if (anchor) rewriteAnchor(anchor);
+  };
+  document.addEventListener('pointerover', handle, { passive: true });
+  document.addEventListener('focusin', handle, { passive: true });
+  document.addEventListener('click', handle, true);
+}
+
+/**
+ * 啟用瀏覽器原生 Speculation Rules（Chromium 支援，其餘瀏覽器安全忽略）：
+ * 游標停留在站內連結或按下時才觸發（moderate），不預先浪費流量；
+ * 純閱讀／查詢頁允許背景預渲染，具寫入副作用的頁面僅預抓 HTML。
+ */
+function installSpeculationRules() {
+  if (typeof HTMLScriptElement === 'undefined' || !HTMLScriptElement.supports?.('speculationrules')) return;
+  if (typeof navigator !== 'undefined' && navigator.connection?.saveData) return;
+  if (!document.head || document.head.querySelector('script[type="speculationrules"]')) return;
+  const script = document.createElement('script');
+  script.type = 'speculationrules';
+  script.textContent = JSON.stringify({
+    prefetch: [{
+      where: {
+        and: [
+          { href_matches: '/*' },
+          { not: { href_matches: '/api/*' } },
+          { not: { href_matches: '/admin*' } },
+        ],
+      },
+      eagerness: 'moderate',
+    }],
+    prerender: [{
+      where: {
+        or: [
+          { href_matches: '/*/kana*' },
+          { href_matches: '/*/kanji*' },
+          { href_matches: '/*/vocabulary*' },
+          { href_matches: '/*/grammar*' },
+          { href_matches: '/*/reading*' },
+          { href_matches: '/*/guide*' },
+          { href_matches: '/*/alphabet*' },
+          { href_matches: '/help*' },
+          { href_matches: '/privacy*' },
+        ],
+      },
+      eagerness: 'moderate',
+    }],
+  });
+  document.head.appendChild(script);
+}
+
+/**
  * 每個語言的頁面清單。key 相同者互為對方語言的同功能頁。
  */
 const PAGES = {
@@ -75,26 +168,27 @@ export function renderNav() {
   const { lang, page } = document.body.dataset;
   if (!lang || !PAGES[lang]) return;
 
+  const cloud = isCloudSite();
   const other = lang === 'en' ? 'ja' : 'en';
   const otherPage = PAGES[other].find((p) => p.key === page) || PAGES[other][0];
 
   const tabs = PAGES[lang]
     .map((p) => {
       const current = p.key === page ? ' aria-current="page"' : '';
-      return `<a href="./${p.file}"${current}>${esc(p.label)}</a>`;
+      return `<a href="${pageHref('./', p.file, cloud)}"${current}>${esc(p.label)}</a>`;
     })
     .join('');
 
   const html = `
     <header class="topbar">
       <div class="topbar-in">
-        <a class="home" href="../index.html">語言學習</a>
+        <a class="home" href="${pageHref('../', 'index.html', cloud)}">語言學習</a>
         <nav class="tabs" aria-label="${esc(LANG_LABEL[lang])}學習項目">${tabs}</nav>
         <div class="topbar-right">
           ${appearanceHtml()}
-          <a class="lang-switch" href="../${other}/${otherPage.file}"
+          <a class="lang-switch" href="${pageHref(`../${other}/`, otherPage.file, cloud)}"
              title="切換到${esc(LANG_LABEL[other])}的同一個功能">${esc(LANG_LABEL[other])}</a>
-          <a class="help-link" href="../help.html">使用教學</a>
+          <a class="help-link" href="${pageHref('../', 'help.html', cloud)}">使用教學</a>
         </div>
       </div>
     </header>`;
@@ -103,23 +197,26 @@ export function renderNav() {
   renderLegacyBanner(document.querySelector('.topbar'), '../');
   bindAppearance();
   addCloudAccount('../');
+  normalizeCloudLinks();
+  installSpeculationRules();
 }
 
 /**
  * 根目錄頁面（index.html / help.html）用的簡化導覽列
  */
 export function renderRootNav(currentKey, { account = true } = {}) {
+  const cloud = isCloudSite();
   const html = `
     <header class="topbar">
       <div class="topbar-in">
-        <a class="home" href="./index.html">語言學習</a>
+        <a class="home" href="${pageHref('./', 'index.html', cloud)}">語言學習</a>
         <nav class="tabs" aria-label="語言">
-          <a href="./en/index.html">英文</a>
-          <a href="./ja/index.html">日文</a>
+          <a href="${pageHref('./en/', 'index.html', cloud)}">英文</a>
+          <a href="${pageHref('./ja/', 'index.html', cloud)}">日文</a>
         </nav>
         <div class="topbar-right">
           ${appearanceHtml()}
-          <a class="help-link" href="./help.html"
+          <a class="help-link" href="${pageHref('./', 'help.html', cloud)}"
              ${currentKey === 'help' ? 'aria-current="page"' : ''}>使用教學</a>
         </div>
       </div>
@@ -128,4 +225,6 @@ export function renderRootNav(currentKey, { account = true } = {}) {
   renderLegacyBanner(document.querySelector('.topbar'), './');
   bindAppearance();
   if (account) addCloudAccount('./');
+  normalizeCloudLinks();
+  installSpeculationRules();
 }

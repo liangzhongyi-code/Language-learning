@@ -3,7 +3,7 @@
  * 只複製 SITE_ENTRIES 列出的項目；新增的資料夾預設不公開，必須明確加入清單。
  * 用法：node tools/build-site.mjs（wrangler dev／deploy 會自動先執行）。
  */
-import { cpSync, existsSync, rmSync, mkdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, rmSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,21 @@ export const SITE_ENTRIES = [
 ];
 
 /**
+ * Cloudflare Workers 靜態資源控制檔（由建置工具產生，邊緣直接套用且不公開提供下載）。
+ */
+export const SITE_GENERATED = ['_headers'];
+
+export const HEADERS_CONTENT = [
+  '/assets/*',
+  '  Cache-Control: public, max-age=600, stale-while-revalidate=86400',
+  '',
+  '/assets/js/data/*',
+  '  ! Cache-Control',
+  '  Cache-Control: public, max-age=86400, stale-while-revalidate=604800',
+  '',
+].join('\n');
+
+/**
  * 白名單目錄內只複製這些網站檔案類型；開發說明（.md）、隱藏檔與其他雜項一律略過。
  */
 export const SITE_EXTENSIONS = ['.html', '.css', '.js', '.mjs', '.json', '.svg', '.png', '.ico', '.woff2'];
@@ -37,7 +52,7 @@ function isSiteFile(source) {
 }
 
 /**
- * 清空並重建輸出目錄，回傳實際複製的項目路徑。
+ * 清空並重建輸出目錄，回傳實際複製與產生的頂層項目路徑。
  */
 export function buildSite({ root = ROOT, outDir = OUT_DIR } = {}) {
   rmSync(outDir, { recursive: true, force: true });
@@ -52,6 +67,8 @@ export function buildSite({ root = ROOT, outDir = OUT_DIR } = {}) {
     cpSync(source, join(outDir, path), { recursive: true, filter: isSiteFile });
     copied.push(path);
   }
+  writeFileSync(join(outDir, '_headers'), HEADERS_CONTENT, 'utf8');
+  copied.push('_headers');
   return copied;
 }
 

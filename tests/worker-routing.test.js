@@ -35,12 +35,20 @@ test('H04 /api 根路徑同樣回 404 JSON', async () => {
   assert.deepEqual(await response.json(), { error: 'NOT_FOUND' });
 });
 
-test('H03 本機 Worker：頁面由靜態資源回應，/api 由 Worker 回應', async () => {
+test('H03 本機 Worker：頁面由靜態資源回應，/api 由 Worker 回應，靜態資源套用快取標頭', async () => {
   const local = await startLocalWorker();
   try {
     const page = await local.fetch('/');
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-type'), /text\/html/);
+    const css = await local.fetch('/assets/css/theme.css');
+    assert.equal(css.status, 200);
+    assert.equal(css.headers.get('cache-control'), 'public, max-age=600, stale-while-revalidate=86400');
+    const data = await local.fetch('/assets/js/data/catalog/meta.js');
+    assert.equal(data.status, 200);
+    assert.equal(data.headers.get('cache-control'), 'public, max-age=86400, stale-while-revalidate=604800');
+    const headersFile = await local.fetch('/_headers');
+    assert.equal(headersFile.status, 404);
     const api = await local.fetch('/api/no-such-thing');
     assert.equal(api.status, 404);
     assert.match(api.headers.get('content-type'), /application\/json/);

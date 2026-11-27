@@ -8,11 +8,12 @@ import { PALETTES, BACKGROUNDS, STYLES, normalizeAppearance } from '../assets/js
  * 執行真實 prefs 與外觀模組，僅用小型 DOM／儲存替身測跨模組事件。
  * 版面、原生 details 與鍵盤行為另外在瀏覽器驗證。
  */
-function harness(initial = {}, fail = false, navEntry = null) {
+function harness(initial = {}, fail = false, navEntry = null, { mode = 'off', anchors = [] } = {}) {
   let blocked = fail;
   const key = 'lang-learn.prefs.v1';
   const values = new Map([[key, JSON.stringify(initial)]]);
   const listeners = new Map();
+  const docListeners = new Map();
   const controls = [
     ...['dark', 'light'].map((value) => ({ type: 'radio', value, dataset: { appearance: 'theme' } })),
     ...PALETTES.map(({ value }) => ({ type: 'radio', value, dataset: { appearance: 'palette' } })),
@@ -26,12 +27,20 @@ function harness(initial = {}, fail = false, navEntry = null) {
   const content = { top: 181, getBoundingClientRect() { return { top: this.top }; }, style: { setProperty(name, value) { this[name] = value; } } };
   const panel = {
     open: false,
+    prepend() {},
     querySelectorAll: () => controls,
     querySelector: (selector) => selector === '.appearance-panel' ? content : selector === '[data-appearance-status]' ? status : selector === '[data-system-effects]' ? systemNote : { addEventListener() {}, focus() {} },
     addEventListener(type, callback) { panelListeners.set(type, callback); },
   };
   const body = { dataset: { lang: 'ja', page: 'home' }, html: '', insertAdjacentHTML(position, html) { this.html += html; } };
-  const document = { body, documentElement: { dataset: {} }, querySelector: () => panel, addEventListener() {} };
+  const document = {
+    body,
+    documentElement: { dataset: {} },
+    createElement: () => ({ dataset: {}, textContent: '' }),
+    querySelector: () => panel,
+    querySelectorAll: (selector) => selector === 'a[href]' ? anchors : [],
+    addEventListener(type, callback) { docListeners.set(type, [...(docListeners.get(type) || []), callback]); },
+  };
   const media = { matches: true, addEventListener(type, callback) { this.change = callback; } };
   const window = {
     innerHeight: 568,
@@ -49,11 +58,12 @@ function harness(initial = {}, fail = false, navEntry = null) {
   /* 搬家提示另有瀏覽器套件 cloud-gate；這裡只記錄導覽列有沒有用正確的位置與相對前綴呼叫它 */
   const banners = [];
   const renderLegacyBanner = (anchor, base) => { banners.push({ anchor, base }); return null; };
-  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav});',
-    { window, document, Event, PALETTES, BACKGROUNDS, STYLES, normalizeAppearance, renderLegacyBanner, cloudMode: () => 'off', CLOUD_CONFIG: {} });
+  const api = vm.runInNewContext(code + '\n({setAppearance, bindAppearance, renderNav, renderRootNav, canonicalCloudHref});',
+    { window, document, Event, PALETTES, BACKGROUNDS, STYLES, normalizeAppearance, renderLegacyBanner, cloudMode: () => mode, CLOUD_CONFIG: {} },
+    { importModuleDynamically: async () => ({ mountCloudView() {} }) });
   if (navEntry) api[navEntry]();
   else api.bindAppearance();
-  return { ...api, banners, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
+  return { ...api, banners, docListeners, values, key, window, document, controls, status, systemNote, media, panel, content, change: (input) => panelListeners.get('change')({ target: input }), toggle: () => panelListeners.get('toggle')(), allowStorage() { blocked = false; } };
 }
 
 test('根頁與語言內頁只有外觀入口，且可直接切換並保存深淺模式', () => {
@@ -148,4 +158,50 @@ test('外觀面板依實際導覽高度與視窗大小保留底部空間', () =>
   h.window.innerHeight = 100;
   h.window.dispatchEvent({ type: 'resize' });
   assert.equal(h.content.style['--appearance-room'], '0px');
+});
+
+test('canonicalCloudHref 僅轉寫站內相對 .html 並保留 query 與 hash', () => {
+  const { canonicalCloudHref } = harness();
+  assert.equal(canonicalCloudHref('index.html'), './');
+  assert.equal(canonicalCloudHref('./index.html'), './');
+  assert.equal(canonicalCloudHref('../index.html'), '../');
+  assert.equal(canonicalCloudHref('./ja/index.html'), './ja/');
+  assert.equal(canonicalCloudHref('./kanji.html'), './kanji');
+  assert.equal(canonicalCloudHref('./quiz.html?source=kana'), './quiz?source=kana');
+  assert.equal(canonicalCloudHref('./grammar.html#points'), './grammar#points');
+  assert.equal(canonicalCloudHref('../help.html?from=nav#sync'), '../help?from=nav#sync');
+  assert.equal(canonicalCloudHref('https://example.com/a.html'), 'https://example.com/a.html');
+  assert.equal(canonicalCloudHref('#section'), '#section');
+  assert.equal(canonicalCloudHref('mailto:test@example.com'), 'mailto:test@example.com');
+});
+
+test('cloud 站導覽列與頁內連結移除 .html 避免 307；非 cloud 站保留 .html', () => {
+  const makeAnchor = (href) => ({
+    href,
+    getAttribute: (name) => (name === 'href' ? href : null),
+    setAttribute(name, value) { if (name === 'href') { href = value; this.href = value; } },
+  });
+  const cloudAnchors = [makeAnchor('./daily.html'), makeAnchor('./quiz.html?source=kana'), makeAnchor('https://example.com/x.html')];
+  const cloudNav = harness({}, false, 'renderNav', { mode: 'cloud', anchors: cloudAnchors });
+  assert.match(cloudNav.document.body.html, /href="\.\.\/"/);
+  assert.match(cloudNav.document.body.html, /href="\.\/kanji"/);
+  assert.match(cloudNav.document.body.html, /href="\.\.\/help"/);
+  assert.doesNotMatch(cloudNav.document.body.html, /\.html/);
+  assert.deepEqual(cloudAnchors.map((a) => a.href), ['./daily', './quiz?source=kana', 'https://example.com/x.html']);
+
+  const dynamicAnchor = makeAnchor('./reading.html#sec');
+  const clickHandlers = cloudNav.docListeners.get('click') || [];
+  assert.ok(clickHandlers.length >= 1);
+  for (const fn of clickHandlers) fn({ target: { closest: () => dynamicAnchor } });
+  assert.equal(dynamicAnchor.href, './reading#sec');
+
+  const cloudRoot = harness({}, false, 'renderRootNav', { mode: 'cloud' });
+  assert.match(cloudRoot.document.body.html, /href="\.\/ja\/"/);
+  assert.match(cloudRoot.document.body.html, /href="\.\/en\/"/);
+  assert.match(cloudRoot.document.body.html, /href="\.\/help"/);
+  assert.doesNotMatch(cloudRoot.document.body.html, /\.html/);
+
+  const localNav = harness({}, false, 'renderNav', { mode: 'off' });
+  assert.match(localNav.document.body.html, /href="\.\/kanji\.html"/);
+  assert.match(localNav.document.body.html, /href="\.\.\/index\.html"/);
 });
